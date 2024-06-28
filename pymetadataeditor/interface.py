@@ -373,8 +373,7 @@ class MetadataEditor(BaseModel):
 
         pth = "editor/delete/{}"
         try:
-            response = self._post_request(pth=pth, id=id)
-            response.json()
+            self._post_request(pth=pth, id=id)
         except JSONDecodeError:
             pass
 

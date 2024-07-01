@@ -68,11 +68,17 @@ def metadata_editor(monkeypatch):
 def test_MetadataEditor_instantiation(monkeypatch):
     test_api_key = "test"  # pragma: allowlist secret
 
-    # url is not https
+    # url is not https and user defaults to requiring use of https
     with pytest.raises(ValidationError) as e:
         MetadataEditor(api_url="http://example.com", api_key=test_api_key)
     assert len(e.value.errors()) == 1
-    assert e.value.errors()[0]["msg"] == "URL scheme should be 'https'"
+
+    # url is not https but user allows use of http
+    def mock_response(*args, **kwargs):
+        return MockResponse(status_code=200)
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    MetadataEditor(api_url="http://example.com", api_key=test_api_key, allow_unsecure=True)
 
     # bad URL
     def mock_response(*args, **kwargs):

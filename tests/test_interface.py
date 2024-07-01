@@ -66,9 +66,11 @@ def metadata_editor(monkeypatch):
 
 
 def test_MetadataEditor_instantiation(monkeypatch):
+    test_api_key = "test"  # pragma: allowlist secret
+
     # url is not https
     with pytest.raises(ValidationError) as e:
-        MetadataEditor(api_url="http://example.com", api_key="test")  # pragma: allowlist secret
+        MetadataEditor(api_url="http://example.com", api_key=test_api_key)
     assert len(e.value.errors()) == 1
     assert e.value.errors()[0]["msg"] == "URL scheme should be 'https'"
 
@@ -78,7 +80,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(requests.HTTPError) as e:
-        MetadataEditor(api_url="https://example.com", api_key="test")  # pragma: allowlist secret
+        MetadataEditor(api_url="https://example.com", api_key=test_api_key)
     assert str(e.value).split(".")[0] == "Page not found"
 
     # bad key
@@ -87,7 +89,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(PermissionError) as e:
-        MetadataEditor(api_url="https://example.com", api_key="test")  # pragma: allowlist secret
+        MetadataEditor(api_url="https://example.com", api_key=test_api_key)
     assert str(e.value).split(".")[0] == "Access to that URL is denied"
 
     # good instantiation
@@ -95,7 +97,10 @@ def test_MetadataEditor_instantiation(monkeypatch):
         return MockResponse(status_code=200)
 
     monkeypatch.setattr(requests, "request", mock_response)
-    MetadataEditor(api_url="https://example.com", api_key="test")  # pragma: allowlist secret
+    me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
+
+    assert me.api_key != test_api_key
+    assert me.api_key.get_secret_value() == test_api_key
 
 
 @pytest.mark.parametrize("method", ["get", "post"])

@@ -5,7 +5,7 @@ from typing import Annotated, Dict, List, Optional, Union
 
 import pandas as pd
 import requests
-from pydantic import BaseModel, ConfigDict, PrivateAttr, UrlConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, PrivateAttr, SecretStr, UrlConstraints, model_validator
 from pydantic_core import Url
 from requests.exceptions import HTTPError, SSLError
 
@@ -52,7 +52,7 @@ class MetadataEditor(BaseModel):
         Url,
         UrlConstraints(max_length=2083, allowed_schemes=["https"]),
     ]
-    api_key: str
+    api_key: SecretStr
     _metadata_types: dict = PrivateAttr(
         default={"timeseries": tss.TimeseriesSchema, "survey": sms.SurveyMicrodataSchema}
     )
@@ -61,9 +61,6 @@ class MetadataEditor(BaseModel):
     def check_endpoint_accessible(self):
         self.list_projects()
         return self
-
-    # def get_api_key(self) -> str:
-    #     return self.api_key
 
     def _request(
         self, method: str, pth: str, json: Optional[MetadataDict] = None, id: Optional[Union[int, str]] = None
@@ -97,7 +94,9 @@ class MetadataEditor(BaseModel):
 
         try:
             response = None
-            response = requests.request(method, url, headers={"x-api-key": self.api_key}, **request_kwargs)
+            response = requests.request(
+                method, url, headers={"x-api-key": self.api_key.get_secret_value()}, **request_kwargs
+            )
             response.raise_for_status()
         except (HTTPError, SSLError) as e:
             if response is None or response.status_code == 404:

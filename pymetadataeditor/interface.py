@@ -1,6 +1,5 @@
 import warnings
 from json import JSONDecodeError
-from numbers import Number
 from typing import Dict, List, Optional, Union
 
 import pandas as pd
@@ -17,7 +16,10 @@ warnings.filterwarnings(
     "ignore", category=UserWarning, module="pydantic"
 )  # suppresses warning when metadata passed as dict instead of a pydantic object
 
-MetadataDict = Dict[str, Union[str, Number, "MetadataDict", List["MetadataDict"]]]
+MetadataDict = Dict[
+    str,
+    Union[str, bytes, int, float, SchemaBaseModel, "MetadataDict", List["MetadataDict"], List[SchemaBaseModel], None],
+]
 
 
 class DeleteNotAppliedError(Exception):

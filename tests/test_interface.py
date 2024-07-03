@@ -525,14 +525,14 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
 def test_list_collections(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(
-            http_status_code=200, json_data={"collections": [{"id": "1", "title": "1", "created": "2024-01-01"}]}
+            http_status_code=200, json_data={"collections": [{"id": 1, "title": "1", "created": "2024-01-01"}]}
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
     collections = metadata_editor.list_collections()
     assert isinstance(collections, pd.DataFrame)
     assert len(collections) == 1
-    assert collections.loc["1"].title == "1"
+    assert collections.loc[1].title == "1"
 
     # there are zero collections
     def mock_response(*args, **kwargs):
@@ -551,3 +551,33 @@ def test_list_collections(monkeypatch, metadata_editor):
     collections = metadata_editor.list_collections()
     assert isinstance(collections, pd.DataFrame)
     assert len(collections) == 0
+
+
+def test_get_collection_by_id(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(
+            http_status_code=200, json_data={"collection": {"id": 1, "title": "1", "created": "2024-01-01"}}
+        )
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    collection = metadata_editor.get_collection_by_id(id=1)
+    assert isinstance(collection, pd.Series)
+    assert collection.title == "1"
+
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    with pytest.raises(ValueError):
+        metadata_editor.get_collection_by_id(1)
+
+
+def test_update_collection(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200)
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    metadata_editor.update_collection(id=1, title="New_title", description="new_description")
+
+    with pytest.raises(AssertionError):
+        metadata_editor.update_collection(id=1)

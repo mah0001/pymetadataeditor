@@ -733,7 +733,7 @@ class MetadataEditor(BaseModel):
             post_request_template_path, id=id, metadata=md.model_dump(exclude_none=True, exclude_unset=True)
         )
 
-    def list_collections(self):
+    def list_collections(self) -> pd.DataFrame:
         """
         Lists all the collections associated with your API key.
 
@@ -744,3 +744,48 @@ class MetadataEditor(BaseModel):
         if "collections" not in response or len(response["collections"]) == 0:
             return pd.DataFrame([], columns=["id", "title", "created"]).set_index("id")
         return pd.DataFrame(response["collections"]).set_index("id").sort_values("created")
+
+    def get_collection_by_id(self, id: int) -> pd.Series:
+        """
+        Args:
+            id (int): the id of the collection.
+
+        Raises:
+            Exception: You don't have permission to access this project - often this means the id is incorrect
+        """
+        collection_data = self._get_request("collections/{}", id=id)
+        if "collection" not in collection_data:
+            raise ValueError(f"API call was good but collection data missing from: {collection_data}")
+        return pd.Series(collection_data["collection"])
+
+    def create_collection(self, title: str, description: str):
+        """
+        Creates a new collection with the specified title and description.
+
+        Args:
+            title (str): The title of the collection.
+            description (str): The description of the collection.
+        """
+        assert title != "", "The collection must have a title but an empty string was passed"
+        self._post_request("collections", metadata={"title": title, "description": description})
+
+    def update_collection(self, id: int, title: Optional[str] = None, description: Optional[str] = None):
+        """
+            Updates the specified collection with the given title and/or description.
+
+        Args:
+            id (int): The unique identifier of the collection to update.
+            title (Optional[str]): The new title of the collection. Defaults to None.
+            description (Optional[str]): The new description of the collection. Defaults to None.
+
+        Raises:
+            Assertion error if both title and description are None, since we must update one or the other.
+        """
+
+        assert title is not None or description is not None, "can update title or description or both, but not neither"
+        metadata = {}
+        if title is not None:
+            metadata["title"] = title
+        if description is not None:
+            metadata["description"] = description
+        self._post_request("collections/update/{}", id=id, metadata=metadata)

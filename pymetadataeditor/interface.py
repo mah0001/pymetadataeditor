@@ -1,5 +1,6 @@
 import warnings
 from json import JSONDecodeError
+from ssl import SSLError as ssl_SSLError
 from typing import Dict, List, Optional, Union
 
 import pandas as pd
@@ -51,9 +52,14 @@ class MetadataEditor(BaseModel):
 
     api_url: AnyHttpUrl
     api_key: SecretStr = Field(repr=False)
-    allow_unsecure: bool = Field(
+    allow_http: bool = Field(
         default=False,
-        description="API urls that begin HTTPS are favoured. Set allow_unsecure=True to use of the less secure HTTP",
+        description="API urls that begin HTTPS are favoured. Set allow_http=True to use of the less secure HTTP",
+    )
+    verify_ssl: bool = Field(
+        default=True,
+        description="Calls to the API are authenticated with an SSL certificate. "
+        "Set verify_ssl=False to remove this requirement",
     )
     _metadata_types: dict = PrivateAttr(
         default={"timeseries": tss.TimeseriesSchema, "survey": sms.SurveyMicrodataSchema}
@@ -61,7 +67,7 @@ class MetadataEditor(BaseModel):
 
     @model_validator(mode="after")
     def check_endpoint_accessible(self):
-        if str(self.api_url).startswith("https") or self.allow_unsecure:
+        if str(self.api_url).startswith("https") or self.allow_http:
             self.list_projects()
             return self
         else:
@@ -98,14 +104,23 @@ class MetadataEditor(BaseModel):
             assert id is not None, "If passing a url format, an id must be passed"
             pth = pth.format(id)
         url = str(self.api_url).strip("/") + "/" + pth.strip("/")
-
+        # print(f"accessing {url}")
         try:
             response = None
             response = requests.request(
-                method, url, headers={"x-api-key": self.api_key.get_secret_value()}, **request_kwargs
+                method,
+                url,
+                verify=self.verify_ssl,
+                headers={"x-api-key": self.api_key.get_secret_value()},
+                **request_kwargs,
             )
             response.raise_for_status()
-        except (HTTPError, SSLError) as e:
+        except (SSLError, ssl_SSLError) as e:
+            raise SSLError(
+                f"Usually this means the admin of {self.api_url} has not verified an SSL certificate.\n"
+                f"You can bypass the requirement by setting MetadataEditor.verify_ssl=False.\n{e}"
+            ) from None
+        except HTTPError as e:
             if response is None or response.status_code == 404:
                 error_msg = (
                     f"Page not found. Try checking the URL.\nGenerally the required URL looks like "

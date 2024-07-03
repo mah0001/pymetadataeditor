@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 import requests
 from pydantic import ValidationError
+from requests.exceptions import SSLError
 
 import pymetadataeditor.schemas.survey_schema as sms
 import pymetadataeditor.schemas.timeseries_schema as tss
@@ -15,18 +16,20 @@ from pymetadataeditor.interface import DeleteNotAppliedError, MetadataDict
 class MockResponse:
     def __init__(
         self,
-        status_code: int,
+        http_status_code: int = None,
         error_message: Optional[str] = None,
         json_data: Optional[MetadataDict] = None,
         raise_json_decode_error: bool = False,
+        raise_ssl: bool = False,
     ):
         """
         Used to create mock responses from the API so that we don't actually call the API everytime we run tests
         """
-        self.status_code = status_code
+        self.status_code = http_status_code
         self.json_data = json_data if json_data is not None else {}
         self.text = error_message if error_message is not None else "{}"
         self.raise_json_decode_error = raise_json_decode_error
+        self.raise_ssl = raise_ssl
 
         self.response = requests.Response()
         self.response.status_code = self.status_code
@@ -35,7 +38,9 @@ class MockResponse:
         self.response.url = "https://example.com/api/resource"
 
     def raise_for_status(self):
-        if self.status_code == 404:
+        if self.raise_ssl:
+            raise SSLError(self.text)
+        elif self.status_code == 404:
             raise requests.exceptions.HTTPError("404")
         elif self.status_code == 403:
             raise requests.exceptions.HTTPError("403")  # Client Error: Forbidden for url", response=self)
@@ -59,7 +64,7 @@ class MockResponse:
 @pytest.fixture
 def metadata_editor(monkeypatch):
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200)
+        return MockResponse(http_status_code=200)
 
     monkeypatch.setattr(requests, "request", mock_response)
     return MetadataEditor(api_url="https://example.com", api_key="test")  # pragma: allowlist secret
@@ -75,23 +80,32 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     # url is not https but user allows use of http
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200)
+        return MockResponse(http_status_code=200)
 
     monkeypatch.setattr(requests, "request", mock_response)
-    MetadataEditor(api_url="http://example.com", api_key=test_api_key, allow_unsecure=True)
+    MetadataEditor(api_url="http://example.com", api_key=test_api_key, allow_http=True)
 
     # bad URL
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=404)
+        return MockResponse(http_status_code=404)
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(requests.HTTPError) as e:
         MetadataEditor(api_url="https://example.com", api_key=test_api_key)
     assert str(e.value).split(".")[0] == "Page not found"
 
+    # bad SSL
+    def mock_response(*args, **kwargs):
+        return MockResponse(raise_ssl=True, error_message="SSL Error GB")
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    with pytest.raises(SSLError) as e:
+        MetadataEditor(api_url="https://example.com", api_key=test_api_key)
+    assert str(e.value)[:12] == "Usually this"
+
     # bad key
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=403)
+        return MockResponse(http_status_code=403)
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(PermissionError) as e:
@@ -100,7 +114,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     # good instantiation
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200)
+        return MockResponse(http_status_code=200)
 
     monkeypatch.setattr(requests, "request", mock_response)
     me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
@@ -123,7 +137,7 @@ def test_given_request(monkeypatch, metadata_editor, method: str):
 
     # api raises some http error
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=502)
+        return MockResponse(http_status_code=502)
 
     monkeypatch.setattr(requests, "request", mock_response)
 
@@ -132,7 +146,7 @@ def test_given_request(monkeypatch, metadata_editor, method: str):
 
     # response is good
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200, json_data={})
+        return MockResponse(http_status_code=200, json_data={})
 
     monkeypatch.setattr(requests, "request", mock_response)
     func("/editor")
@@ -148,7 +162,7 @@ def test_list_projects(monkeypatch, metadata_editor):
     }
 
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200, json_data=projects)
+        return MockResponse(http_status_code=200, json_data=projects)
 
     monkeypatch.setattr(requests, "request", mock_response)
 
@@ -162,7 +176,7 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
     # id is bad
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=400,
+            http_status_code=400,
             json_data={},
             error_message="""{"message": "You don't have permission to access this project"}""",
         )
@@ -176,7 +190,7 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
     project = {"status": "success", "project": {"id": "1", "created": "2024-06-11T09:58:14-04:00"}}
 
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200, json_data=project)
+        return MockResponse(http_status_code=200, json_data=project)
 
     monkeypatch.setattr(requests, "request", mock_response)
     actual_project = metadata_editor.get_project_by_id(2)
@@ -186,7 +200,7 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
 
 def test_create_and_log_timeseries(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200)
+        return MockResponse(http_status_code=200)
 
     monkeypatch.setattr(requests, "request", mock_response)
 
@@ -206,7 +220,7 @@ def test_create_and_log_timeseries(monkeypatch, metadata_editor):
     )
 
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=400)
+        return MockResponse(http_status_code=400)
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception):
@@ -218,7 +232,7 @@ def test_create_and_log_timeseries(monkeypatch, metadata_editor):
 
 def test_create_and_log_survey_microdata(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200)
+        return MockResponse(http_status_code=200)
 
     monkeypatch.setattr(requests, "request", mock_response)
 
@@ -244,7 +258,7 @@ def test_update_timeseries_by_id(monkeypatch, metadata_editor):
     # id is bad
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=400,
+            http_status_code=400,
             json_data={},
             error_message="""{"message": "You don't have permission to access this project"}""",
         )
@@ -259,7 +273,7 @@ def test_update_timeseries_by_id(monkeypatch, metadata_editor):
     # id is good
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=200,
+            http_status_code=200,
             json_data={
                 "project": {
                     "type": "timeseries",
@@ -281,7 +295,7 @@ def test_update_survey_microdata_by_id(monkeypatch, metadata_editor):
     # id is bad
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=400,
+            http_status_code=400,
             json_data={},
             error_message="""{"message": "You don't have permission to access this project"}""",
         )
@@ -294,7 +308,7 @@ def test_update_survey_microdata_by_id(monkeypatch, metadata_editor):
     # id is good but type of existing data is listed as timeseries even though the user is trying to update a survey
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=200,
+            http_status_code=200,
             json_data={
                 "project": {
                     "type": "timeseries",
@@ -311,7 +325,7 @@ def test_update_survey_microdata_by_id(monkeypatch, metadata_editor):
 
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=200,
+            http_status_code=200,
             json_data={
                 "project": {
                     "type": "survey",
@@ -333,7 +347,7 @@ def test_get_project_metadata_by_id(monkeypatch, metadata_editor):
     # bad project type
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=200,
+            http_status_code=200,
             json_data={
                 "project": {
                     "type": "unknown",
@@ -350,7 +364,7 @@ def test_get_project_metadata_by_id(monkeypatch, metadata_editor):
 
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=200,
+            http_status_code=200,
             json_data={
                 "project": {
                     "type": "timeseries",
@@ -469,7 +483,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
 
     def mock_response(*args, **kwargs):
         return MockResponse(
-            status_code=400,
+            http_status_code=400,
             error_message="""{"message": "You don't have permission to access this project"}""",
         )
 
@@ -482,7 +496,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById([True, True]))
 
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200, raise_json_decode_error=True)
+        return MockResponse(http_status_code=200, raise_json_decode_error=True)
 
     monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
     with pytest.raises(DeleteNotAppliedError):
@@ -492,7 +506,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById([True, False]))
 
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200, raise_json_decode_error=True)
+        return MockResponse(http_status_code=200, raise_json_decode_error=True)
 
     monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
     metadata_editor.delete_project_by_id(1)
@@ -501,7 +515,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById([True, False]))
 
     def mock_response(*args, **kwargs):
-        return MockResponse(status_code=200, raise_json_decode_error=False)
+        return MockResponse(http_status_code=200, raise_json_decode_error=False)
 
     monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
     monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)

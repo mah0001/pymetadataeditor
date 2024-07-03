@@ -732,3 +732,15 @@ class MetadataEditor(BaseModel):
         self._post_request(
             post_request_template_path, id=id, metadata=md.model_dump(exclude_none=True, exclude_unset=True)
         )
+
+    def list_collections(self):
+        """
+        Lists all the collections associated with your API key.
+
+        Returns:
+            pd.DataFrame: Collections sorted by the date on which they were created
+        """
+        response = self._get_request("collections")
+        if "collections" not in response or len(response["collections"]) == 0:
+            return pd.DataFrame([], columns=["id", "title", "created"]).set_index("id")
+        return pd.DataFrame(response["collections"]).set_index("id").sort_values("created")

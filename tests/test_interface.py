@@ -55,7 +55,7 @@ class MockResponse:
     def json(self) -> MetadataDict:
         if self.raise_json_decode_error:
             raise JSONDecodeError(msg="could not decode", doc="...", pos=2)
-        if self.json_data is not None:
+        elif self.json_data is not None:
             return self.json_data
         else:
             return {}
@@ -520,3 +520,34 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
     monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
     metadata_editor.delete_project_by_id(1)
+
+
+def test_list_collections(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(
+            http_status_code=200, json_data={"collections": [{"id": "1", "title": "1", "created": "2024-01-01"}]}
+        )
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    collections = metadata_editor.list_collections()
+    assert isinstance(collections, pd.DataFrame)
+    assert len(collections) == 1
+    assert collections.loc["1"].title == "1"
+
+    # there are zero collections
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"collections": []})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    collections = metadata_editor.list_collections()
+    assert isinstance(collections, pd.DataFrame)
+    assert len(collections) == 0
+
+    # no collections
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    collections = metadata_editor.list_collections()
+    assert isinstance(collections, pd.DataFrame)
+    assert len(collections) == 0

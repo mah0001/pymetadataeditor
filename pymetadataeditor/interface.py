@@ -1,7 +1,7 @@
 import warnings
 from json import JSONDecodeError
 from ssl import SSLError as ssl_SSLError
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import pandas as pd
 import requests
@@ -389,10 +389,28 @@ class MetadataEditor(BaseModel):
         Raises:
             DeleteNotAppliedError: This can be the result of system admins blocking data deletion
         """
-        # first check that the project is there to be deleted
-        self.get_project_by_id(id=id)
-
         pth = "editor/delete/{}"
+        self._delete_by_id(pth=pth, id=id, checker_fn=self.get_project_by_id)
+
+    def delete_collection_by_id(self, id: int):
+        """
+        Checks the collection exists, deletes it, then checks it was deleted.
+
+        Args:
+            id (int): the id of the colection.
+
+        Raises:
+            DeleteNotAppliedError: This can be the result of system admins blocking data deletion
+        """
+        pth = "collections/delete/{}"
+        self._delete_by_id(pth=pth, id=id, checker_fn=self.get_collection_by_id)
+
+    def _delete_by_id(self, pth: str, id: int, checker_fn: Callable[[int], pd.Series]):
+        """
+        Internal, generic method for deleting either collections or projects
+        """
+        # first check that the project/collection is there to be deleted
+        checker_fn(id)
         try:
             self._post_request(pth=pth, id=id)
         except JSONDecodeError:
@@ -400,7 +418,7 @@ class MetadataEditor(BaseModel):
 
         # check that the entity was deleted
         try:
-            self.get_project_by_id(id=id)
+            checker_fn(id)
         except PermissionError:
             pass  # evidently the entity was deleted because now it can't be found
         else:
@@ -771,7 +789,7 @@ class MetadataEditor(BaseModel):
 
     def update_collection(self, id: int, title: Optional[str] = None, description: Optional[str] = None):
         """
-            Updates the specified collection with the given title and/or description.
+            Updates the specified collection with a new title and/or description.
 
         Args:
             id (int): The unique identifier of the collection to update.
@@ -781,7 +799,7 @@ class MetadataEditor(BaseModel):
         Raises:
             Assertion error if both title and description are None, since we must update one or the other.
         """
-
+        # todo(gblackadder): Is it clear this means update the title/description and not what data is in the collection?
         assert title is not None or description is not None, "can update title or description or both, but not neither"
         metadata = {}
         if title is not None:

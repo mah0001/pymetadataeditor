@@ -475,7 +475,13 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     """
     This feels like a bad test - it's testing the implementation instead of focusing on the functionality
        But then, because of all the mocking that happens, maybe that's how it has to be?
-       Then the functionality will be tested in an integration test
+       Then the functionality will be tested in an integration test.
+
+    This test implicitly tests the internal method _delete_by_id.
+
+    And the delete_collection_by_id also uses _delete_by_id.
+
+    To test the specific behaviour of the delete_collection_by_id really requires an integration test
     """
 
     # raises an error when there is no such project to delete

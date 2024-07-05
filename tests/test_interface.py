@@ -653,3 +653,42 @@ def test_get_template_by_uid(monkeypatch, metadata_editor):
     monkeypatch.setattr(requests, "request", mock_response)
     actual = metadata_editor.get_template_by_uid("example")
     assert actual.name == "example name"
+
+
+def test_set_template_for_collection(monkeypatch, metadata_editor):
+    # This test also feel unsatisfying since it's testing the implementation not the funcationality.
+    # An integration test is surely required
+
+    # no such collection
+    def get_collection_by_id(*args, **kwargs):
+        raise PermissionError("Access to this id is denied")
+
+    monkeypatch.setattr(MetadataEditor, "get_collection_by_id", get_collection_by_id)
+    with pytest.raises(PermissionError):
+        metadata_editor.set_template_for_collection(1, "example_uid")
+
+    # no such template
+    def get_collection_by_id(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(MetadataEditor, "get_collection_by_id", get_collection_by_id)
+
+    def get_template_by_uid(*args, **kwargs):
+        raise PermissionError("Access to this id is denied")
+
+    monkeypatch.setattr(MetadataEditor, "get_template_by_uid", get_template_by_uid)
+
+    with pytest.raises(PermissionError):
+        metadata_editor.set_template_for_collection(1, "example_uid")
+
+    # all good
+    def get_template_by_uid(*args, **kwargs):
+        return pd.Series({"data_type": "survey"})
+
+    monkeypatch.setattr(MetadataEditor, "get_template_by_uid", get_template_by_uid)
+
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    metadata_editor.set_template_for_collection(1, "example_uid")

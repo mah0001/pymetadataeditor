@@ -838,3 +838,13 @@ class MetadataEditor(BaseModel):
             )
         else:
             return pd.Series(response["result"], name=response["result"]["name"])
+
+    def set_template_for_collection(self, collection_id: int, template_uid: str):
+        # check collection exists
+        self.get_collection_by_id(collection_id)
+        template = self.get_template_by_uid(uid=template_uid)
+        template_type = template["data_type"]
+        self._post_request(
+            "collections/template",
+            metadata={"collection_id": collection_id, "template_uid": template_uid, "project_type": template_type},
+        )

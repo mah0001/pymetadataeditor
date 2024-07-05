@@ -807,3 +807,16 @@ class MetadataEditor(BaseModel):
         if description is not None:
             metadata["description"] = description
         self._post_request("collections/update/{}", id=id, metadata=metadata)
+
+    def list_templates(self) -> pd.DataFrame:
+        """
+        Retrieves templates, both standard and any custom templates
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the templates. If none are found, an empty DataFrame is returned.
+        """
+        response = self._get_request("templates")
+        if "templates" not in response or len(response["templates"]) == 0:
+            return pd.DataFrame([], columns=["uid", "template_type", "name", "template"])
+        else:
+            return pd.DataFrame([v_item for _, v in response["templates"].items() for v_item in v])

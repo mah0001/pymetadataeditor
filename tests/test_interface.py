@@ -587,3 +587,51 @@ def test_update_collection(monkeypatch, metadata_editor):
 
     with pytest.raises(AssertionError):
         metadata_editor.update_collection(id=1)
+
+
+def test_list_templates(monkeypatch, metadata_editor):
+    # there are no templates
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    actual = metadata_editor.list_templates()
+    assert isinstance(actual, pd.DataFrame)
+    assert len(actual) == 0
+
+    # templates is empty
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"templates": {}})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    actual = metadata_editor.list_templates()
+    assert isinstance(actual, pd.DataFrame)
+    assert len(actual) == 0
+
+    # templates is empty but does have some keys
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"templates": {"core": []}})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    actual = metadata_editor.list_templates()
+    assert isinstance(actual, pd.DataFrame)
+    assert len(actual) == 0
+
+    # has templates
+    def mock_response(*args, **kwargs):
+        return MockResponse(
+            http_status_code=200,
+            json_data={
+                "templates": {
+                    "core": [
+                        {"uid": "example", "template_type": "core", "name": "example", "template": "example_template"}
+                    ]
+                }
+            },
+        )
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    actual = metadata_editor.list_templates()
+    assert isinstance(actual, pd.DataFrame)
+    assert len(actual) == 1
+    assert actual.iloc[0].uid == "example"

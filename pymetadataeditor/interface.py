@@ -405,7 +405,7 @@ class MetadataEditor(BaseModel):
         pth = "collections/delete/{}"
         self._delete_by_id(pth=pth, id=id, checker_fn=self.get_collection_by_id)
 
-    def _delete_by_id(self, pth: str, id: int, checker_fn: Callable[[int], pd.Series]):
+    def _delete_by_id(self, pth: str, id: Union[int, str], checker_fn: Callable[[int], pd.Series]):
         """
         Internal, generic method for deleting either collections or projects
         """
@@ -840,6 +840,14 @@ class MetadataEditor(BaseModel):
             return pd.Series(response["result"], name=response["result"]["name"])
 
     def set_template_for_collection(self, collection_id: int, template_uid: str):
+        """
+        Set the specified template to be used for all metadata of its type (for example survey, timeseries, or
+            document metadata) in the collection.
+
+        Args:
+            collection_id (int): the id of the collection.
+            template_uid (str): The Unique Identifier of the template to apply to the collection.
+        """
         # check collection exists
         self.get_collection_by_id(collection_id)
         template = self.get_template_by_uid(uid=template_uid)
@@ -848,3 +856,13 @@ class MetadataEditor(BaseModel):
             "collections/template",
             metadata={"collection_id": collection_id, "template_uid": template_uid, "project_type": template_type},
         )
+
+    def delete_template(self, uid: str):
+        """
+        Deletes the given template.
+
+        Args:
+            uid (str): The Unique Identifier of the template to delete.
+
+        """
+        self._delete_by_id("templates/delete/{}", id=uid, checker_fn=self.get_template_by_uid)

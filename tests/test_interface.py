@@ -184,7 +184,7 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception) as e:
         metadata_editor.get_project_by_id(1)
-    assert str(e.value) == "Access to this id is denied. Check that the id '1' is correct"
+    assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
 
     # id is good
     project = {"status": "success", "project": {"id": "1", "created": "2024-06-11T09:58:14-04:00"}}
@@ -268,7 +268,7 @@ def test_update_timeseries_by_id(monkeypatch, metadata_editor):
         metadata_editor.update_timeseries_by_id(
             1, series_description=series_description, metadata_information=metadata_information
         )
-    assert str(e.value) == "Access to this id is denied. Check that the id '1' is correct"
+    assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
 
     # id is good
     def mock_response(*args, **kwargs):
@@ -303,7 +303,7 @@ def test_update_survey_microdata_by_id(monkeypatch, metadata_editor):
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception) as e:
         metadata_editor.update_survey_microdata_by_id(1, repositoryid="123abc")
-    assert str(e.value) == "Access to this id is denied. Check that the id '1' is correct"
+    assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
 
     # id is good but type of existing data is listed as timeseries even though the user is trying to update a survey
     def mock_response(*args, **kwargs):
@@ -635,3 +635,21 @@ def test_list_templates(monkeypatch, metadata_editor):
     assert isinstance(actual, pd.DataFrame)
     assert len(actual) == 1
     assert actual.iloc[0].uid == "example"
+
+
+def test_get_template_by_uid(monkeypatch, metadata_editor):
+    # call good but no result
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    with pytest.raises(KeyError):
+        metadata_editor.get_template_by_uid("example")
+
+    # template exists
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"result": {"uid": "example", "name": "example name"}})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    actual = metadata_editor.get_template_by_uid("example")
+    assert actual.name == "example name"

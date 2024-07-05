@@ -131,7 +131,7 @@ class MetadataEditor(BaseModel):
             elif response.status_code == 403:
                 raise PermissionError("Access to that URL is denied. " "Check that the API key is correct") from None
             elif response.status_code == 400 and id is not None:
-                raise PermissionError(f"Access to this id is denied. Check that the id '{id}' is correct") from None
+                raise PermissionError(f"Access to this id is denied. Check that '{id}' is correct") from None
             else:
                 raise Exception(f"Status Code: {response.status_code}, Response: {response.text}") from e
         return response.json()
@@ -820,3 +820,21 @@ class MetadataEditor(BaseModel):
             return pd.DataFrame([], columns=["uid", "template_type", "name", "template"])
         else:
             return pd.DataFrame([v_item for _, v in response["templates"].items() for v_item in v])
+
+    def get_template_by_uid(self, uid: str) -> pd.Series:
+        """
+        Retrieves given template by *UID*, not id.
+
+        Args:
+            uid (str): The Unique Identifier of the template to retrieve.
+
+        Returns:
+            pd.Series: A pandas Series containing the template details.
+        """
+        response = self._get_request("templates/{}", uid)
+        if "result" not in response:
+            raise KeyError(
+                f"No template found although API call appeared successful for that UPI.\nResponse: {response}"
+            )
+        else:
+            return pd.Series(response["result"], name=response["result"]["name"])

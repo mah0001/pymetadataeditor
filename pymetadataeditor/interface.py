@@ -774,6 +774,9 @@ class MetadataEditor(BaseModel):
         Args:
             id (int): the id of the collection.
 
+        Returns:
+            (pd.Series): a pandas series of the collection information
+
         Raises:
             Exception: You don't have permission to access this project - often this means the id is incorrect
         """
@@ -789,9 +792,13 @@ class MetadataEditor(BaseModel):
         Args:
             title (str): The title of the collection.
             description (str): The description of the collection.
+
+        Returns:
+            (int): The id of the newly created collection
         """
         assert title != "", "The collection must have a title but an empty string was passed"
-        self._post_request("collections", metadata={"title": title, "description": description})
+        ret = self._post_request("collections", metadata={"title": title, "description": description})
+        return ret["collection"]
 
     def update_collection(self, id: int, title: Optional[str] = None, description: Optional[str] = None):
         """

@@ -452,6 +452,9 @@ class MetadataEditor(BaseModel):
             additional (Optional[Dictionary]): Any other custom metadata not covered by the schema. A dictionary.
                 Defaults to None.
 
+        Returns:
+            int: the id of the newly created metadata
+
         Examples:
         >>> from pymetadataeditor.schemas import (SeriesDescription,
         ...                                       MetadataInformation,
@@ -483,7 +486,7 @@ class MetadataEditor(BaseModel):
             "tags": tags,
             "additional": additional,
         }
-        self._create_and_log(metadata, "timeseries")
+        return self._create_and_log(metadata, "timeseries")
 
     def create_and_log_survey_microdata(
         self,
@@ -537,6 +540,8 @@ class MetadataEditor(BaseModel):
             additional : Optional[Dict[str, Any]]
                 Any additional metadata to be associated with the survey data.
 
+        Returns:
+            int: the id of the newly created metadata
 
         >>> from pymetadataeditor.schemas import (
         ...     AccessPolicy,
@@ -594,7 +599,7 @@ class MetadataEditor(BaseModel):
             "embeddings": embeddings,
             "additional": additional,
         }
-        self._create_and_log(metadata, "survey")
+        return self._create_and_log(metadata, "survey")
 
     def _create_and_log(self, metadata: MetadataDict, metadata_type: str):
         assert metadata_type in self._metadata_types, (
@@ -605,7 +610,8 @@ class MetadataEditor(BaseModel):
         md = self._metadata_types[metadata_type](**metadata)
 
         post_request_pth = f"/editor/create/{metadata_type}"
-        self._post_request(pth=post_request_pth, metadata=md.model_dump(exclude_none=True, exclude_unset=True))
+        ret = self._post_request(pth=post_request_pth, metadata=md.model_dump(exclude_none=True, exclude_unset=True))
+        return ret["id"]
 
     def update_timeseries_by_id(
         self,

@@ -200,7 +200,7 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
 
 def test_create_and_log_timeseries(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200)
+        return MockResponse(http_status_code=200, json_data={"id": 1})
 
     monkeypatch.setattr(requests, "request", mock_response)
 
@@ -214,10 +214,12 @@ def test_create_and_log_timeseries(monkeypatch, metadata_editor):
             idno="GB123", series_description={"doi": "string", "name": "Gordons Test", "display_name": "string"}
         )
 
-    metadata_editor.create_and_log_timeseries(
+    # call is good
+    timeseries_id = metadata_editor.create_and_log_timeseries(
         idno="GB123",
         series_description={"idno": "string", "doi": "string", "name": "Gordons Test", "display_name": "string"},
     )
+    assert timeseries_id == 1
 
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=400)
@@ -232,7 +234,7 @@ def test_create_and_log_timeseries(monkeypatch, metadata_editor):
 
 def test_create_and_log_survey_microdata(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200)
+        return MockResponse(http_status_code=200, json_data={"id": 1})
 
     monkeypatch.setattr(requests, "request", mock_response)
 
@@ -243,12 +245,13 @@ def test_create_and_log_survey_microdata(monkeypatch, metadata_editor):
     with pytest.raises(ValueError):
         metadata_editor.create_and_log_survey_microdata(study_desc={})
 
-    metadata_editor.create_and_log_survey_microdata(
+    survey_id = metadata_editor.create_and_log_survey_microdata(
         study_desc={
             "title_statement": {"idno": "1", "title": "survey1"},
             "study_info": {"nation": [{"name": "nation_name"}]},
         }
     )
+    assert survey_id == 1
 
 
 def test_update_timeseries_by_id(monkeypatch, metadata_editor):

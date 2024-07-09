@@ -656,6 +656,48 @@ class MetadataEditor(BaseModel):
     def add_projects_to_collection(
         self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
     ):
+        """
+        Adds project or projects to specified collection or collections.
+
+        This method associates one or more projects with one or more collections. The `collection`
+        parameter can be a single collection ID or a list of collection IDs. The `projects` parameter
+        can be a single project ID, a single project ID number (idno), a list of project IDs, or a list
+        of project idnos. The `id_format` parameter specifies whether the project identifiers
+        are in the form of IDs (integer) or idno (string).
+
+        Args:
+
+            collection : Union[int, List[int]]
+                A single collection ID or a list of collection IDs to which projects should be added.
+
+            id_format : str
+                Specifies the format of the project identifiers. Must be either 'id' or 'idno'.
+
+            projects : Union[int, List[int], str, List[str]]
+                A single project ID, a single project idno, a list of project IDs, or a list of
+                project idnos to be added to the specified collection(s).
+
+        Raises:
+
+            AssertionError
+                If `id_format` is not 'id' or 'idno'.
+
+            ValueError
+                If a specified collection ID does not exist.
+
+            ValueError
+                If a specified project ID or idno does not exist.
+
+            AssertionError
+                If a project ID is not an integer when `id_format` is 'id'.
+
+            AssertionError
+                If a project ID number is not a string when `id_format` is 'idno'.
+
+        Example:
+            >>> client.add_projects_to_collection(collection=1, id_format='id', projects=[101, 102])
+            >>> client.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+        """
         assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
         if not isinstance(collection, Iterable) or isinstance(collection, str):
             collection = [collection]

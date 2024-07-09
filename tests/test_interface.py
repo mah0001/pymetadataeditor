@@ -7,7 +7,6 @@ import requests
 from pydantic import ValidationError
 from requests.exceptions import SSLError
 
-import pymetadataeditor.schemas.survey_schema as sms
 import pymetadataeditor.schemas.timeseries_schema as tss
 from pymetadataeditor import MetadataEditor
 from pymetadataeditor.interface import DeleteNotAppliedError, MetadataDict
@@ -405,60 +404,6 @@ def test_get_project_metadata_by_id(monkeypatch, metadata_editor):
         assert field in ts
 
 
-def test_skeleton_timeseries_metadata(metadata_editor):
-    # as dictionary
-    ts = metadata_editor.skeleton_timeseries_metadata(idno="12", name="oldname")
-    assert isinstance(ts, dict)
-    assert ts["idno"] == "12"
-    assert ts["series_description"]["idno"] == "12"
-    assert ts["series_description"]["name"] == "oldname"
-    assert len(ts) == 7
-    additional_fields = ["metadata_information", "datacite", "provenance", "tags", "additional"]
-    for field in additional_fields:
-        assert field in ts
-
-    # as object
-    ts = metadata_editor.skeleton_timeseries_metadata(idno="12", name="oldname", as_object=True)
-    assert isinstance(ts, tss.TimeseriesSchema)
-    assert ts.idno == "12"
-    assert ts.series_description.idno == "12"
-    assert ts.series_description.name == "oldname"
-    ts.metadata_information = tss.MetadataInformation(title="example_title")
-
-
-def test_skeleton_survey_microdata_metadata(metadata_editor):
-    # as dictionary
-    sm = metadata_editor.skeleton_survey_microdata_metadata(idno="1", title="mytitle")
-    assert isinstance(sm, dict)
-    assert sm["study_desc"]["title_statement"]["idno"] == "1"
-    assert sm["study_desc"]["title_statement"]["title"] == "mytitle"
-    assert len(sm) == 14
-    additional_fields = [
-        "repositoryid",
-        "access_policy",
-        "published",
-        "overwrite",
-        "doc_desc",
-        "study_desc",
-        "data_files",
-        "variables",
-        "variable_groups",
-        "provenance",
-        "tags",
-        "lda_topics",
-        "embeddings",
-        "additional",
-    ]
-    for field in additional_fields:
-        assert field in sm
-
-    # as object
-    sm = metadata_editor.skeleton_survey_microdata_metadata(idno="1", title="mytitle", as_object=True)
-    assert isinstance(sm, sms.SurveyMicrodataSchema)
-    assert sm.study_desc.title_statement.idno == "1"
-    assert sm.study_desc.title_statement.title == "mytitle"
-
-
 class MockGetProjectById:
     def __init__(self, passes: Union[bool, List[bool]]):
         self.passes = passes
@@ -590,6 +535,59 @@ def test_update_collection(monkeypatch, metadata_editor):
 
     with pytest.raises(AssertionError):
         metadata_editor.update_collection(id=1)
+
+
+def test_add_projects_to_collection(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200)
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    def mock_list_collections(*args, **kwargs):
+        data = [{"id": 1, "name": "example_collection1"}]
+        df = pd.DataFrame(data).set_index("id")
+        return df
+
+    monkeypatch.setattr(MetadataEditor, "list_collections", mock_list_collections)
+
+    def mock_list_projects(*args, **kwargs):
+        data = [
+            {"id": "1", "idno": "idno1", "name": "example_project1"},
+            {"id": "2", "idno": "idno2", "name": "example_project2"},
+        ]
+        df = pd.DataFrame(data).set_index("id")
+        return df
+
+    monkeypatch.setattr(MetadataEditor, "list_projects", mock_list_projects)
+
+    # id format is invalid
+    with pytest.raises(AssertionError):
+        metadata_editor.add_projects_to_collection(1, "invalid", 1)
+
+    # passed project idno not id
+    with pytest.raises(AssertionError):
+        metadata_editor.add_projects_to_collection(1, "id", "should be int")
+
+    # passed project id not idno
+    with pytest.raises(AssertionError):
+        metadata_editor.add_projects_to_collection(1, "idno", 1)
+
+    # collection does not exist
+    with pytest.raises(ValueError):
+        metadata_editor.add_projects_to_collection(2, "id", 3)
+
+    # project does not exist
+    with pytest.raises(ValueError):
+        metadata_editor.add_projects_to_collection(1, "idno", "3")
+    with pytest.raises(ValueError):
+        metadata_editor.add_projects_to_collection(1, "id", 3)
+
+    # calls are good
+    metadata_editor.add_projects_to_collection(1, "id", 1)
+    metadata_editor.add_projects_to_collection(1, "id", [1])
+    metadata_editor.add_projects_to_collection([1], "id", 1)
+    metadata_editor.add_projects_to_collection([1], "idno", "idno1")
+    metadata_editor.add_projects_to_collection([1], "id", [1, 2])
 
 
 def test_list_templates(monkeypatch, metadata_editor):

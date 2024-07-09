@@ -1,7 +1,7 @@
 import warnings
 from json import JSONDecodeError
 from ssl import SSLError as ssl_SSLError
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Iterable, List, Optional, Union
 
 import pandas as pd
 import requests
@@ -210,174 +210,6 @@ class MetadataEditor(BaseModel):
             return metadata_object
         else:
             return metadata_object.model_dump(exclude_none=exclude_unset, exclude_unset=exclude_unset)
-
-    @staticmethod
-    def skeleton_timeseries_metadata(
-        idno: str, name: str, as_object: bool = False
-    ) -> Union[SchemaBaseModel, MetadataDict]:
-        """
-        Create outline timeseries metadata, either as a dictionary or an object, with the minimally required information
-
-        Args:
-            idno (str): The unique identifier for the timeseries.
-            name (str): The name of the timeseries.
-            as_object (bool): If True, return the metadata as a pydantic object.
-                Otherwise, return a dictionary instance. Defaults to False.
-
-        Returns:
-            Union[SchemaBaseModel, Dict]: The timeseries metadata as either a dictionary or as an object.
-        """
-        ts = tss.TimeseriesSchema(
-            idno=idno,
-            metadata_information=tss.MetadataInformation(
-                producers=[tss.Producer()], version_statement=tss.VersionStatement()
-            ),
-            series_description=tss.SeriesDescription(
-                idno=idno,
-                name=name,
-                authoring_entity=[tss.AuthoringEntityItem(name="")],
-                version_statement=tss.VersionStatement(),
-                aliases=[tss.Alias()],
-                alternate_identifiers=[tss.AlternateIdentifier(identifier="")],
-                languages=[tss.Language()],
-                dimensions=[tss.Dimension(label="")],
-                definition_references=[tss.DefinitionReference(uri="")],
-                statistical_concept_references=[tss.StatisticalConceptReference(uri="")],
-                concepts=[tss.Concept(name="")],
-                data_collection=tss.DataCollection(),
-                methodology_references=[tss.MethodologyReference(uri="")],
-                derivation_references=[tss.DerivationReference(uri="")],
-                imputation_references=[tss.ImputationReference(uri="")],
-                adjustments=[],
-                validation_rules=[],
-                themes=[tss.Theme(name="")],
-                topics=[tss.Topic(name="")],
-                disciplines=[tss.Discipline(name="")],
-                mandate=tss.Mandate(),
-                time_periods=[tss.TimePeriod()],
-                ref_country=[tss.RefCountryItem()],
-                geographic_units=[tss.GeographicUnit(name="")],
-                bbox=[tss.BboxItem()],
-                aggregation_method_references=[tss.AggregationMethodReference(uri="")],
-                license=[tss.LicenseItem()],
-                links=[tss.Link()],
-                api_documentation=[tss.ApiDocumentationItem()],
-                sources=[tss.Source(name="")],
-                keywords=[tss.Keyword(name="")],
-                acronyms=[tss.Acronym(acronym="", expansion="")],
-                errata=[tss.Erratum()],
-                acknowledgements=[tss.Acknowledgement()],
-                notes=[tss.Note()],
-                related_indicators=[tss.RelatedIndicator()],
-                compliance=[tss.ComplianceItem(standard="")],
-                framework=[tss.FrameworkItem(name="")],
-                series_groups=[tss.SeriesGroup()],
-                contacts=[tss.Contact()],
-            ),
-            datacite=tss.DataciteSchema(
-                creators=[tss.Creator(name="", nameType=tss.NameType.Organizational)],
-                titles=[tss.Title(title="", titleType=tss.TitleType.AlternativeTitle)],
-                types=tss.Types(resourceType="", resourceTypeGeneral=tss.ResourceTypeGeneral.Dataset),
-            ),
-            provenance=[tss.ProvenanceSchema(origin_description=tss.OriginDescription())],
-            tags=[tss.Tag()],
-            additional={},
-        )
-        if as_object:
-            return ts
-        else:
-            return ts.model_dump()
-
-    @staticmethod
-    def skeleton_survey_microdata_metadata(
-        idno: str, title: str, as_object: bool = False
-    ) -> Union[SchemaBaseModel, MetadataDict]:
-        """
-        Create outline survey microdata metadata, either as a dictionary or as an object.
-
-        Args:
-            idno (str): The unique identifier for the microdata.
-            title (str): The title of the survey microdata.
-            as_object (bool): If True, return the metadata as a pydantic object.
-                Otherwise, return a dictionary instance. Defaults to False.
-
-        Returns:
-            Union[SchemaBaseModel, Dict]: The survey microdata metadata as either a dictionary or as an object.
-        """
-        sm = sms.SurveyMicrodataSchema(
-            # repositoryid=None,
-            # access_policy=None,
-            # published=None,
-            # overwrite=None,
-            doc_desc=sms.DocDesc(idno=idno, title=title),
-            study_desc=sms.StudyDesc(
-                title_statement=sms.TitleStatement(idno=idno, title=title),
-                authoring_entity=[sms.AuthoringEntityItem(name="")],
-                oth_id=[sms.OthIdItem(name="")],
-                production_statement=sms.ProductionStatement(),
-                distribution_statement=sms.DistributionStatement(
-                    distributors=[sms.Distributor(name="")],
-                    contact=[sms.ContactItem()],
-                    depositor=[sms.DepositorItem()],
-                ),
-                series_statement=sms.SeriesStatement(),
-                version_statement=sms.VersionStatement(),
-                holdings=[sms.Holding()],
-                study_authorization=sms.StudyAuthorization(agency=[sms.AgencyItem(name="")]),
-                study_info=sms.StudyInfo(
-                    keywords=[sms.Keyword(name="")],
-                    topics=[sms.Topic(topic="")],
-                    time_periods=[sms.TimePeriod(start="")],
-                    coll_dates=[sms.CollDate(start="")],
-                    nation=[sms.NationItem(name="")],
-                    bbox=[sms.BboxItem()],
-                    bound_poly=[sms.BoundPolyItem()],
-                    quality_statement=sms.QualityStatement(standards=[sms.Standard()]),
-                    ex_post_evaluation=sms.ExPostEvaluation(evaluator=[sms.EvaluatorItem(name="")]),
-                ),
-                study_development=sms.StudyDevelopment(
-                    development_activity=[
-                        sms.DevelopmentActivityItem(participants=[sms.Participant(name="")], resources=[sms.Resource()])
-                    ]
-                ),
-                data_access=sms.DataAccess(
-                    dataset_availability=sms.DatasetAvailability(),
-                    dataset_use=sms.DatasetUse(
-                        conf_dec=[sms.ConfDecItem()], spec_perm=[sms.SpecPermItem()], contact=[sms.ContactItem1()]
-                    ),
-                ),
-            ),
-            data_files=[sms.DatafileSchema(file_id="", file_name="")],
-            variables=[
-                sms.VariableSchema(
-                    file_id="",
-                    vid="",
-                    name="",
-                    labl="",
-                    var_intrvl=sms.VarIntrvl.contin,
-                    var_sumstat=[sms.VarSumstatItem()],
-                    var_catgry=[sms.VarCatgryItem()],
-                    var_std_catgry=sms.VarStdCatgry(),
-                    var_concept=[sms.VarConceptItem(title="")],
-                    var_format=sms.VarFormat(),
-                )
-            ],
-            variable_groups=[sms.VariableGroupSchema(vgid="", group_type=sms.GroupType.subject)],
-            provenance=[sms.ProvenanceSchema(origin_description=sms.OriginDescription())],
-            tags=[sms.Tag()],
-            lda_topics=[
-                sms.LdaTopic(
-                    model_info=[sms.ModelInfoItem()],
-                    topic_description=[sms.TopicDescriptionItem(topic_words=[sms.TopicWord()])],
-                )
-            ],
-            embeddings=[sms.Embedding(id="", vector={})],
-            additional={},
-        )
-        if as_object:
-            return sm
-        else:
-            return sm.model_dump()
 
     def delete_project_by_id(self, id: int):
         """
@@ -820,6 +652,37 @@ class MetadataEditor(BaseModel):
         if description is not None:
             metadata["description"] = description
         self._post_request("collections/update/{}", id=id, metadata=metadata)
+
+    def add_projects_to_collection(
+        self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
+    ):
+        assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
+        if not isinstance(collection, Iterable) or isinstance(collection, str):
+            collection = [collection]
+        if not isinstance(projects, Iterable) or isinstance(projects, str):
+            projects = [projects]
+        if id_format.lower() == "id":
+            for proj in projects:
+                assert isinstance(proj, int), f"When passing ids the projects must be ints, but found: {proj}"
+        else:
+            for proj in projects:
+                assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
+        collection_ids = self.list_collections().index
+        for c in collection:
+            if c not in collection_ids and str(c) not in collection_ids:
+                raise ValueError(f"Collection {c} not found")
+        known_projects = self.list_projects()
+        if id_format == "id":
+            project_ids = known_projects.index
+        else:
+            project_ids = known_projects.idno.values
+        for proj in projects:
+            if proj not in project_ids and str(proj) not in project_ids:
+                raise ValueError(f"Project {proj} not found in {project_ids}")
+        self._post_request(
+            "collections/add_projects",
+            metadata={"collections": collection, "id_format": id_format, "projects": projects},
+        )
 
     def list_templates(self) -> pd.DataFrame:
         """

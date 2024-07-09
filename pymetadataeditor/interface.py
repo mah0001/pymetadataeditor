@@ -653,6 +653,29 @@ class MetadataEditor(BaseModel):
             metadata["description"] = description
         self._post_request("collections/update/{}", id=id, metadata=metadata)
 
+    def list_projects_in_collection(self, collection: int) -> pd.DataFrame:
+        """
+        Retrieve projects that have been added to the given collection.
+
+        Args:
+
+            collection (int):
+                The id of the collection
+
+        Returns:
+
+            pd.DataFrame:
+                Information on the projects in the collection, such as id, idno, title and type
+        """
+
+        ret = self._get_request("editor?collection={}&limit=100", id=collection)
+        if ret["total"] > ret["limit"]:
+            warnings.warn(
+                f"There are {ret['total']} projects in this collection but a limit of {ret['limit']} were retreived",
+                UserWarning,
+            )
+        return pd.DataFrame(ret["projects"]).set_index("id")
+
     def add_projects_to_collection(
         self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
     ):

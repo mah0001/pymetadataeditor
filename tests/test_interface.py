@@ -606,6 +606,33 @@ def test_remove_projects_to_collection(monkeypatch, metadata_editor):
     metadata_editor.remove_projects_from_collection(1, "id", 1)
 
 
+def test_list_projects_in_collection(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(
+            http_status_code=200,
+            json_data={
+                "total": 2,
+                "limit": 100,
+                "projects": [{"id": 1, "title": "title1"}, {"id": 2, "title": "title2"}],
+            },
+        )
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # call is good
+    metadata_editor.list_projects_in_collection(1)
+
+    # call is good, but the number of projects is limited
+    def mock_response(*args, **kwargs):
+        return MockResponse(
+            http_status_code=200, json_data={"total": 2, "limit": 1, "projects": [{"id": 1, "title": "title1"}]}
+        )
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    with pytest.warns(UserWarning):
+        metadata_editor.list_projects_in_collection(1)
+
+
 def test_list_templates(monkeypatch, metadata_editor):
     # there are no templates
     def mock_response(*args, **kwargs):

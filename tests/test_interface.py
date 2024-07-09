@@ -590,6 +590,22 @@ def test_add_projects_to_collection(monkeypatch, metadata_editor):
     metadata_editor.add_projects_to_collection([1], "id", [1, 2])
 
 
+def test_remove_projects_to_collection(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200)
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    def mock_list_collections(*args, **kwargs):
+        data = [{"id": 1, "name": "example_collection1"}]
+        df = pd.DataFrame(data).set_index("id")
+        return df
+
+    monkeypatch.setattr(MetadataEditor, "list_collections", mock_list_collections)
+
+    metadata_editor.remove_projects_from_collection(1, "id", 1)
+
+
 def test_list_templates(monkeypatch, metadata_editor):
     # there are no templates
     def mock_response(*args, **kwargs):

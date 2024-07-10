@@ -105,6 +105,27 @@ def test_collections_integration(metadata_editor):
     updated_collection.title = collection_title_updated
     updated_collection.description = collection_description_updated
 
+    # count projects in collection (should be zero)
+    initial_projects_collection = metadata_editor.list_projects_in_collection(collection_id)
+    assert len(initial_projects_collection) == 0, f"expected zero projects but got {initial_projects_collection}"
+
+    # create a project and add it to the collection by id
+    project_idno = "project_for_collection_integration_test"
+    project_name = "project_for_collection_integration_test"
+    project_id = metadata_editor.create_and_log_timeseries(
+        idno=project_idno, series_description={"idno": project_idno, "name": project_name}
+    )
+    metadata_editor.add_projects_to_collection(collection_id, "id", project_id)
+    oneproject_collection = metadata_editor.list_projects_in_collection(collection_id)
+    assert len(oneproject_collection) == 1
+    assert oneproject_collection.iloc[0].idno == project_idno
+
+    # remove that project by idno
+    metadata_editor.remove_projects_from_collection(collection_id, "idno", project_idno)
+    final_collection = metadata_editor.list_projects_in_collection(collection_id)
+    assert len(final_collection) == 0
+    metadata_editor.delete_project_by_id(project_id)
+
     # delete collection
     metadata_editor.delete_collection_by_id(collection_id)
     assert len(metadata_editor.list_collections()) == num_original_collections

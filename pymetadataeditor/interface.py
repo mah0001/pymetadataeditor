@@ -131,10 +131,14 @@ class MetadataEditor(BaseModel):
             elif response.status_code == 403:
                 raise PermissionError("Access to that URL is denied. " "Check that the API key is correct") from None
             elif response.status_code == 400 and id is not None:
-                raise PermissionError(f"Access to this id is denied. Check that '{id}' is correct") from None
+                raise PermissionError(f"Access to this id is denied. Check that '{id}' is correct") from e
             else:
                 raise Exception(f"Status Code: {response.status_code}, Response: {response.text}") from e
-        return response.json()
+        try:
+            json_response = response.json()
+        except JSONDecodeError as e:
+            raise JSONDecodeError(response) from e
+        return json_response
 
     def _get_request(self, pth: str, id: Optional[Union[int, str]] = None) -> Dict:
         """
@@ -253,6 +257,8 @@ class MetadataEditor(BaseModel):
             checker_fn(id)
         except PermissionError:
             pass  # evidently the entity was deleted because now it can't be found
+        # except JSONDecodeError as e:
+
         else:
             raise DeleteNotAppliedError()
 
@@ -674,6 +680,8 @@ class MetadataEditor(BaseModel):
                 f"There are {ret['total']} projects in this collection but a limit of {ret['limit']} were retreived",
                 UserWarning,
             )
+        if len(ret["projects"]) == 0:
+            return pd.DataFrame([], columns=["id", "type", "idno", "title"]).set_index("id")
         return pd.DataFrame(ret["projects"]).set_index("id")
 
     def add_projects_to_collection(
@@ -779,8 +787,16 @@ class MetadataEditor(BaseModel):
     ):
         assert operation in ["add", "remove"], f"expected operation to be add or remove but found '{operation}'"
         assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
-        if not isinstance(collection, Iterable) or isinstance(collection, str):
-            collection = [collection]
+        collection_ids = self.list_collections().index
+        if operation == "add":
+            if not isinstance(collection, Iterable) or isinstance(collection, str):
+                collection = [collection]
+            for c in collection:
+                if c not in collection_ids and str(c) not in collection_ids:
+                    raise ValueError(f"Collection {c} not found")
+        else:
+            if collection not in collection_ids and str(collection) not in collection_ids:
+                raise ValueError(f"Collection {collection} not found")
         if not isinstance(projects, Iterable) or isinstance(projects, str):
             projects = [projects]
         if id_format.lower() == "id":
@@ -789,10 +805,6 @@ class MetadataEditor(BaseModel):
         else:
             for proj in projects:
                 assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
-        collection_ids = self.list_collections().index
-        for c in collection:
-            if c not in collection_ids and str(c) not in collection_ids:
-                raise ValueError(f"Collection {c} not found")
 
         # note, no need to check if the projects exist in the collection.
         # the user is saying they don't want the project in the collection so if it's not in there to begin with then
@@ -807,9 +819,10 @@ class MetadataEditor(BaseModel):
                 if proj not in project_ids and str(proj) not in project_ids:
                     raise ValueError(f"Project {proj} not found in {project_ids}")
 
+        collection_key = "collections" if operation == "add" else "collection_id"
         self._post_request(
             f"collections/{operation}_projects",
-            metadata={"collections": collection, "id_format": id_format, "projects": projects},
+            metadata={collection_key: collection, "id_format": id_format, "projects": projects},
         )
 
     def list_templates(self) -> pd.DataFrame:

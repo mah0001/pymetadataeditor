@@ -856,7 +856,7 @@ class MetadataEditor(BaseModel):
         else:
             return pd.Series(response["result"], name=response["result"]["name"])
 
-    def set_template_for_collection(self, collection_id: int, template_uid: str, project_type: str):
+    def set_template_for_collection(self, collection_id: int, template_uid: str, project_type: str) -> pd.DataFrame:
         """
         Set the specified template to be used for all metadata of project_type (for example survey or timeseries
         metadata) in the collection.
@@ -865,14 +865,21 @@ class MetadataEditor(BaseModel):
             collection_id (int): the id of the collection.
             template_uid (str): The Unique Identifier of the template to apply to the collection.
             project_type (str): which project types this template applies to, for example 'survey' or 'timeseries'
+
+        Returns:
+            pd.DataFrame: index is the id of the project, there is one column, 'type', denoting the project_type
         """
         assert (
             project_type in self._metadata_types.keys()
         ), f"Project type '{project_type}' not found in {list(self._metadata_types.keys())}"
-        self._post_request(
+        ret = self._post_request(
             "collections/template",
             metadata={"collection_id": collection_id, "template_uid": template_uid, "project_type": project_type},
         )
+        try:
+            return pd.DataFrame(ret["result"]["updated"]).set_index("id")
+        except KeyError as k:
+            raise KeyError(f"expected the API to return which projects the template applied to but got:\n{ret}") from k
 
     def delete_template(self, uid: str):
         """

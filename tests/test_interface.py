@@ -703,19 +703,25 @@ def test_get_template_by_uid(monkeypatch, metadata_editor):
 
 
 def test_set_template_for_collection(monkeypatch, metadata_editor):
-    # bad project type
-    with pytest.raises(AssertionError):
-        metadata_editor.set_template_for_collection(1, "example_uid", "bad_template_type")
-
-    # good call
     def mock_response(*args, **kwargs):
         return MockResponse(
             http_status_code=200,
             json_data={
                 "status": "success",
-                "result": {"updated": [{"sid": "1607", "type": "script"}, {"sid": "1502", "type": "script"}]},
+                "result": {"updated": [{"id": "1607", "type": "survey"}, {"id": "1502", "type": "survey"}]},
             },
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    metadata_editor.set_template_for_collection(1, "example_uid", "survey")
+
+    # bad project type
+    with pytest.raises(AssertionError):
+        metadata_editor.set_template_for_collection(1, "example_uid", "bad_template_type")
+
+    # good call
+    updates = metadata_editor.set_template_for_collection(1, "example_uid", "survey")
+    assert len(updates) == 2
+    assert "1607" in list(updates.index)
+    assert "1502" in list(updates.index)
+    assert updates["type"].iloc[0] == "survey"
+    assert updates["type"].iloc[1] == "survey"

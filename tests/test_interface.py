@@ -90,7 +90,8 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(requests.HTTPError) as e:
-        MetadataEditor(api_url="https://example.com", api_key=test_api_key)
+        me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
+        me.list_projects()
     assert str(e.value).split(".")[0] == "Page not found"
 
     # bad SSL
@@ -99,7 +100,8 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(SSLError) as e:
-        MetadataEditor(api_url="https://example.com", api_key=test_api_key)
+        me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
+        me.list_projects()
     assert str(e.value)[:12] == "Usually this"
 
     # bad key
@@ -108,7 +110,8 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(PermissionError) as e:
-        MetadataEditor(api_url="https://example.com", api_key=test_api_key)
+        me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
+        me.list_projects()
     assert str(e.value).split(".")[0] == "Access to that URL is denied"
 
     # good instantiation
@@ -117,7 +120,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     monkeypatch.setattr(requests, "request", mock_response)
     me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
-
+    me.list_projects()
     assert me.api_key != test_api_key
     assert me.api_key.get_secret_value() == test_api_key
 

@@ -1,7 +1,7 @@
 import warnings
 from json import JSONDecodeError
 from ssl import SSLError as ssl_SSLError
-from typing import Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import pandas as pd
 import requests
@@ -66,13 +66,13 @@ class MetadataEditor(BaseModel):
     )
 
     @model_validator(mode="after")
-    def check_endpoint_accessible(self):
+    def check_https(self) -> Any:
         if str(self.api_url).startswith("https") or self.allow_http:
-            self.list_projects()
             return self
         else:
             raise ValueError(
-                "URL scheme should be 'https'. To allow the less secure use of 'http', set allow_unsecure=True"
+                f"URL scheme should be 'https' but got {self.api_url}"
+                "To allow the less secure use of 'http', set allow_unsecure=True"
             )
 
     def _request(

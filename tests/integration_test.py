@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from requests import HTTPError
 
 from pymetadataeditor import MetadataEditor
 
@@ -98,12 +99,14 @@ def test_collections_integration(metadata_editor):
     updated_collection = metadata_editor.get_collection_by_id(collection_id)
     updated_collection.title = collection_title_updated
     updated_collection.description = collection_description
+    assert len(metadata_editor.list_collections()) == num_original_collections + 1
 
     collection_description_updated = "integration_test_collection_updated"
     metadata_editor.update_collection(id=collection_id, description=collection_description_updated)
     updated_collection = metadata_editor.get_collection_by_id(collection_id)
     updated_collection.title = collection_title_updated
     updated_collection.description = collection_description_updated
+    assert len(metadata_editor.list_collections()) == num_original_collections + 1
 
     # count projects in collection (should be zero)
     initial_projects_collection = metadata_editor.list_projects_in_collection(collection_id)
@@ -119,6 +122,17 @@ def test_collections_integration(metadata_editor):
     oneproject_collection = metadata_editor.list_projects_in_collection(collection_id)
     assert len(oneproject_collection) == 1
     assert oneproject_collection.iloc[0].idno == project_idno
+
+    # set template for collection
+    metadata_editor.set_template_for_collection(
+        collection_id=collection_id, template_uid="timeseries-system-en", project_type="timeseries"
+    )
+
+    # setting a non-existant template raises an error
+    with pytest.raises(HTTPError):
+        metadata_editor.set_template_for_collection(
+            collection_id=collection_id, template_uid="no_such_template", project_type="timeseries"
+        )
 
     # remove that project by idno
     metadata_editor.remove_projects_from_collection(collection_id, "idno", project_idno)

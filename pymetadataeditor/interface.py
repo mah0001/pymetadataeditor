@@ -133,7 +133,7 @@ class MetadataEditor(BaseModel):
             elif response.status_code == 400 and id is not None:
                 raise PermissionError(f"Access to this id is denied. Check that '{id}' is correct") from e
             else:
-                raise Exception(f"Status Code: {response.status_code}, Response: {response.text}") from e
+                raise HTTPError(f"Status Code: {response.status_code}, Response: {response.text}") from e
         try:
             json_response = response.json()
         except JSONDecodeError as e:
@@ -856,22 +856,22 @@ class MetadataEditor(BaseModel):
         else:
             return pd.Series(response["result"], name=response["result"]["name"])
 
-    def set_template_for_collection(self, collection_id: int, template_uid: str):
+    def set_template_for_collection(self, collection_id: int, template_uid: str, project_type: str):
         """
-        Set the specified template to be used for all metadata of its type (for example survey, timeseries, or
-            document metadata) in the collection.
+        Set the specified template to be used for all metadata of project_type (for example survey or timeseries
+        metadata) in the collection.
 
         Args:
             collection_id (int): the id of the collection.
             template_uid (str): The Unique Identifier of the template to apply to the collection.
+            project_type (str): which project types this template applies to, for example 'survey' or 'timeseries'
         """
-        # check collection exists
-        self.get_collection_by_id(collection_id)
-        template = self.get_template_by_uid(uid=template_uid)
-        template_type = template["data_type"]
+        assert (
+            project_type in self._metadata_types.keys()
+        ), f"Project type '{project_type}' not found in {list(self._metadata_types.keys())}"
         self._post_request(
             "collections/template",
-            metadata={"collection_id": collection_id, "template_uid": template_uid, "project_type": template_type},
+            metadata={"collection_id": collection_id, "template_uid": template_uid, "project_type": project_type},
         )
 
     def delete_template(self, uid: str):

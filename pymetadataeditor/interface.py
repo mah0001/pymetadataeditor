@@ -145,7 +145,9 @@ class MetadataEditor(BaseModel):
         try:
             json_response = response.json()
         except JSONDecodeError as e:
-            raise JSONDecodeError(response) from e
+            raise json.JSONDecodeError(
+                f"Error decoding JSON response: {e.msg}\nFull Reponse: {response}", e.doc, e.pos
+            ) from e
         return json_response
 
     def _get_request(
@@ -680,7 +682,9 @@ class MetadataEditor(BaseModel):
             metadata["description"] = description
         self._post_request("collections/update/{}", id=id, metadata=metadata)
 
-    def list_projects_in_collection(self, collection: int) -> pd.DataFrame:
+    def list_projects_in_collection(
+        self, collection: int, keywords: Optional[Union[str, List[str]]] = None
+    ) -> pd.DataFrame:
         """
         Retrieve projects that have been added to the given collection.
 
@@ -694,8 +698,10 @@ class MetadataEditor(BaseModel):
             pd.DataFrame:
                 Information on the projects in the collection, such as id, idno, title and type
         """
-
-        ret = self._get_request("editor?collection={}&limit=100", id=collection)
+        params = {"limit": 100}
+        if keywords is not None:
+            params["keywords"] = keywords
+        ret = self._get_request("editor?collection={}", id=collection, params=params)
         if ret["total"] > ret["limit"]:
             warnings.warn(
                 f"There are {ret['total']} projects in this collection but a limit of {ret['limit']} were retreived",

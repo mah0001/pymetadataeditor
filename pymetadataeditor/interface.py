@@ -146,7 +146,7 @@ class MetadataEditor(BaseModel):
             json_response = response.json()
         except JSONDecodeError as e:
             raise json.JSONDecodeError(
-                f"Error decoding JSON response: {e.msg}\nFull Reponse: {response}", e.doc, e.pos
+                f"Error decoding JSON response: {e.msg}\nFull Response: {response}", e.doc, e.pos
             ) from e
         return json_response
 

@@ -64,13 +64,23 @@ def test_projects_integration(metadata_editor):
         for k, v in creation_data[metadata_type].items():
             assert project_metadata[k] == v
 
-        # update timeseries
+        # update project
         update_functions[metadata_type](project_id, **update_data[metadata_type])
         project_metadata_updated = metadata_editor.get_project_by_id(project_id).metadata
         for k, v in update_data[metadata_type].items():
             assert project_metadata_updated[k] == v
 
-        # delete timeseries
+        # check project is searchable
+        title_contains_updated = metadata_editor.list_projects(keywords="updated")
+        assert (
+            project_id in title_contains_updated.index or str(project_id) in title_contains_updated.index
+        ), title_contains_updated
+        title_contains_bogus = metadata_editor.list_projects(keywords="bogus")
+        assert (
+            project_id not in title_contains_bogus.index and str(project_id) not in title_contains_bogus.index
+        ), title_contains_bogus
+
+        # delete project
         metadata_editor.delete_project_by_id(project_id)
         final_projects = metadata_editor.list_projects()
         assert len(final_projects) == num_original_projects

@@ -546,23 +546,6 @@ def test_add_projects_to_collection(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
 
-    def mock_list_collections(*args, **kwargs):
-        data = [{"id": 1, "name": "example_collection1"}]
-        df = pd.DataFrame(data).set_index("id")
-        return df
-
-    monkeypatch.setattr(MetadataEditor, "list_collections", mock_list_collections)
-
-    def mock_list_projects(*args, **kwargs):
-        data = [
-            {"id": "1", "idno": "idno1", "name": "example_project1"},
-            {"id": "2", "idno": "idno2", "name": "example_project2"},
-        ]
-        df = pd.DataFrame(data).set_index("id")
-        return df
-
-    monkeypatch.setattr(MetadataEditor, "list_projects", mock_list_projects)
-
     # id format is invalid
     with pytest.raises(AssertionError):
         metadata_editor.add_projects_to_collection(1, "invalid", 1)
@@ -574,16 +557,6 @@ def test_add_projects_to_collection(monkeypatch, metadata_editor):
     # passed project id not idno
     with pytest.raises(AssertionError):
         metadata_editor.add_projects_to_collection(1, "idno", 1)
-
-    # collection does not exist
-    with pytest.raises(ValueError):
-        metadata_editor.add_projects_to_collection(2, "id", 3)
-
-    # project does not exist
-    with pytest.raises(ValueError):
-        metadata_editor.add_projects_to_collection(1, "idno", "3")
-    with pytest.raises(ValueError):
-        metadata_editor.add_projects_to_collection(1, "id", 3)
 
     # calls are good
     metadata_editor.add_projects_to_collection(1, "id", 1)

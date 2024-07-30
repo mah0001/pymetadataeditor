@@ -148,6 +148,8 @@ class MetadataEditor(BaseModel):
             raise json.JSONDecodeError(
                 f"Error decoding JSON response: {e.msg}\nFull Response: {response}", e.doc, e.pos
             ) from e
+        # if self.verify_ssl == False:
+        # we must have shown this warning the first time, ok to silence thereafter
         return json_response
 
     def _get_request(
@@ -756,7 +758,22 @@ class MetadataEditor(BaseModel):
             >>> client.add_projects_to_collection(collection=1, id_format='id', projects=[101, 102])
             >>> client.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
         """
-        self._manage_projects_in_collections("add", collection=collection, id_format=id_format, projects=projects)
+        assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
+        if not isinstance(collection, Iterable) or isinstance(collection, str):
+            collection = [collection]
+
+        if not isinstance(projects, Iterable) or isinstance(projects, str):
+            projects = [projects]
+        if id_format.lower() == "id":
+            for proj in projects:
+                assert isinstance(proj, int), f"When passing ids the projects must be ints, but found: {proj}"
+        else:
+            for proj in projects:
+                assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
+        self._post_request(
+            "collections/add_projects",
+            metadata={"collections": collection, "id_format": id_format, "projects": projects},
+        )
 
     def remove_projects_from_collection(
         self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
@@ -803,27 +820,7 @@ class MetadataEditor(BaseModel):
             >>> client.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
 
         """
-        self._manage_projects_in_collections("remove", collection=collection, id_format=id_format, projects=projects)
-
-    def _manage_projects_in_collections(
-        self,
-        operation: str,
-        collection: Union[int, List[int]],
-        id_format: str,
-        projects: Union[int, List[int], str, List[str]],
-    ):
-        assert operation in ["add", "remove"], f"expected operation to be add or remove but found '{operation}'"
         assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
-        collection_ids = self.list_collections().index
-        if operation == "add":
-            if not isinstance(collection, Iterable) or isinstance(collection, str):
-                collection = [collection]
-            for c in collection:
-                if c not in collection_ids and str(c) not in collection_ids:
-                    raise ValueError(f"Collection {c} not found")
-        else:
-            if collection not in collection_ids and str(collection) not in collection_ids:
-                raise ValueError(f"Collection {collection} not found")
         if not isinstance(projects, Iterable) or isinstance(projects, str):
             projects = [projects]
         if id_format.lower() == "id":
@@ -833,23 +830,9 @@ class MetadataEditor(BaseModel):
             for proj in projects:
                 assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
 
-        # note, no need to check if the projects exist in the collection.
-        # the user is saying they don't want the project in the collection so if it's not in there to begin with then
-        # that's what they wanted anyway
-        if operation == "add":
-            known_projects = self.list_projects()
-            if id_format == "id":
-                project_ids = known_projects.index
-            else:
-                project_ids = known_projects.idno.values
-            for proj in projects:
-                if proj not in project_ids and str(proj) not in project_ids:
-                    raise ValueError(f"Project {proj} not found in {project_ids}")
-
-        collection_key = "collections" if operation == "add" else "collection_id"
         self._post_request(
-            f"collections/{operation}_projects",
-            metadata={collection_key: collection, "id_format": id_format, "projects": projects},
+            "collections/remove_projects",
+            metadata={"collection_id": collection, "id_format": id_format, "projects": projects},
         )
 
     def list_templates(self) -> pd.DataFrame:

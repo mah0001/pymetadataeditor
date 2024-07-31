@@ -1,9 +1,8 @@
 import json
 from typing import Dict, Type, Union
 
+from metadataschemas.schema_base_model import SchemaBaseModel
 from pydantic import BaseModel
-
-from pymetadataeditor.schemas.common_schemas import SchemaBaseModel
 
 
 def validate_metadata(metadata: Union[Dict, SchemaBaseModel, str], schema_definition: Type[SchemaBaseModel]) -> None:

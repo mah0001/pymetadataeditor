@@ -1,13 +1,14 @@
 from json import JSONDecodeError
 from typing import List, Optional, Union
 
+# import pymetadataeditor.schemas.timeseries_schema as tss
+import metadataschemas.timeseries_schema as tss
 import pandas as pd
 import pytest
 import requests
 from pydantic import ValidationError
 from requests.exceptions import SSLError
 
-import pymetadataeditor.schemas.timeseries_schema as tss
 from pymetadataeditor import MetadataEditor
 from pymetadataeditor.interface import DeleteNotAppliedError, MetadataDict
 
@@ -200,6 +201,83 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
     assert len(actual_project) == 2
 
 
+def test_create_and_log_document(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"id": 1})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # metadata no metadata
+    with pytest.raises(TypeError):
+        metadata_editor.create_and_log_document()
+
+    # good
+    document_id = metadata_editor.create_and_log_document(
+        document_description={"title_statement": {"idno": "example_idno", "title": "example_title"}}
+    )
+    assert document_id == 1
+
+
+def test_create_and_log_geospatial(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"id": 1})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # metadata no metadata
+    with pytest.raises(TypeError):
+        metadata_editor.create_and_log_geospatial()
+
+    # good
+    geospatial_id = metadata_editor.create_and_log_geospatial(description={"idno": "example_idno"})
+    assert geospatial_id == 1
+
+
+def test_create_and_log_script(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"id": 1})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # metadata no metadata
+    metadata_editor.create_and_log_script()
+
+    # also good
+    script_id = metadata_editor.create_and_log_script(doc_desc={"idno": "example_idno"})
+    assert script_id == 1
+
+
+def test_create_and_log_series(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"id": 1})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # metadata no metadata
+    with pytest.raises(TypeError):
+        metadata_editor.create_and_log_series()
+
+    # good
+    series_id = metadata_editor.create_and_log_series(idno="example_idno", name="example_name")
+    assert series_id == 1
+
+
+def test_create_and_log_table(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"id": 1})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # no metadata is required...
+    metadata_editor.create_and_log_table()
+
+    # also good
+    table_id = metadata_editor.create_and_log_table(
+        table_description={"title_statement": {"idno": "example idno", "title": "example title"}}
+    )
+    assert table_id == 1
+
+
 def test_create_and_log_timeseries(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
@@ -234,6 +312,23 @@ def test_create_and_log_timeseries(monkeypatch, metadata_editor):
         )
 
 
+def test_create_and_log_timeseries_db(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"id": 1})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # metadata no metadata
+    with pytest.raises(TypeError):
+        metadata_editor.create_and_log_timeseries_db()
+
+    # good
+    timeseries_db_id = metadata_editor.create_and_log_timeseries_db(
+        database_description={"title_statement": {"idno": "example_idno", "title": "example_title"}}
+    )
+    assert timeseries_db_id == 1
+
+
 def test_create_and_log_survey_microdata(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
@@ -254,6 +349,23 @@ def test_create_and_log_survey_microdata(monkeypatch, metadata_editor):
         }
     )
     assert survey_id == 1
+
+
+def test_create_and_log_video(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"id": 1})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # metadata no metadata
+    with pytest.raises(TypeError):
+        metadata_editor.create_and_log_video()
+
+    # good
+    video_id = metadata_editor.create_and_log_video(
+        video_description={"idno": "example_idno", "title": "example_title"}
+    )
+    assert video_id == 1
 
 
 def test_update_timeseries_by_id(monkeypatch, metadata_editor):
@@ -401,7 +513,7 @@ def test_get_project_metadata_by_id(monkeypatch, metadata_editor):
     assert ts["idno"] == "12"
     assert ts["series_description"]["idno"] == "12"
     assert ts["series_description"]["name"] == "oldname"
-    assert len(ts) == 7
+    assert len(ts) == 9
     additional_fields = ["metadata_information", "datacite", "provenance", "tags", "additional"]
     for field in additional_fields:
         assert field in ts

@@ -3,14 +3,24 @@ from json import JSONDecodeError
 from ssl import SSLError as ssl_SSLError
 from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
+import metadataschemas.microdata_schema as survey_schema
 import pandas as pd
 import requests
+
+# from metadataschemas import image_schema
+from metadataschemas import (
+    document_schema,
+    geospatial_schema,
+    script_schema,
+    series_schema,
+    table_schema,
+    timeseries_db_schema,
+    timeseries_schema,
+    video_schema,
+)
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, model_validator
 from requests.exceptions import HTTPError, SSLError
 
-import pymetadataeditor.schemas.survey_schema as sms
-import pymetadataeditor.schemas.timeseries_schema as tss
-from pymetadataeditor.schemas.common_schemas import SchemaBaseModel
 from pymetadataeditor.tools import update_metadata, validate_metadata
 
 warnings.filterwarnings(
@@ -19,7 +29,7 @@ warnings.filterwarnings(
 
 MetadataDict = Dict[
     str,
-    Union[str, bytes, int, float, SchemaBaseModel, "MetadataDict", List["MetadataDict"], List[SchemaBaseModel], None],
+    Union[str, bytes, int, float, BaseModel, "MetadataDict", List["MetadataDict"], List[BaseModel], None],
 ]
 
 
@@ -62,7 +72,18 @@ class MetadataEditor(BaseModel):
         "Set verify_ssl=False to remove this requirement",
     )
     _metadata_types: dict = PrivateAttr(
-        default={"timeseries": tss.TimeseriesSchema, "survey": sms.SurveyMicrodataSchema}
+        default={
+            "document": document_schema.ScriptSchemaDraft,
+            "geospatial": geospatial_schema.GeospatialSchema,
+            #  "image": image_schema.ImageDataTypeSchema,
+            "script": script_schema.ResearchProjectSchemaDraft,
+            "series": series_schema.Series,
+            "survey": survey_schema.MicrodataSchema,
+            "table": table_schema.Model,
+            "timeseries": timeseries_schema.TimeseriesSchema,
+            "timeseries_db": timeseries_db_schema.TimeseriesDatabaseSchema,
+            "video": video_schema.Model,
+        }
     )
 
     @model_validator(mode="after")
@@ -216,7 +237,7 @@ class MetadataEditor(BaseModel):
 
     def get_project_metadata_by_id(
         self, id: int, exclude_unset: bool = True, as_object: bool = False
-    ) -> Union[MetadataDict, SchemaBaseModel]:
+    ) -> Union[MetadataDict, BaseModel]:
         """
         Args:
             id (int): the id of the project, not to be confused with the idno.
@@ -226,7 +247,7 @@ class MetadataEditor(BaseModel):
                 Otherwise, return a dictionary. Defaults to False.
 
         Returns:
-            Union[SchemaBaseModel, Dict]: The metadata as either a dictionary or an object.
+            Union[BaseModel, Dict]: The metadata as either a dictionary or an object.
         """
         project = self.get_project_by_id(id=id)
         project_type = project["type"]
@@ -287,14 +308,318 @@ class MetadataEditor(BaseModel):
         else:
             raise DeleteNotAppliedError()
 
+    def create_and_log_document(
+        self,
+        document_description: Union[Dict, document_schema.DocumentDescription],
+        repositoryid: Optional[str] = None,
+        published: Optional[int] = 0,
+        overwrite: Optional[Union[Dict, document_schema.Overwrite]] = "no",
+        metadata_information: Optional[Union[Dict, document_schema.MetadataInformation]] = None,
+        provenance: Optional[Union[List[Dict], List[document_schema.ProvenanceSchema]]] = None,
+        tags: Optional[Union[List[Dict], List[document_schema.Tag]]] = None,
+        lda_topics: Optional[Union[List[Dict], List[document_schema.LdaTopic]]] = None,
+        embeddings: Optional[Union[List[Dict], List[document_schema.Embedding]]] = None,
+        additional: Optional[Dict] = None,
+    ) -> int:
+        """
+        Creates a record of your *document* metadata
+
+        Args:
+            document_description (DocumentDescription or Dictionary): Description of the document. Required.
+            repositoryid (Optional[str]): Collection ID that owns the survey. Defaults to None.
+            published (Optional[int]): Status of the survey - 0=draft, 1=published. Defaults to 0.
+            overwrite (Optional[Overwrite or Dictionary]): Overwrite survey if already exists? Defaults to 'no'.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): List of provenance schemas. Defaults to None.
+            tags (Optional[List[Tag or Dictionary]]): List of tags. Defaults to None.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): List of LDA topics. Defaults to None.
+            embeddings (Optional[List[Embedding or Dictionary]]): List of word embeddings. Defaults to None.
+            additional (Optional[Dictionary]): Additional metadata not covered by the schema. Defaults to None.
+
+        Returns:
+            int: The ID of the newly created document metadata
+        """
+        document_metadata = {
+            "document_description": document_description,
+            "repositoryid": repositoryid,
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "provenance": provenance,
+            "tags": tags,
+            "lda_topics": lda_topics,
+            "embeddings": embeddings,
+            "additional": additional,
+        }
+        return self._create_and_log(document_metadata, "document")
+
+    def create_and_log_image(self):
+        raise NotImplementedError("There's an issue with schema definition of image metadata causing __root__ errors")
+
+    def create_and_log_geospatial(
+        self,
+        description: Union[Dict, geospatial_schema.Description],
+        idno: Optional[str] = None,
+        metadata_information: Optional[Union[Dict, geospatial_schema.MetadataInformation]] = None,
+        provenance: Optional[List[Union[Dict, geospatial_schema.ProvenanceSchema]]] = None,
+        tags: Optional[List[Union[Dict, geospatial_schema.Tag]]] = None,
+        lda_topics: Optional[List[Union[Dict, geospatial_schema.LdaTopic]]] = None,
+        embeddings: Optional[List[Union[Dict, geospatial_schema.Embedding]]] = None,
+        additional: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """
+        Creates a record of your *geospatial* metadata
+
+        Args:
+            description (Description or Dictionary): Geospatial schema. This field is required.
+            idno (Optional[str]): Project unique identifier.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance.
+            tags (Optional[List[Tag or Dictionary]]): List of Tags.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): List of LDA topics.
+            embeddings (Optional[List[Embedding or Dictionary]]): List of Word embeddings.
+            additional (Optional[Dict[str, Any]]): Additional metadata.
+
+        Returns:
+            int: The ID of the newly created geospatial metadata
+        """
+
+        geospatial_metadata = {
+            "idno": idno,
+            "metadata_information": metadata_information,
+            "description": description,
+            "provenance": provenance,
+            "tags": tags,
+            "lda_topics": lda_topics,
+            "embeddings": embeddings,
+            "additional": additional,
+        }
+        return self._create_and_log(geospatial_metadata, "geospatial")
+
+    def create_and_log_script(
+        self,
+        repositoryid: Optional[str] = None,
+        published: Optional[int] = 0,
+        overwrite: Optional[Union[Dict, script_schema.Overwrite]] = "no",
+        doc_desc: Optional[Union[Dict, script_schema.DocDesc]] = None,
+        project_desc: Optional[Union[Dict, script_schema.ProjectDesc]] = None,
+        provenance: Optional[Union[List[Dict], List[script_schema.ProvenanceSchema]]] = None,
+        tags: Optional[Union[List[Dict], List[script_schema.Tag]]] = None,
+        lda_topics: Optional[Union[List[Dict], List[script_schema.LdaTopic]]] = None,
+        embeddings: Optional[Union[List[Dict], List[script_schema.Embedding]]] = None,
+        additional: Optional[Dict] = None,
+    ) -> int:
+        """
+        Creates a record of your *script* metadata
+
+        Args:
+            repositoryid (Optional[str]): Collection ID that owns the project. Defaults to None.
+            published (Optional[int]): Status of the project - 0=draft, 1=published. Defaults to 0.
+            overwrite (Optional[Overwrite or Dictionary]): Overwrite document if already exists? Defaults to 'no'.
+            doc_desc (Optional[DocDesc or Dictionary]): Description of the document. Defaults to None.
+            project_desc (Optional[ProjectDesc or Dictionary]): Description of the research project. Defaults to None.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): List of provenance schemas. Defaults to None.
+            tags (Optional[List[Tag or Dictionary]]): List of tags. Defaults to None.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): List of LDA topics. Defaults to None.
+            embeddings (Optional[List[Embedding or Dictionary]]): List of word embeddings. Defaults to None.
+            additional (Optional[Dictionary]): Additional metadata not covered by the schema. Defaults to None.
+
+        Returns:
+            int: The ID of the newly created script metadata
+        """
+        script_metadata = {
+            "repositoryid": repositoryid,
+            "published": published,
+            "overwrite": overwrite,
+            "doc_desc": doc_desc,
+            "project_desc": project_desc,
+            "provenance": provenance,
+            "tags": tags,
+            "lda_topics": lda_topics,
+            "embeddings": embeddings,
+            "additional": additional,
+        }
+        return self._create_and_log(script_metadata, "script")
+
+    def create_and_log_series(
+        self,
+        idno: str,
+        name: str,
+        db_idno: Optional[str] = None,
+        aliases: Optional[List[Union[Dict, series_schema.Alias]]] = None,
+        measurement_unit: Optional[str] = None,
+        periodicity: Optional[str] = None,
+        base_period: Optional[str] = None,
+        definition_short: Optional[str] = None,
+        definition_long: Optional[str] = None,
+        definition_references: Optional[List[Union[Dict, series_schema.DefinitionReference]]] = None,
+        related_concepts: Optional[List[Union[Dict, series_schema.RelatedConcept]]] = None,
+        methodology: Optional[str] = None,
+        imputation: Optional[str] = None,
+        quality_checks: Optional[str] = None,
+        quality_note: Optional[str] = None,
+        series_break: Optional[str] = None,
+        statistical_concept: Optional[str] = None,
+        limitation: Optional[str] = None,
+        topics: Optional[List[Union[Dict, series_schema.Topic]]] = None,
+        relevance: Optional[str] = None,
+        series_dates: Optional[List[Union[Dict, series_schema.SeriesDate]]] = None,
+        geographic_units: Optional[List[Union[Dict, series_schema.GeographicUnit]]] = None,
+        aggregation_method: Optional[str] = None,
+        ser_access_license: Optional[Union[Dict, series_schema.SerAccessLicense]] = None,
+        confidentiality: Optional[str] = None,
+        confidentiality_status: Optional[str] = None,
+        confidentiality_note: Optional[str] = None,
+        series_links: Optional[List[Union[Dict, series_schema.SeriesLink]]] = None,
+        api_documentation: Optional[Union[Dict, series_schema.ApiDocumentation]] = None,
+        source: Optional[str] = None,
+        source_note: Optional[str] = None,
+        keywords: Optional[List[Union[Dict, series_schema.Keyword]]] = None,
+        notes: Optional[List[Union[Dict, series_schema.Note]]] = None,
+        related_indicators: Optional[List[Union[Dict, series_schema.RelatedIndicator]]] = None,
+        compliance: Optional[List[Union[Dict, series_schema.ComplianceItem]]] = None,
+        series_groups: Optional[List[Union[Dict, series_schema.SeriesGroup]]] = None,
+    ) -> int:
+        """
+        Creates a record of your *series* metadata
+
+        Args:
+            idno (str): Series unique ID. Required.
+            name (str): Series Name. Required.
+            db_idno (Optional[str]): Series database ID. Defaults to None.
+            aliases (Optional[List[Alias or Dictionary]]): Series other names. Defaults to None.
+            measurement_unit (Optional[str]): Series unit of measure. Defaults to None.
+            periodicity (Optional[str]): Periodicity of data. Defaults to None.
+            base_period (Optional[str]): Base period. Defaults to None.
+            definition_short (Optional[str]): Short definition. Defaults to None.
+            definition_long (Optional[str]): Long definition. Defaults to None.
+            definition_references (Optional[List[DefinitionReference or Dictionary]]): URL to standard definition of
+                the indicator (international or national standard). Defaults to None.
+            related_concepts (Optional[List[RelatedConcept or Dictionary]]): Related concepts. Defaults to None.
+            methodology (Optional[str]): Methodology. Defaults to None.
+            imputation (Optional[str]): Imputations. Defaults to None.
+            quality_checks (Optional[str]): Quality control methods. Defaults to None.
+            quality_note (Optional[str]): Note on data quality. Defaults to None.
+            series_break (Optional[str]): Breaks in series. Defaults to None.
+            statistical_concept (Optional[str]): Statistical concept. Defaults to None.
+            limitation (Optional[str]): Limitations and exceptions. Defaults to None.
+            topics (Optional[List[Topic or Dictionary]]): Topics covered by the indicator. Defaults to None.
+            relevance (Optional[str]): Relevance. Defaults to None.
+            series_dates (Optional[List[SeriesDate or Dictionary]]): Series dates. Defaults to None.
+            geographic_units (Optional[List[GeographicUnit or Dictionary]]): Geographic locations. Defaults to None.
+            aggregation_method (Optional[str]): Aggregation method. Defaults to None.
+            ser_access_license (Optional[SerAccessLicense or Dictionary]): Access license. Defaults to None.
+            confidentiality (Optional[str]): Confidentiality statement. Defaults to None.
+            confidentiality_status (Optional[str]): Confidentiality status. Defaults to None.
+            confidentiality_note (Optional[str]): Confidentiality note. Defaults to None.
+            series_links (Optional[List[SeriesLink or Dictionary]]): Links to API calls, websites, etc.
+                Defaults to None.
+            api_documentation (Optional[ApiDocumentation or Dictionary]): API Documentation. Defaults to None.
+            source (Optional[str]): Original source. Defaults to None.
+            source_note (Optional[str]): Notes from original source. Defaults to None.
+            keywords (Optional[List[Keyword or Dictionary]]): Keywords. Defaults to None.
+            notes (Optional[List[Note or Dictionary]]): Notes. Defaults to None.
+            related_indicators (Optional[List[RelatedIndicator or Dictionary]]): Related indicators. Defaults to None.
+            compliance (Optional[List[ComplianceItem or Dictionary]]): Compliance with international resolution.
+                Defaults to None.
+            series_groups (Optional[List[SeriesGroup or Dictionary]]): Series included in groups. Defaults to None.
+
+        Returns:
+            int: The ID of the newly created series metadata
+        """
+        series_metadata = {
+            "idno": idno,
+            "name": name,
+            "db_idno": db_idno,
+            "aliases": aliases,
+            "measurement_unit": measurement_unit,
+            "periodicity": periodicity,
+            "base_period": base_period,
+            "definition_short": definition_short,
+            "definition_long": definition_long,
+            "definition_references": definition_references,
+            "related_concepts": related_concepts,
+            "methodology": methodology,
+            "imputation": imputation,
+            "quality_checks": quality_checks,
+            "quality_note": quality_note,
+            "series_break": series_break,
+            "statistical_concept": statistical_concept,
+            "limitation": limitation,
+            "topics": topics,
+            "relevance": relevance,
+            "series_dates": series_dates,
+            "geographic_units": geographic_units,
+            "aggregation_method": aggregation_method,
+            "ser_access_license": ser_access_license,
+            "confidentiality": confidentiality,
+            "confidentiality_status": confidentiality_status,
+            "confidentiality_note": confidentiality_note,
+            "series_links": series_links,
+            "api_documentation": api_documentation,
+            "source": source,
+            "source_note": source_note,
+            "keywords": keywords,
+            "notes": notes,
+            "related_indicators": related_indicators,
+            "compliance": compliance,
+            "series_groups": series_groups,
+        }
+        return self._create_and_log(series_metadata, "series")
+
+    def create_and_log_table(
+        self,
+        repositoryid: Optional[str] = None,
+        published: Optional[int] = 0,
+        overwrite: Optional[Union[str, table_schema.Overwrite]] = "no",
+        metadata_information: Optional[Union[Dict, table_schema.MetadataInformation]] = None,
+        table_description: Optional[Union[Dict, table_schema.TableDescription]] = None,
+        provenance: Optional[List[Union[Dict, table_schema.ProvenanceSchema]]] = None,
+        tags: Optional[List[Union[Dict, table_schema.Tag]]] = None,
+        lda_topics: Optional[List[Union[Dict, table_schema.LdaTopic]]] = None,
+        embeddings: Optional[List[Union[Dict, table_schema.Embedding]]] = None,
+        additional: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """
+        Creates a record of your *table* metadata
+
+        Args:
+            repositoryid (Optional[str]): Collection ID that owns the document.
+            published (Optional[int]): Status - 0=draft, 1=published. Defaults to 0.
+            overwrite (Optional[Overwrite or str]): Overwrite document if already exists?. Defaults to 'no'.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information.
+            table_description (Optional[TableDescription or Dictionary]): Table Description.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): List of Provenances.
+            tags (Optional[List[Tag or Dictionary]]): List of Tags.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): List of LDA topics.
+            embeddings (Optional[List[Embedding or Dictionary]]): List of word embeddings.
+            additional (Optional[Dict[str, Any]]): Additional metadata.
+
+        Returns:
+            int: The ID of the newly created table metadata
+        """
+        table_metadata = {
+            "repositoryid": repositoryid,
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "table_description": table_description,
+            "provenance": provenance,
+            "tags": tags,
+            "lda_topics": lda_topics,
+            "embeddings": embeddings,
+            "additional": additional,
+        }
+        return self._create_and_log(table_metadata, "table")
+
     def create_and_log_timeseries(
         self,
         idno: str,
-        series_description: Union[Dict, tss.SeriesDescription],
-        metadata_information: Optional[Union[Dict, tss.MetadataInformation]] = None,
-        datacite: Optional[Union[Dict, tss.DataciteSchema]] = None,
-        provenance: Optional[List[Union[Dict, tss.ProvenanceSchema]]] = None,
-        tags: Optional[Union[Dict, List[tss.Tag]]] = None,
+        series_description: Union[Dict, timeseries_schema.SeriesDescription],
+        metadata_information: Optional[Union[Dict, timeseries_schema.MetadataInformation]] = None,
+        datacite: Optional[Union[Dict, timeseries_schema.DataciteSchema]] = None,
+        provenance: Optional[List[Union[Dict, timeseries_schema.ProvenanceSchema]]] = None,
+        tags: Optional[Union[Dict, List[timeseries_schema.Tag]]] = None,
         additional: Optional[Dict] = None,
     ):
         """
@@ -351,21 +676,54 @@ class MetadataEditor(BaseModel):
         }
         return self._create_and_log(metadata, "timeseries")
 
+    def create_and_log_timeseries_db(
+        self,
+        database_description: Union[Dict, timeseries_db_schema.DatabaseDescription],
+        published: Optional[int] = 0,
+        overwrite: Optional[Union[str, timeseries_db_schema.Overwrite]] = "no",
+        metadata_information: Optional[Union[Dict, timeseries_db_schema.MetadataInformation]] = None,
+        provenance: Optional[List[Union[Dict, timeseries_db_schema.ProvenanceSchema]]] = None,
+        additional: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """
+        Creates a record of your *timeseries database* metadata
+
+        Args:
+            database_description (DatabaseDescription or Dictionary): Database Description. This field is required.
+            published (Optional[int]): Status - 0=draft, 1=published. Defaults to 0.
+            overwrite (Optional[Overwrite or str]): Overwrite database if already exists?. Defaults to 'no'.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance.
+            additional (Optional[Dict[str, Any]]): Additional custom metadata.
+
+        Returns:
+            int: The ID of the newly created timeseries database metadata
+        """
+        timeseries_db_metadata = {
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "database_description": database_description,
+            "provenance": provenance,
+            "additional": additional,
+        }
+        return self._create_and_log(timeseries_db_metadata, "timeseries_db")
+
     def create_and_log_survey_microdata(
         self,
         repositoryid: Optional[str] = None,
-        access_policy: Optional[Union[str, sms.AccessPolicy]] = None,
+        access_policy: Optional[Union[str, survey_schema.AccessPolicy]] = None,
         published: Optional[int] = None,
-        overwrite: Optional[Union[str, sms.Overwrite]] = None,
-        doc_desc: Optional[Union[Dict, sms.DocDesc]] = None,
-        study_desc: Optional[Union[Dict, sms.StudyDesc]] = None,
-        data_files: Optional[Union[List[Dict], List[sms.DatafileSchema]]] = None,
-        variables: Optional[Union[List[Dict], List[sms.VariableSchema]]] = None,
-        variable_groups: Optional[Union[List[Dict], List[sms.VariableGroupSchema]]] = None,
-        provenance: Optional[Union[List[Dict], List[sms.ProvenanceSchema]]] = None,
-        tags: Optional[Union[List[Dict], List[sms.Tag]]] = None,
-        lda_topics: Optional[Union[List[Dict], List[sms.LdaTopic]]] = None,
-        embeddings: Optional[Union[List[Dict], List[sms.Embedding]]] = None,
+        overwrite: Optional[Union[str, survey_schema.Overwrite]] = None,
+        doc_desc: Optional[Union[Dict, survey_schema.DocDesc]] = None,
+        study_desc: Optional[Union[Dict, survey_schema.StudyDesc]] = None,
+        data_files: Optional[Union[List[Dict], List[survey_schema.DatafileSchema]]] = None,
+        variables: Optional[Union[List[Dict], List[survey_schema.VariableSchema]]] = None,
+        variable_groups: Optional[Union[List[Dict], List[survey_schema.VariableGroupSchema]]] = None,
+        provenance: Optional[Union[List[Dict], List[survey_schema.ProvenanceSchema]]] = None,
+        tags: Optional[Union[List[Dict], List[survey_schema.Tag]]] = None,
+        lda_topics: Optional[Union[List[Dict], List[survey_schema.LdaTopic]]] = None,
+        embeddings: Optional[Union[List[Dict], List[survey_schema.Embedding]]] = None,
         additional: Optional[MetadataDict] = None,
     ):
         """
@@ -464,6 +822,51 @@ class MetadataEditor(BaseModel):
         }
         return self._create_and_log(metadata, "survey")
 
+    def create_and_log_video(
+        self,
+        video_description: Union[Dict, video_schema.VideoDescription],
+        repositoryid: Optional[str] = None,
+        published: Optional[int] = 0,
+        overwrite: Optional[Union[str, video_schema.Overwrite]] = "no",
+        metadata_information: Optional[Union[Dict, video_schema.MetadataInformation]] = None,
+        provenance: Optional[List[Union[Dict, video_schema.ProvenanceSchema]]] = None,
+        tags: Optional[List[Union[Dict, video_schema.Tag]]] = None,
+        lda_topics: Optional[List[Union[Dict, video_schema.LdaTopic]]] = None,
+        embeddings: Optional[List[Union[Dict, video_schema.Embedding]]] = None,
+        additional: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """
+        Creates a record of your *video* metadata
+
+        Args:
+            video_description (VideoDescription or Dictionary): Video metadata information. This field is required.
+            repositoryid (Optional[str]): Collection ID that owns the document.
+            published (Optional[int]): Status - 0=draft, 1=published. Defaults to 0.
+            overwrite (Optional[Overwrite or str]): Overwrite document if already exists?. Defaults to 'no'.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance.
+            tags (Optional[List[Tag or Dictionary]]): Tags.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): LDA topics.
+            embeddings (Optional[List[Embedding or Dictionary]]): Word embeddings.
+            additional (Optional[Dict[str, Any]]): Additional metadata.
+
+        Returns:
+            int: The ID of the newly created video metadata
+        """
+        video_metadata = {
+            "repositoryid": repositoryid,
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "video_description": video_description,
+            "provenance": provenance,
+            "tags": tags,
+            "lda_topics": lda_topics,
+            "embeddings": embeddings,
+            "additional": additional,
+        }
+        return self._create_and_log(video_metadata, "video")
+
     def _create_and_log(self, metadata: MetadataDict, metadata_type: str):
         assert metadata_type in self._metadata_types, (
             f"this project is listed as a '{metadata_type}' type project but this is"
@@ -476,15 +879,379 @@ class MetadataEditor(BaseModel):
         ret = self._post_request(pth=post_request_pth, metadata=md.model_dump(exclude_none=True, exclude_unset=True))
         return ret["id"]
 
+    def update_document_by_id(
+        self,
+        id: int,
+        document_description: Optional[Union[Dict, document_schema.DocumentDescription]] = None,
+        repositoryid: Optional[str] = None,
+        published: Optional[int] = None,
+        overwrite: Optional[Union[Dict, document_schema.Overwrite]] = None,
+        metadata_information: Optional[Union[Dict, document_schema.MetadataInformation]] = None,
+        provenance: Optional[Union[List[Dict], List[document_schema.ProvenanceSchema]]] = None,
+        tags: Optional[Union[List[Dict], List[document_schema.Tag]]] = None,
+        lda_topics: Optional[Union[List[Dict], List[document_schema.LdaTopic]]] = None,
+        embeddings: Optional[Union[List[Dict], List[document_schema.Embedding]]] = None,
+        additional: Optional[Dict] = None,
+    ):
+        """
+        Updates a record of your *document* metadata by ID
+
+        Args:
+            id (int): The ID of the document to update.
+            document_description (Optional[DocumentDescription or Dictionary]): Description of the document. Leave
+                blank if you don't want to replace the existing values.
+            repositoryid (Optional[str]): Collection ID that owns the survey. Leave blank if you don't want to replace
+                the existing values.
+            published (Optional[int]): Status of the survey - 0=draft, 1=published. Leave blank if you don't want to
+                replace the existing values.
+            overwrite (Optional[Overwrite or Dictionary]): Overwrite survey if already exists? Leave blank if you don't
+                want to replace the existing values.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information. Leave
+                blank if you don't want to replace the existing values.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): List of provenance schemas. Leave blank if you
+                don't want to replace the existing values.
+            tags (Optional[List[Tag or Dictionary]]): List of tags. Leave blank if you don't want to replace the
+                existing values.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): List of LDA topics. Leave blank if you don't want to
+                replace the existing values.
+            embeddings (Optional[List[Embedding or Dictionary]]): List of word embeddings. Leave blank if you don't
+                want to replace the existing values.
+            additional (Optional[Dictionary]): Additional metadata not covered by the schema. Leave blank if you don't
+                want to replace the existing values.
+        """
+        self._update_by_id(
+            id,
+            "document",
+            doc_desc=document_description,
+            repositoryid=repositoryid,
+            published=published,
+            overwrite=overwrite,
+            metadata_information=metadata_information,
+            provenance=provenance,
+            tags=tags,
+            lda_topics=lda_topics,
+            embeddings=embeddings,
+            additional=additional,
+        )
+
+    def update_image_by_id(self, id):
+        raise NotImplementedError("There's an issue with schema definition of image metadata causing __root__ errors")
+
+    def update_geospatial_by_id(
+        self,
+        id: int,
+        description: Optional[Union[Dict, geospatial_schema.Description]] = None,
+        idno: Optional[str] = None,
+        metadata_information: Optional[Union[Dict, geospatial_schema.MetadataInformation]] = None,
+        provenance: Optional[List[Union[Dict, geospatial_schema.ProvenanceSchema]]] = None,
+        tags: Optional[List[Union[Dict, geospatial_schema.Tag]]] = None,
+        lda_topics: Optional[List[Union[Dict, geospatial_schema.LdaTopic]]] = None,
+        embeddings: Optional[List[Union[Dict, geospatial_schema.Embedding]]] = None,
+        additional: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Updates a record of your *geospatial* metadata by ID
+
+        Args:
+            id (int): The ID of the geospatial metadata to update.
+            description (Optional[Description or Dictionary]): Description. Leave blank if you don't want to replace
+                the existing values.
+            idno (Optional[str]): Project unique identifier. Leave blank if you don't want to replace the existing
+                values.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information. Leave
+                blank if you don't want to replace the existing values.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance. Leave blank if you don't want to
+                replace the existing values.
+            tags (Optional[List[Tag or Dictionary]]): Tags. Leave blank if you don't want to replace the existing
+                values.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): LDA topics. Leave blank if you don't want to replace
+                the existing values.
+            embeddings (Optional[List[Embedding or Dictionary]]): Word embeddings. Leave blank if you don't want to
+                replace the existing values.
+            additional (Optional[Dict[str, Any]]): Additional metadata. Leave blank if you don't want to replace the
+                existing values.
+        """
+        update_data = {
+            "idno": idno,
+            "metadata_information": metadata_information,
+            "description": description,
+            "provenance": provenance,
+            "tags": tags,
+            "lda_topics": lda_topics,
+            "embeddings": embeddings,
+            "additional": additional,
+        }
+        self._update_by_id(id, "script", **update_data)
+
+    def update_script_by_id(
+        self,
+        id: int,
+        repositoryid: Optional[str] = None,
+        published: Optional[int] = None,
+        overwrite: Optional[Union[Dict, script_schema.Overwrite]] = None,
+        doc_desc: Optional[Union[Dict, script_schema.DocDesc]] = None,
+        project_desc: Optional[Union[Dict, script_schema.ProjectDesc]] = None,
+        provenance: Optional[Union[List[Dict], List[script_schema.ProvenanceSchema]]] = None,
+        tags: Optional[Union[List[Dict], List[script_schema.Tag]]] = None,
+        lda_topics: Optional[Union[List[Dict], List[script_schema.LdaTopic]]] = None,
+        embeddings: Optional[Union[List[Dict], List[script_schema.Embedding]]] = None,
+        additional: Optional[Dict] = None,
+    ):
+        """
+        Updates a record of your *script* metadata by ID
+
+        Args:
+            id (int): The ID of the script to update.
+            repositoryid (Optional[str]): Collection ID that owns the project. Leave blank if you don't want to replace
+                the existing values.
+            published (Optional[int]): Status of the project - 0=draft, 1=published. Leave blank if you don't want to
+                replace the existing values.
+            overwrite (Optional[Overwrite or Dictionary]): Overwrite document if already exists? Leave blank if you
+                don't want to replace the existing values.
+            doc_desc (Optional[DocDesc or Dictionary]): Description of the document. Leave blank if you don't want to
+                replace the existing values.
+            project_desc (Optional[ProjectDesc or Dictionary]): Description of the research project. Leave blank if you
+                don't want to replace the existing values.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): List of provenance schemas. Leave blank if you
+                don't want to replace the existing values.
+            tags (Optional[List[Tag or Dictionary]]): List of tags. Leave blank if you don't want to replace the
+                existing values.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): List of LDA topics. Leave blank if you don't want to
+                replace the existing values.
+            embeddings (Optional[List[Embedding or Dictionary]]): List of word embeddings. Leave blank if you don't
+                want to replace the existing values.
+            additional (Optional[Dictionary]): Additional metadata not covered by the schema. Leave blank if you don't
+                want to replace the existing values.
+        """
+        self._update_by_id(
+            id,
+            "script",
+            repositoryid=repositoryid,
+            published=published,
+            overwrite=overwrite,
+            doc_desc=doc_desc,
+            project_desc=project_desc,
+            provenance=provenance,
+            tags=tags,
+            lda_topics=lda_topics,
+            embeddings=embeddings,
+            additional=additional,
+        )
+
+    def update_series_by_id(
+        self,
+        id: int,
+        idno: Optional[str] = None,
+        name: Optional[str] = None,
+        db_idno: Optional[str] = None,
+        aliases: Optional[List[Union[Dict, series_schema.Alias]]] = None,
+        measurement_unit: Optional[str] = None,
+        periodicity: Optional[str] = None,
+        base_period: Optional[str] = None,
+        definition_short: Optional[str] = None,
+        definition_long: Optional[str] = None,
+        definition_references: Optional[List[Union[Dict, series_schema.DefinitionReference]]] = None,
+        related_concepts: Optional[List[Union[Dict, series_schema.RelatedConcept]]] = None,
+        methodology: Optional[str] = None,
+        imputation: Optional[str] = None,
+        quality_checks: Optional[str] = None,
+        quality_note: Optional[str] = None,
+        series_break: Optional[str] = None,
+        statistical_concept: Optional[str] = None,
+        limitation: Optional[str] = None,
+        topics: Optional[List[Union[Dict, series_schema.Topic]]] = None,
+        relevance: Optional[str] = None,
+        series_dates: Optional[List[Union[Dict, series_schema.SeriesDate]]] = None,
+        geographic_units: Optional[List[Union[Dict, series_schema.GeographicUnit]]] = None,
+        aggregation_method: Optional[str] = None,
+        ser_access_license: Optional[Union[Dict, series_schema.SerAccessLicense]] = None,
+        confidentiality: Optional[str] = None,
+        confidentiality_status: Optional[str] = None,
+        confidentiality_note: Optional[str] = None,
+        series_links: Optional[List[Union[Dict, series_schema.SeriesLink]]] = None,
+        api_documentation: Optional[Union[Dict, series_schema.ApiDocumentation]] = None,
+        source: Optional[str] = None,
+        source_note: Optional[str] = None,
+        keywords: Optional[List[Union[Dict, series_schema.Keyword]]] = None,
+        notes: Optional[List[Union[Dict, series_schema.Note]]] = None,
+        related_indicators: Optional[List[Union[Dict, series_schema.RelatedIndicator]]] = None,
+        compliance: Optional[List[Union[Dict, series_schema.ComplianceItem]]] = None,
+        series_groups: Optional[List[Union[Dict, series_schema.SeriesGroup]]] = None,
+    ):
+        """
+        Updates a record of your *series* metadata by ID
+
+        Args:
+            id (int): The ID of the series to update.
+            idno (Optional[str]): Series unique ID. Leave blank if you don't want to replace the existing values.
+            name (Optional[str]): Series Name. Leave blank if you don't want to replace the existing values.
+            db_idno (Optional[str]): Series database ID. Leave blank if you don't want to replace the existing values.
+            aliases (Optional[List[Alias or Dictionary]]): Series other names. Leave blank if you don't want to replace
+                the existing values.
+            measurement_unit (Optional[str]): Series unit of measure. Leave blank if you don't want to replace the
+                existing values.
+            periodicity (Optional[str]): Periodicity of data. Leave blank if you don't want to replace the existing
+                values.
+            base_period (Optional[str]): Base period. Leave blank if you don't want to replace the existing values.
+            definition_short (Optional[str]): Short definition. Leave blank if you don't want to replace the existing
+                values.
+            definition_long (Optional[str]): Long definition. Leave blank if you don't want to replace the existing
+                values.
+            definition_references (Optional[List[DefinitionReference or Dictionary]]): URL to standard definition of
+                the indicator (international or national standard). Leave blank if you don't want to replace the
+                existing values.
+            related_concepts (Optional[List[RelatedConcept or Dictionary]]): Related concepts. Leave blank if you don't
+                want to replace the existing values.
+            methodology (Optional[str]): Methodology. Leave blank if you don't want to replace the existing values.
+            imputation (Optional[str]): Imputations. Leave blank if you don't want to replace the existing values.
+            quality_checks (Optional[str]): Quality control methods. Leave blank if you don't want to replace the
+                existing values.
+            quality_note (Optional[str]): Note on data quality. Leave blank if you don't want to replace the existing
+                values.
+            series_break (Optional[str]): Breaks in series. Leave blank if you don't want to replace the existing
+                values.
+            statistical_concept (Optional[str]): Statistical concept. Leave blank if you don't want to replace the
+                existing values.
+            limitation (Optional[str]): Limitations and exceptions. Leave blank if you don't want to replace the
+                existing values.
+            topics (Optional[List[Topic or Dictionary]]): Topics covered by the indicator. Leave blank if you don't
+                want to replace the existing values.
+            relevance (Optional[str]): Relevance. Leave blank if you don't want to replace the existing values.
+            series_dates (Optional[List[SeriesDate or Dictionary]]): Series dates. Leave blank if you don't want to
+                replace the existing values.
+            geographic_units (Optional[List[GeographicUnit or Dictionary]]): Geographic locations. Leave blank if you
+                don't want to replace the existing values.
+            aggregation_method (Optional[str]): Aggregation method. Leave blank if you don't want to replace the
+                existing values.
+            ser_access_license (Optional[SerAccessLicense or Dictionary]): Access license. Leave blank if you don't
+                want to replace the existing values.
+            confidentiality (Optional[str]): Confidentiality statement. Leave blank if you don't want to replace the
+                existing values.
+            confidentiality_status (Optional[str]): Confidentiality status. Leave blank if you don't want to replace
+                the existing values.
+            confidentiality_note (Optional[str]): Confidentiality note. Leave blank if you don't want to replace the
+                existing values.
+            series_links (Optional[List[SeriesLink or Dictionary]]): Links to API calls, websites, etc. Leave blank if
+                you don't want to replace the existing values.
+            api_documentation (Optional[ApiDocumentation or Dictionary]): API Documentation. Leave blank if you don't
+                want to replace the existing values.
+            source (Optional[str]): Original source. Leave blank if you don't want to replace the existing values.
+            source_note (Optional[str]): Notes from original source. Leave blank if you don't want to replace the
+                existing values.
+            keywords (Optional[List[Keyword or Dictionary]]): Keywords. Leave blank if you don't want to replace the
+                existing values.
+            notes (Optional[List[Note or Dictionary]]): Notes. Leave blank if you don't want to replace the existing
+                values.
+            related_indicators (Optional[List[RelatedIndicator or Dictionary]]): Related indicators. Leave blank if you
+                don't want to replace the existing values.
+            compliance (Optional[List[ComplianceItem or Dictionary]]): Compliance with international resolution. Leave
+                blank if you don't want to replace the existing values.
+            series_groups (Optional[List[SeriesGroup or Dictionary]]): Series included in groups. Leave blank if you
+                don't want to replace the existing values.
+        """
+        update_data = {
+            "idno": idno,
+            "name": name,
+            "db_idno": db_idno,
+            "aliases": aliases,
+            "measurement_unit": measurement_unit,
+            "periodicity": periodicity,
+            "base_period": base_period,
+            "definition_short": definition_short,
+            "definition_long": definition_long,
+            "definition_references": definition_references,
+            "related_concepts": related_concepts,
+            "methodology": methodology,
+            "imputation": imputation,
+            "quality_checks": quality_checks,
+            "quality_note": quality_note,
+            "series_break": series_break,
+            "statistical_concept": statistical_concept,
+            "limitation": limitation,
+            "topics": topics,
+            "relevance": relevance,
+            "series_dates": series_dates,
+            "geographic_units": geographic_units,
+            "aggregation_method": aggregation_method,
+            "ser_access_license": ser_access_license,
+            "confidentiality": confidentiality,
+            "confidentiality_status": confidentiality_status,
+            "confidentiality_note": confidentiality_note,
+            "series_links": series_links,
+            "api_documentation": api_documentation,
+            "source": source,
+            "source_note": source_note,
+            "keywords": keywords,
+            "notes": notes,
+            "related_indicators": related_indicators,
+            "compliance": compliance,
+            "series_groups": series_groups,
+        }
+
+        self._update_by_id(id, "series", **update_data)
+
+    def update_table_by_id(
+        self,
+        id: int,
+        repositoryid: Optional[str] = None,
+        published: Optional[int] = None,
+        overwrite: Optional[Union[str, table_schema.Overwrite]] = None,
+        metadata_information: Optional[Union[Dict, table_schema.MetadataInformation]] = None,
+        table_description: Optional[Union[Dict, table_schema.TableDescription]] = None,
+        provenance: Optional[List[Union[Dict, table_schema.ProvenanceSchema]]] = None,
+        tags: Optional[List[Union[Dict, table_schema.Tag]]] = None,
+        lda_topics: Optional[List[Union[Dict, table_schema.LdaTopic]]] = None,
+        embeddings: Optional[List[Union[Dict, table_schema.Embedding]]] = None,
+        additional: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Updates a record of your *table* metadata by ID
+
+        Args:
+            id (int): The ID of the table to update.
+            repositoryid (Optional[str]): Collection ID that owns the document. Leave blank if you don't want to
+                replace the existing values.
+            published (Optional[int]): Status - 0=draft, 1=published. Leave blank if you don't want to replace the
+                existing values.
+            overwrite (Optional[Overwrite or str]): Overwrite document if already exists?. Leave blank if you don't
+                want to replace the existing values.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information. Leave
+                blank if you don't want to replace the existing values.
+            table_description (Optional[TableDescription or Dictionary]): Table Description. Leave blank if you don't
+                want to replace the existing values.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): List of Provenances. Leave blank if you don't
+                want to replace the existing values.
+            tags (Optional[List[Tag or Dictionary]]): List of Tags. Leave blank if you don't want to replace the
+                existing values.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): List of LDA topics. Leave blank if you don't want to
+                replace the existing values.
+            embeddings (Optional[List[Embedding or Dictionary]]): List of word embeddings. Leave blank if you don't
+                want to replace the existing values.
+            additional (Optional[Dict[str, Any]]): Additional metadata. Leave blank if you don't want to replace the
+                existing values.
+        """
+        update_data = {
+            "repositoryid": repositoryid,
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "table_description": table_description,
+            "provenance": provenance,
+            "tags": tags,
+            "lda_topics": lda_topics,
+            "embeddings": embeddings,
+            "additional": additional,
+        }
+        self._update_by_id(id, "table", **update_data)
+
     def update_timeseries_by_id(
         self,
         id: int,
-        # idno: Optional[str] = None,
-        series_description: Optional[Union[Dict, tss.SeriesDescription]] = None,
-        metadata_information: Optional[Union[Dict, tss.MetadataInformation]] = None,
-        datacite: Optional[Union[Dict, tss.DataciteSchema]] = None,
-        provenance: Optional[List[Union[Dict, tss.ProvenanceSchema]]] = None,
-        tags: Optional[Union[Dict, List[tss.Tag]]] = None,
+        series_description: Optional[Union[Dict, timeseries_schema.SeriesDescription]] = None,
+        metadata_information: Optional[Union[Dict, timeseries_schema.MetadataInformation]] = None,
+        datacite: Optional[Union[Dict, timeseries_schema.DataciteSchema]] = None,
+        provenance: Optional[List[Union[Dict, timeseries_schema.ProvenanceSchema]]] = None,
+        tags: Optional[Union[Dict, List[timeseries_schema.Tag]]] = None,
         additional: Optional[Dict] = None,
     ):
         """
@@ -526,22 +1293,60 @@ class MetadataEditor(BaseModel):
             additional=additional,
         )
 
+    def update_timeseries_db_by_id(
+        self,
+        id: int,
+        database_description: Optional[Union[Dict, timeseries_db_schema.DatabaseDescription]] = None,
+        published: Optional[int] = None,
+        overwrite: Optional[Union[str, timeseries_db_schema.Overwrite]] = None,
+        metadata_information: Optional[Union[Dict, timeseries_db_schema.MetadataInformation]] = None,
+        provenance: Optional[List[Union[Dict, timeseries_db_schema.ProvenanceSchema]]] = None,
+        additional: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Updates a record of your *timeseries database* metadata by ID
+
+        Args:
+            id (int): The ID of the timeseries database to update.
+            published (Optional[int]): Status - 0=draft, 1=published. Leave blank if you don't want to replace the
+                existing values.
+            overwrite (Optional[Overwrite or str]): Overwrite database if already exists?. Leave blank if you don't
+                want to replace the existing values.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information. Leave
+                blank if you don't want to replace the existing values.
+            database_description (Optional[DatabaseDescription or Dictionary]): Database Description. Leave blank if
+                you don't want to replace the existing values.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance. Leave blank if you don't want to
+                replace the existing values.
+            additional (Optional[Dict[str, Any]]): Additional custom metadata. Leave blank if you don't want to replace
+                the existing values.
+        """
+        update_data = {
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "database_description": database_description,
+            "provenance": provenance,
+            "additional": additional,
+        }
+        self._update_by_id(id, "timeseries_db", **update_data)
+
     def update_survey_microdata_by_id(
         self,
         id: int,
         repositoryid: Optional[str] = None,
-        access_policy: Optional[Union[str, sms.AccessPolicy]] = None,
+        access_policy: Optional[Union[str, survey_schema.AccessPolicy]] = None,
         published: Optional[int] = None,
-        overwrite: Optional[Union[str, sms.Overwrite]] = None,
-        doc_desc: Optional[Union[Dict, sms.DocDesc]] = None,
-        study_desc: Optional[Union[Dict, sms.StudyDesc]] = None,
-        data_files: Optional[Union[List[Dict], List[sms.DatafileSchema]]] = None,
-        variables: Optional[Union[List[Dict], List[sms.VariableSchema]]] = None,
-        variable_groups: Optional[Union[List[Dict], List[sms.VariableGroupSchema]]] = None,
-        provenance: Optional[Union[List[Dict], List[sms.ProvenanceSchema]]] = None,
-        tags: Optional[Union[List[Dict], List[sms.Tag]]] = None,
-        lda_topics: Optional[Union[List[Dict], List[sms.LdaTopic]]] = None,
-        embeddings: Optional[Union[List[Dict], List[sms.Embedding]]] = None,
+        overwrite: Optional[Union[str, survey_schema.Overwrite]] = None,
+        doc_desc: Optional[Union[Dict, survey_schema.DocDesc]] = None,
+        study_desc: Optional[Union[Dict, survey_schema.StudyDesc]] = None,
+        data_files: Optional[Union[List[Dict], List[survey_schema.DatafileSchema]]] = None,
+        variables: Optional[Union[List[Dict], List[survey_schema.VariableSchema]]] = None,
+        variable_groups: Optional[Union[List[Dict], List[survey_schema.VariableGroupSchema]]] = None,
+        provenance: Optional[Union[List[Dict], List[survey_schema.ProvenanceSchema]]] = None,
+        tags: Optional[Union[List[Dict], List[survey_schema.Tag]]] = None,
+        lda_topics: Optional[Union[List[Dict], List[survey_schema.LdaTopic]]] = None,
+        embeddings: Optional[Union[List[Dict], List[survey_schema.Embedding]]] = None,
         additional: Optional[MetadataDict] = None,
     ):
         """
@@ -597,6 +1402,61 @@ class MetadataEditor(BaseModel):
             embeddings=embeddings,
             additional=additional,
         )
+
+    def update_video_by_id(
+        self,
+        id: int,
+        video_description: Optional[Union[Dict, video_schema.VideoDescription]] = None,
+        repositoryid: Optional[str] = None,
+        published: Optional[int] = None,
+        overwrite: Optional[Union[str, video_schema.Overwrite]] = None,
+        metadata_information: Optional[Union[Dict, video_schema.MetadataInformation]] = None,
+        provenance: Optional[List[Union[Dict, video_schema.ProvenanceSchema]]] = None,
+        tags: Optional[List[Union[Dict, video_schema.Tag]]] = None,
+        lda_topics: Optional[List[Union[Dict, video_schema.LdaTopic]]] = None,
+        embeddings: Optional[List[Union[Dict, video_schema.Embedding]]] = None,
+        additional: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Updates a record of your *video* metadata by ID
+
+        Args:
+            video_description (Optional[VideoDescription or Dictionary]): Video metadata information. Leave blank if
+                you don't want to replace the existing values.
+            id (int): The ID of the video to update.
+            repositoryid (Optional[str]): Collection ID that owns the document. Leave blank if you don't want to
+                replace the existing values.
+            published (Optional[int]): Status - 0=draft, 1=published. Leave blank if you don't want to replace the
+                existing values.
+            overwrite (Optional[Overwrite or str]): Overwrite document if already exists?. Leave blank if you don't
+                want to replace the existing values.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information. Leave
+                blank if you don't want to replace the existing values.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance. Leave blank if you don't want to
+                replace the existing values.
+            tags (Optional[List[Tag or Dictionary]]): Tags. Leave blank if you don't want to replace the existing
+                values.
+            lda_topics (Optional[List[LdaTopic or Dictionary]]): LDA topics. Leave blank if you don't want to replace
+                the existing values.
+            embeddings (Optional[List[Embedding or Dictionary]]): Word embeddings. Leave blank if you don't want to
+                replace the existing values.
+            additional (Optional[Dict[str, Any]]): Additional metadata. Leave blank if you don't want to replace the
+                existing values.
+        """
+
+        update_data = {
+            "repositoryid": repositoryid,
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "video_description": video_description,
+            "provenance": provenance,
+            "tags": tags,
+            "lda_topics": lda_topics,
+            "embeddings": embeddings,
+            "additional": additional,
+        }
+        self._update_by_id(id, "video", **update_data)
 
     def _update_by_id(self, id: int, expected_project_type: str, **kwargs):
         assert expected_project_type in self._metadata_types

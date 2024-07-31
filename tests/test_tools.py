@@ -1,9 +1,10 @@
 import json
 
+# import pymetadataeditor.schemas.timeseries_schema as tss
+import metadataschemas.timeseries_schema as tss
 import pytest
+from metadataschemas.schema_base_model import SchemaBaseModel
 
-import pymetadataeditor.schemas.timeseries_schema as tss
-from pymetadataeditor.schemas.common_schemas import SchemaBaseModel
 from pymetadataeditor.tools import update_metadata, validate_metadata
 
 

@@ -366,8 +366,8 @@ isort = ">=4.3.21,<6.0"
 jinja2 = ">=2.10.1,<4.0"
 packaging = "*"
 pydantic = [
-    {version = ">=1.10.0,<2.4.0 || >2.4.0,<3.0", extras = ["email"], markers = "python_version >= \"3.11\" and python_version < \"3.12\""},
     {version = ">=1.10.0,<2.0.0 || >2.0.0,<2.0.1 || >2.0.1,<2.4.0 || >2.4.0,<3.0", extras = ["email"], markers = "python_version >= \"3.12\" and python_version < \"4.0\""},
+    {version = ">=1.10.0,<2.4.0 || >2.4.0,<3.0", extras = ["email"], markers = "python_version >= \"3.11\" and python_version < \"3.12\""},
 ]
 pyyaml = ">=6.0.1"
 
@@ -889,6 +889,26 @@ files = [
 traitlets = "*"
 
 [[package]]
+name = "metadataschemas"
+version = "0.1.2"
+description = ""
+optional = false
+python-versions = ">=3.11,<4.0"
+files = [
+    {file = "metadataschemas-0.1.2-py3-none-any.whl", hash = "sha256:ea2af7bdacb29e4aa3fd599b99a118e62f6801c6385fc208b77bd1db3b84722a"},
+]
+
+[package.dependencies]
+datamodel-code-generator = {version = ">=0.25.7,<0.26.0", extras = ["http"]}
+openpyxl = ">=3.1.5,<4.0.0"
+pandas = ">=2.2.2,<3.0.0"
+pydantic = ">=2.8.0,<3.0.0"
+
+[package.source]
+type = "file"
+url = "../metadata-schemas/dist/metadataschemas-0.1.2-py3-none-any.whl"
+
+[[package]]
 name = "mypy-extensions"
 version = "1.0.0"
 description = "Type system extensions for programs checked with the mypy type checker."
@@ -1040,8 +1060,8 @@ files = [
 
 [package.dependencies]
 numpy = [
-    {version = ">=1.23.2", markers = "python_version == \"3.11\""},
     {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
+    {version = ">=1.23.2", markers = "python_version == \"3.11\""},
 ]
 python-dateutil = ">=2.8.2"
 pytz = ">=2020.1"
@@ -1256,8 +1276,8 @@ annotated-types = ">=0.4.0"
 email-validator = {version = ">=2.0.0", optional = true, markers = "extra == \"email\""}
 pydantic-core = "2.20.1"
 typing-extensions = [
-    {version = ">=4.6.1", markers = "python_version < \"3.13\""},
     {version = ">=4.12.2", markers = "python_version >= \"3.13\""},
+    {version = ">=4.6.1", markers = "python_version < \"3.13\""},
 ]
 
 [package.extras]
@@ -1802,4 +1822,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "2351d2f77507a557e6f433cceb06878bb89ae79b6fb65cd0ccf500596604cc44"
+content-hash = "00bfdf54c9c20604e654891e7354284dbc95c3b60c58d6fccdd338b4df0f306c"

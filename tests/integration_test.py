@@ -20,43 +20,96 @@ def test_projects_integration(metadata_editor):
     projects = metadata_editor.list_projects()
     num_original_projects = len(projects)
 
-    metadata_types = ["timeseries", "survey"]
-    create_functions = {
-        "timeseries": metadata_editor.create_and_log_timeseries,
-        "survey": metadata_editor.create_and_log_survey_microdata,
-    }
-    update_functions = {
-        "timeseries": metadata_editor.update_timeseries_by_id,
-        "survey": metadata_editor.update_survey_microdata_by_id,
-    }
+    metadata_types = ["timeseries", "survey_microdata"]
     creation_data = {
+        "document": {
+            "document_description": {
+                "title_statement": {"idno": "integration_test_document", "title": "integration_test_document"}
+            }
+        },
+        "geospatial": {
+            "description": {
+                "idno": "integration_test_geospatial",
+                "metadataStandardName": "integration_test_geospatial",
+            }
+        },
+        "script": {"doc_desc": {"idno": "integration_test_script"}},
+        "series": {"idno": "integration_test_series", "name": "integration_test_series"},
+        "survey_microdata": {
+            "repositoryid": "integration_test_survey_repository_id",
+            "study_desc": {
+                "title_statement": {"idno": "integration_test_survey_idno", "title": "integration_test_survey title"},
+                "study_info": {"nation": [{"name": "example_nation"}]},
+            },
+        },
+        "table": {
+            "table_description": {
+                "title_statement": {"idno": "integration_test_table", "title": "integration test table"}
+            }
+        },
         "timeseries": {
             "idno": "integration_test_timeseries",
             "series_description": {"idno": "integration_test_timeseries", "name": "integration_test_timeseries"},
         },
-        "survey": {
-            "repositoryid": "example_survey_repository_id",
-            "study_desc": {
-                "title_statement": {"idno": "example_survey_idno", "title": "survey_example_title"},
-                "study_info": {"nation": [{"name": "example_nation"}]},
-            },
+        "timeseries_db": {
+            "database_description": {
+                "title_statement": {
+                    "idno": "integration_test_timeseries_db",
+                    "title": "integration_test_timeseries_db title",
+                }
+            }
         },
+        "video": {"video_description": {"idno": "integration_test_video", "title": "integration_test_video title"}},
     }
     update_data = {
+        "document": {
+            "document_description": {
+                "title_statement": {"idno": "integration_test_document", "title": "integration_test_document_updated"}
+            }
+        },
+        "geospatial": {
+            "description": {
+                "idno": "integration_test_geospatial",
+                "metadataStandardName": "integration_test_geospatial_updated",
+            }
+        },
+        "script": {"doc_desc": {"idno": "integration_test_script", "title": "integration_test_script_updated"}},
+        "series": {"idno": "integration_test_series", "name": "integration_test_series_updated"},
+        "survey_microdata": {
+            "study_desc": {
+                "title_statement": {
+                    "idno": "integration_test_survey_idno",
+                    "title": "integration_test_survey title updated",
+                },
+                "study_info": {"nation": [{"name": "example_nation"}]},
+            }
+        },
+        "table": {
+            "table_description": {
+                "title_statement": {"idno": "integration_test_table", "title": "integration test table updated"}
+            }
+        },
         "timeseries": {
             "series_description": {"idno": "integration_test_timeseries", "name": "integration_test_timeseries_updated"}
         },
-        "survey": {
-            "study_desc": {
-                "title_statement": {"idno": "example_survey_idno", "title": "survey_example_title_updated"},
-                "study_info": {"nation": [{"name": "example_nation"}]},
+        "timeseries_db": {
+            "database_description": {
+                "title_statement": {
+                    "idno": "integration_test_timeseries_db",
+                    "title": "integration_test_timeseries_db title updated",
+                }
             }
+        },
+        "video": {
+            "video_description": {"idno": "integration_test_video", "title": "integration_test_video title updated"}
         },
     }
 
     for metadata_type in metadata_types:
         # create project
-        project_id = create_functions[metadata_type](**creation_data[metadata_type])
+        create_function = getattr(metadata_editor, "create_and_log_{}".format(metadata_type))
+        update_function = getattr(metadata_editor, "update_{}_by_id".format(metadata_type))
+        project_id = create_function(**creation_data[metadata_type])
         assert len(metadata_editor.list_projects()) == num_original_projects + 1
 
         # get project
@@ -65,12 +118,12 @@ def test_projects_integration(metadata_editor):
             assert project_metadata[k] == v
 
         # update project
-        update_functions[metadata_type](project_id, **update_data[metadata_type])
+        update_function(project_id, **update_data[metadata_type])
         project_metadata_updated = metadata_editor.get_project_by_id(project_id).metadata
         for k, v in update_data[metadata_type].items():
             assert project_metadata_updated[k] == v
 
-        # check project is searchable
+        # check project is searchable and updated
         title_contains_updated = metadata_editor.list_projects(keywords="updated")
         assert (
             project_id in title_contains_updated.index or str(project_id) in title_contains_updated.index

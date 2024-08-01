@@ -174,6 +174,16 @@ def test_list_projects(monkeypatch, metadata_editor):
     assert actual_projects.shape == (2, 1)
     assert actual_projects.columns == ["created"]
 
+    # bad then good metadata_type
+    with pytest.raises(AssertionError):
+        metadata_editor.list_projects(1, metadata_type="bad_type")
+    metadata_editor.list_projects(1, metadata_type="geospatial")
+
+    # bad then good sort_by
+    with pytest.raises(AssertionError):
+        metadata_editor.list_projects(1, sort_by="bad_key")
+    metadata_editor.list_projects(1, sort_by="title_asc")
+
 
 def test_get_project_by_id(monkeypatch, metadata_editor):
     # id is bad

@@ -207,13 +207,24 @@ class MetadataEditor(BaseModel, ExcelInterface):
         """
         return self._request("post", pth=pth, id=id, json=metadata)
 
-    def list_projects(self, keywords: Optional[Union[str, List[str]]] = None) -> pd.DataFrame:
+    def list_projects(
+        self,
+        keywords: Optional[Union[str, List[str]]] = None,
+        metadata_type: Optional[str] = None,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
+        sort_by: Optional[str] = None,
+    ) -> pd.DataFrame:
         """
         Lists all the projects associated with your API key.
 
         Args:
 
             keywords (optional str or list of str): Keywords for filtering projects by title and/or idno.
+            metadata_type (optional str): If given, only projects of this type are returned.
+            offset (optional int): Offset for pagination e.g. 10 to skip first 10 records.
+            limit (optional int): Page size e.g. 10 to show 10 records.
+            sort_by (optional str): valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
 
         Returns:
             pd.DataFrame: Projects sorted by the date on which they were created
@@ -222,6 +233,21 @@ class MetadataEditor(BaseModel, ExcelInterface):
         params = {}
         if keywords is not None:
             params["keywords"] = keywords
+        if metadata_type is not None:
+            metadata_type = metadata_type.lower()
+            assert (
+                metadata_type in self._metadata_types.keys()
+            ), f"{metadata_type} not found in {list(self._metadata_types.keys())}"
+            params["type"] = metadata_type.replace("_", "-")
+        if offset is not None:
+            params["offset"] = offset
+        if limit is not None:
+            params["limit"] = limit
+        if sort_by is not None:
+            sort_by = sort_by.lower()
+            valid_sort_by = ["title_asc", "title_desc", "updated_asc", "updated_desc"]
+            assert sort_by in valid_sort_by, f"{sort_by} not valid, must be one of {valid_sort_by}"
+            params["sort_by"] = sort_by
         response = self._get_request(pth=list_projects_get_path, params=params)
         try:
             projects = response["projects"]

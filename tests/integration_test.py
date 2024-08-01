@@ -129,11 +129,11 @@ def test_projects_integration(metadata_editor):
                 assert project_metadata_updated[k] == v
 
             # # check project is searchable and updated
-            # title_contains_updated = metadata_editor.list_projects(keywords="updated")
+            # title_contains_updated = metadata_editor.list_projects(keywords="updated", metadata_type=metadata_type)
             # assert (
             #     project_id in title_contains_updated.index or str(project_id) in title_contains_updated.index
             # ), title_contains_updated
-            # title_contains_bogus = metadata_editor.list_projects(keywords="bogus")
+            # title_contains_bogus = metadata_editor.list_projects(keywords="bogus", metadata_type=metadata_type)
             # assert (
             #     project_id not in title_contains_bogus.index and str(project_id) not in title_contains_bogus.index
             # ), title_contains_bogus

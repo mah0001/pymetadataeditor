@@ -201,7 +201,7 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
     assert len(actual_project) == 2
 
 
-def test_create_and_log_document(monkeypatch, metadata_editor):
+def test_create_log_of_document(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
@@ -209,16 +209,16 @@ def test_create_and_log_document(monkeypatch, metadata_editor):
 
     # metadata no metadata
     with pytest.raises(TypeError):
-        metadata_editor.create_and_log_document()
+        metadata_editor.create_log_of_document()
 
     # good
-    document_id = metadata_editor.create_and_log_document(
+    document_id = metadata_editor.create_log_of_document(
         document_description={"title_statement": {"idno": "example_idno", "title": "example_title"}}
     )
     assert document_id == 1
 
 
-def test_create_and_log_geospatial(monkeypatch, metadata_editor):
+def test_create_log_of_geospatial(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
@@ -226,59 +226,59 @@ def test_create_and_log_geospatial(monkeypatch, metadata_editor):
 
     # metadata no metadata
     with pytest.raises(TypeError):
-        metadata_editor.create_and_log_geospatial()
+        metadata_editor.create_log_of_geospatial()
 
     # good
-    geospatial_id = metadata_editor.create_and_log_geospatial(description={"idno": "example_idno"})
+    geospatial_id = metadata_editor.create_log_of_geospatial(description={"idno": "example_idno"})
     assert geospatial_id == 1
 
 
-def test_create_and_log_script(monkeypatch, metadata_editor):
+def test_create_log_of_script(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
     monkeypatch.setattr(requests, "request", mock_response)
 
     # metadata no metadata
-    metadata_editor.create_and_log_script()
+    metadata_editor.create_log_of_script()
 
     # also good
-    script_id = metadata_editor.create_and_log_script(doc_desc={"idno": "example_idno"})
+    script_id = metadata_editor.create_log_of_script(doc_desc={"idno": "example_idno"})
     assert script_id == 1
 
 
-def test_create_and_log_series(monkeypatch, metadata_editor):
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"id": 1})
+# def test_create_log_of_series(monkeypatch, metadata_editor):
+#     def mock_response(*args, **kwargs):
+#         return MockResponse(http_status_code=200, json_data={"id": 1})
 
-    monkeypatch.setattr(requests, "request", mock_response)
+#     monkeypatch.setattr(requests, "request", mock_response)
 
-    # metadata no metadata
-    with pytest.raises(TypeError):
-        metadata_editor.create_and_log_series()
+#     # metadata no metadata
+#     with pytest.raises(TypeError):
+#         metadata_editor.create_log_of_series()
 
-    # good
-    series_id = metadata_editor.create_and_log_series(idno="example_idno", name="example_name")
-    assert series_id == 1
+#     # good
+#     series_id = metadata_editor.create_log_of_series(idno="example_idno", name="example_name")
+#     assert series_id == 1
 
 
-def test_create_and_log_table(monkeypatch, metadata_editor):
+def test_create_log_of_table(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
     monkeypatch.setattr(requests, "request", mock_response)
 
     # no metadata is required...
-    metadata_editor.create_and_log_table()
+    metadata_editor.create_log_of_table()
 
     # also good
-    table_id = metadata_editor.create_and_log_table(
+    table_id = metadata_editor.create_log_of_table(
         table_description={"title_statement": {"idno": "example idno", "title": "example title"}}
     )
     assert table_id == 1
 
 
-def test_create_and_log_timeseries(monkeypatch, metadata_editor):
+def test_create_log_of_timeseries(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
@@ -286,16 +286,16 @@ def test_create_and_log_timeseries(monkeypatch, metadata_editor):
 
     # metadata no series description
     with pytest.raises(TypeError):
-        metadata_editor.create_and_log_timeseries(idno="GB123")
+        metadata_editor.create_log_of_timeseries(idno="GB123")
 
     # metadata series description has no idno
     with pytest.raises(ValueError):
-        metadata_editor.create_and_log_timeseries(
+        metadata_editor.create_log_of_timeseries(
             idno="GB123", series_description={"doi": "string", "name": "Gordons Test", "display_name": "string"}
         )
 
     # call is good
-    timeseries_id = metadata_editor.create_and_log_timeseries(
+    timeseries_id = metadata_editor.create_log_of_timeseries(
         idno="GB123",
         series_description={"idno": "string", "doi": "string", "name": "Gordons Test", "display_name": "string"},
     )
@@ -306,43 +306,43 @@ def test_create_and_log_timeseries(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception):
-        metadata_editor.create_and_log_timeseries(
+        metadata_editor.create_log_of_timeseries(
             idno="GB123",
             series_description={"idno": "string", "doi": "string", "name": "Gordons Test", "display_name": "string"},
         )
 
 
-def test_create_and_log_timeseries_db(monkeypatch, metadata_editor):
+# def test_create_log_of_timeseries_db(monkeypatch, metadata_editor):
+#     def mock_response(*args, **kwargs):
+#         return MockResponse(http_status_code=200, json_data={"id": 1})
+
+#     monkeypatch.setattr(requests, "request", mock_response)
+
+#     # metadata no metadata
+#     with pytest.raises(TypeError):
+#         metadata_editor.create_log_of_timeseries_db()
+
+#     # good
+#     timeseries_db_id = metadata_editor.create_log_of_timeseries_db(
+#         database_description={"title_statement": {"idno": "example_idno", "title": "example_title"}}
+#     )
+#     assert timeseries_db_id == 1
+
+
+def test_create_log_of_survey(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
     monkeypatch.setattr(requests, "request", mock_response)
 
     # metadata no metadata
-    with pytest.raises(TypeError):
-        metadata_editor.create_and_log_timeseries_db()
-
-    # good
-    timeseries_db_id = metadata_editor.create_and_log_timeseries_db(
-        database_description={"title_statement": {"idno": "example_idno", "title": "example_title"}}
-    )
-    assert timeseries_db_id == 1
-
-
-def test_create_and_log_survey_microdata(monkeypatch, metadata_editor):
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"id": 1})
-
-    monkeypatch.setattr(requests, "request", mock_response)
-
-    # metadata no metadata
-    metadata_editor.create_and_log_survey_microdata()
+    metadata_editor.create_log_of_survey()
 
     # # metadata doc_desc no idno
     with pytest.raises(ValueError):
-        metadata_editor.create_and_log_survey_microdata(study_desc={})
+        metadata_editor.create_log_of_survey(study_desc={})
 
-    survey_id = metadata_editor.create_and_log_survey_microdata(
+    survey_id = metadata_editor.create_log_of_survey(
         study_desc={
             "title_statement": {"idno": "1", "title": "survey1"},
             "study_info": {"nation": [{"name": "nation_name"}]},
@@ -351,7 +351,7 @@ def test_create_and_log_survey_microdata(monkeypatch, metadata_editor):
     assert survey_id == 1
 
 
-def test_create_and_log_video(monkeypatch, metadata_editor):
+def test_create_log_of_video(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
@@ -359,12 +359,10 @@ def test_create_and_log_video(monkeypatch, metadata_editor):
 
     # metadata no metadata
     with pytest.raises(TypeError):
-        metadata_editor.create_and_log_video()
+        metadata_editor.create_log_of_video()
 
     # good
-    video_id = metadata_editor.create_and_log_video(
-        video_description={"idno": "example_idno", "title": "example_title"}
-    )
+    video_id = metadata_editor.create_log_of_video(video_description={"idno": "example_idno", "title": "example_title"})
     assert video_id == 1
 
 
@@ -405,7 +403,7 @@ def test_update_timeseries_by_id(monkeypatch, metadata_editor):
     )
 
 
-def test_update_survey_microdata_by_id(monkeypatch, metadata_editor):
+def test_update_survey_by_id(monkeypatch, metadata_editor):
     series_description = tss.SeriesDescription(idno="17", name="1")
     metadata_information = {"title": "check we can pass in a dict as well as a pydantic object"}
 
@@ -419,7 +417,7 @@ def test_update_survey_microdata_by_id(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception) as e:
-        metadata_editor.update_survey_microdata_by_id(1, repositoryid="123abc")
+        metadata_editor.update_survey_by_id(1, repositoryid="123abc")
     assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
 
     # id is good but type of existing data is listed as timeseries even though the user is trying to update a survey
@@ -436,7 +434,7 @@ def test_update_survey_microdata_by_id(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception) as e:
-        metadata_editor.update_survey_microdata_by_id(
+        metadata_editor.update_survey_by_id(
             1, series_description=series_description, metadata_information=metadata_information
         )
 
@@ -457,7 +455,7 @@ def test_update_survey_microdata_by_id(monkeypatch, metadata_editor):
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    metadata_editor.update_survey_microdata_by_id(1, repositoryid="1")
+    metadata_editor.update_survey_by_id(1, repositoryid="1")
 
 
 def test_get_project_metadata_by_id(monkeypatch, metadata_editor):

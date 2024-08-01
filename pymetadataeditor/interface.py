@@ -258,7 +258,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
             Union[BaseModel, Dict]: The metadata as either a dictionary or an object.
         """
         project = self.get_project_by_id(id=id)
-        project_type = project["type"]
+        project_type = project["type"].replace("-", "_")
         assert project_type in self._metadata_types, (
             f"this project is listed as a '{project_type}' type project but this is"
             f" unknown. Projects must be one of {list(self._metadata_types.keys())}"
@@ -280,7 +280,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
             An Excel file containing the metadata from the pydantic object. The file can be updated as needed.
         """
         project = self.get_project_by_id(id=id)
-        project_type = project["type"].lower()
+        project_type = project["type"].lower().replace("-", "_")
         assert project_type in self._metadata_types, (
             f"this project is listed as a '{project_type}' type project but this is"
             f" unknown. Projects must be one of {list(self._metadata_types.keys())}"
@@ -366,7 +366,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
         """
         metadata_type = metadata_type.lower()
         ob = self.read_metadata_excel(metadata_type=metadata_type, filename=filename)
-        return self._create_log(ob.model_dump(), metadata_type)
+        return self._create_log(ob.model_dump(), metadata_type.replace("_", "-"))
 
     def create_log_of_document_from_excel(self, filename: str) -> int:
         return self.create_log_from_excel("document", filename=filename)
@@ -388,8 +388,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
         return self.create_log_from_excel("timeseries", filename=filename)
 
     def create_log_of_timeseries_db_from_excel(self, filename: str) -> int:
-        raise NotImplementedError("timeseries_db metadata are not accepted by the API.")
-        # return self.create_log_from_excel("timeseries_db", filename=filename)
+        return self.create_log_from_excel("timeseries_db", filename=filename)
 
     def create_log_of_video_from_excel(self, filename: str) -> int:
         return self.create_log_from_excel("video", filename=filename)
@@ -772,30 +771,29 @@ class MetadataEditor(BaseModel, ExcelInterface):
         provenance: Optional[List[Union[Dict, timeseries_db_schema.ProvenanceSchema]]] = None,
         additional: Optional[Dict[str, Any]] = None,
     ) -> int:
-        raise NotImplementedError("timeseries_db metadata are not accepted by the API.")
-        # """
-        # Creates a record of your *timeseries database* metadata
+        """
+        Creates a record of your *timeseries database* metadata
 
-        # Args:
-        #     database_description (DatabaseDescription or Dictionary): Database Description. This field is required.
-        #     published (Optional[int]): Status - 0=draft, 1=published. Defaults to 0.
-        #     overwrite (Optional[Overwrite or str]): Overwrite database if already exists?. Defaults to 'no'.
-        #     metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information.
-        #     provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance.
-        #     additional (Optional[Dict[str, Any]]): Additional custom metadata.
+        Args:
+            database_description (DatabaseDescription or Dictionary): Database Description. This field is required.
+            published (Optional[int]): Status - 0=draft, 1=published. Defaults to 0.
+            overwrite (Optional[Overwrite or str]): Overwrite database if already exists?. Defaults to 'no'.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance.
+            additional (Optional[Dict[str, Any]]): Additional custom metadata.
 
-        # Returns:
-        #     int: The ID of the newly created timeseries database metadata
-        # """
-        # timeseries_db_metadata = {
-        #     "published": published,
-        #     "overwrite": overwrite,
-        #     "metadata_information": metadata_information,
-        #     "database_description": database_description,
-        #     "provenance": provenance,
-        #     "additional": additional,
-        # }
-        # return self._create_log(timeseries_db_metadata, "timeseries_db")
+        Returns:
+            int: The ID of the newly created timeseries database metadata
+        """
+        timeseries_db_metadata = {
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "database_description": database_description,
+            "provenance": provenance,
+            "additional": additional,
+        }
+        return self._create_log(timeseries_db_metadata, "timeseries_db")
 
     def create_log_of_survey(
         self,
@@ -963,7 +961,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
         validate_metadata(metadata, self._metadata_types[metadata_type])
         md = self._metadata_types[metadata_type](**metadata)
 
-        post_request_pth = f"/editor/create/{metadata_type}"
+        post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
         ret = self._post_request(pth=post_request_pth, metadata=md.model_dump(exclude_none=True, exclude_unset=True))
         return ret["id"]
 
@@ -1009,8 +1007,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
         self.update_by_id_from_excel(id=id, metadata_type="timeseries", filename=filename)
 
     def update_timeseries_db_by_id_from_excel(self, id: int, filename: str):
-        raise NotImplementedError("timeseries_db metadata are not accepted by the API.")
-        # self.update_by_id_from_excel(id = id, metadata_type='timeseries_db', filename=filename)
+        self.update_by_id_from_excel(id=id, metadata_type="timeseries_db", filename=filename)
 
     def update_video_by_id_from_excel(self, id: int, filename: str):
         self.update_by_id_from_excel(id=id, metadata_type="video", filename=filename)
@@ -1437,34 +1434,33 @@ class MetadataEditor(BaseModel, ExcelInterface):
         provenance: Optional[List[Union[Dict, timeseries_db_schema.ProvenanceSchema]]] = None,
         additional: Optional[Dict[str, Any]] = None,
     ):
-        raise NotImplementedError("timeseries_db metadata are not accepted by the API.")
-        # """
-        # Updates a record of your *timeseries database* metadata by ID
+        """
+        Updates a record of your *timeseries database* metadata by ID
 
-        # Args:
-        #     id (int): The ID of the timeseries database to update.
-        #     published (Optional[int]): Status - 0=draft, 1=published. Leave blank if you don't want to replace the
-        #         existing values.
-        #     overwrite (Optional[Overwrite or str]): Overwrite database if already exists?. Leave blank if you don't
-        #         want to replace the existing values.
-        #     metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information. Leave
-        #         blank if you don't want to replace the existing values.
-        #     database_description (Optional[DatabaseDescription or Dictionary]): Database Description. Leave blank if
-        #         you don't want to replace the existing values.
-        #     provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance. Leave blank if you don't want to
-        #         replace the existing values.
-        #     additional (Optional[Dict[str, Any]]): Additional custom metadata. Leave blank if you don't want to
-        #         replace the existing values.
-        # """
-        # update_data = {
-        #     "published": published,
-        #     "overwrite": overwrite,
-        #     "metadata_information": metadata_information,
-        #     "database_description": database_description,
-        #     "provenance": provenance,
-        #     "additional": additional,
-        # }
-        # self._update_by_id(id, "timeseries_db", update_data)
+        Args:
+            id (int): The ID of the timeseries database to update.
+            published (Optional[int]): Status - 0=draft, 1=published. Leave blank if you don't want to replace the
+                existing values.
+            overwrite (Optional[Overwrite or str]): Overwrite database if already exists?. Leave blank if you don't
+                want to replace the existing values.
+            metadata_information (Optional[MetadataInformation or Dictionary]): Document metadata information. Leave
+                blank if you don't want to replace the existing values.
+            database_description (Optional[DatabaseDescription or Dictionary]): Database Description. Leave blank if
+                you don't want to replace the existing values.
+            provenance (Optional[List[ProvenanceSchema or Dictionary]]): Provenance. Leave blank if you don't want to
+                replace the existing values.
+            additional (Optional[Dict[str, Any]]): Additional custom metadata. Leave blank if you don't want to
+                replace the existing values.
+        """
+        update_data = {
+            "published": published,
+            "overwrite": overwrite,
+            "metadata_information": metadata_information,
+            "database_description": database_description,
+            "provenance": provenance,
+            "additional": additional,
+        }
+        self._update_by_id(id, "timeseries_db", update_data)
 
     def update_survey_by_id(
         self,
@@ -1595,7 +1591,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
     def _update_by_id(self, id: int, expected_project_type: str, new_metadata: Dict[str, Any]):
         assert expected_project_type in self._metadata_types
         project_data = self.get_project_by_id(id)
-        project_type = project_data["type"]
+        project_type = project_data["type"].replace("-", "_")
         assert project_type in self._metadata_types, (
             f"this project is listed as a '{project_type}' type project but this is"
             f" unknown. Projects must be one of {list(self._metadata_types.keys())}"
@@ -1610,7 +1606,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
         new_metadata = standardize_keys_in_dict(new_metadata)
         md = update_metadata(md, **new_metadata)
 
-        post_request_template_path = f"/editor/update/{project_type}/" + "{}"
+        post_request_template_path = f"/editor/update/{project_type.replace('_', '-')}/" + "{}"
         self._post_request(
             post_request_template_path, id=id, metadata=md.model_dump(exclude_none=True, exclude_unset=True)
         )

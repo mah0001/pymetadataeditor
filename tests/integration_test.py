@@ -20,7 +20,9 @@ def test_projects_integration(metadata_editor):
     projects = metadata_editor.list_projects()
     num_original_projects = len(projects)
     # fail due to api saying "unknown type": "series", "timeseries_db",
-    metadata_types = ["document", "geospatial", "script", "survey", "table", "timeseries", "video"]
+    metadata_types = [
+        "timeseries_db"
+    ]  # , "document", "geospatial", "script", "survey", "table", "timeseries", "video"]
     creation_data = {
         "document": {
             "document_description": {

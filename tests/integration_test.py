@@ -17,8 +17,13 @@ def metadata_editor():
 def test_projects_integration(metadata_editor):
     """Do not use pytest.mark.parametrize since parallel runs cause the counts of projects to be off"""
 
-    projects = metadata_editor.list_projects()
+    projects = metadata_editor.list_projects(limit="all")
     num_original_projects = len(projects)
+    assert min(10, num_original_projects) == len(metadata_editor.list_projects(limit=10))
+    assert num_original_projects - 1 == len(metadata_editor.list_projects(limit="all", offset=1))
+    assert num_original_projects >= len(metadata_editor.list_projects(metadata_type="timeseries"))
+    assert num_original_projects == len(metadata_editor.list_projects(sort_by="updated_asc"))
+
     # fail due to api saying "unknown type": "series", "timeseries_db",
     metadata_types = [
         "timeseries_db"
@@ -169,51 +174,73 @@ def test_collections_integration(metadata_editor):
     collection_id = metadata_editor.create_collection(title=collection_title, description=collection_description)
     assert len(metadata_editor.list_collections()) == num_original_collections + 1
 
-    # get collection
-    new_collection = metadata_editor.get_collection_by_id(collection_id)
-    new_collection.title = collection_title
-    new_collection.description = collection_description
+    try:
+        # get collection
+        new_collection = metadata_editor.get_collection_by_id(collection_id)
+        new_collection.title = collection_title
+        new_collection.description = collection_description
 
-    # update_collection
-    collection_title_updated = "integration_test_collection_updated"
-    metadata_editor.update_collection(id=collection_id, title=collection_title_updated)
-    updated_collection = metadata_editor.get_collection_by_id(collection_id)
-    updated_collection.title = collection_title_updated
-    updated_collection.description = collection_description
+        # update_collection
+        collection_title_updated = "integration_test_collection_updated"
+        metadata_editor.update_collection(id=collection_id, title=collection_title_updated)
+        updated_collection = metadata_editor.get_collection_by_id(collection_id)
+        updated_collection.title = collection_title_updated
+        updated_collection.description = collection_description
 
-    collection_description_updated = "integration_test_collection_updated"
-    metadata_editor.update_collection(id=collection_id, description=collection_description_updated)
-    updated_collection = metadata_editor.get_collection_by_id(collection_id)
-    updated_collection.title = collection_title_updated
-    updated_collection.description = collection_description_updated
+        collection_description_updated = "integration_test_collection_updated"
+        metadata_editor.update_collection(id=collection_id, description=collection_description_updated)
+        updated_collection = metadata_editor.get_collection_by_id(collection_id)
+        updated_collection.title = collection_title_updated
+        updated_collection.description = collection_description_updated
 
-    # count projects in collection (should be zero)
-    initial_projects_collection = metadata_editor.list_projects_in_collection(collection_id)
-    assert len(initial_projects_collection) == 0, f"expected zero projects but got {initial_projects_collection}"
+        # count projects in collection (should be zero)
+        initial_projects_collection = metadata_editor.list_projects_in_collection(collection_id)
+        assert len(initial_projects_collection) == 0, f"expected zero projects but got {initial_projects_collection}"
 
-    # create a project and add it to the collection by id
-    project_idno = "project for collection integration test"
-    project_name = "project for collection integration test"
-    project_id = metadata_editor.create_and_log_timeseries(
-        idno=project_idno, series_description={"idno": project_idno, "name": project_name}
-    )
-    metadata_editor.add_projects_to_collection(collection_id, "id", project_id)
+        # create a project and add it to the collection by id
+        project_idno = "project for collection integration test"
+        project_name = "project for collection integration test"
+        project_id = metadata_editor.create_log_of_timeseries(
+            idno=project_idno, series_description={"idno": project_idno, "name": project_name}
+        )
+        try:
+            metadata_editor.add_projects_to_collection(collection_id, "id", project_id)
 
-    # check the project can be found
-    oneproject_collection = metadata_editor.list_projects_in_collection(collection_id)
-    assert len(oneproject_collection) == 1
-    assert oneproject_collection.iloc[0].idno == project_idno
-    good_search = metadata_editor.list_projects_in_collection(collection_id, keywords="integration")
-    assert len(good_search) == 1
-    assert good_search.iloc[0].idno == project_idno
-    bad_search = metadata_editor.list_projects_in_collection(collection_id, keywords="bogus")
-    assert len(bad_search) == 0
+            # check the project can be found
+            oneproject_collection = metadata_editor.list_projects_in_collection(collection_id)
+            assert len(oneproject_collection) == 1
+            assert oneproject_collection.iloc[0].idno == project_idno
+            good_search = metadata_editor.list_projects_in_collection(collection_id, keywords="integration")
+            assert len(good_search) == 1
+            good_search = metadata_editor.list_projects_in_collection(
+                collection_id, keywords=["project", "integration"]
+            )
+            assert len(good_search) == 1
+            good_search = metadata_editor.list_projects_in_collection(collection_id, keywords="project integration")
+            assert len(good_search) == 1
+            assert good_search.iloc[0].idno == project_idno
+            bad_search = metadata_editor.list_projects_in_collection(collection_id, keywords="bogus")
+            assert len(bad_search) == 0
+            good_search = metadata_editor.list_projects_in_collection(collection_id, limit="all")
+            assert len(good_search) == 1
+            good_search = metadata_editor.list_projects_in_collection(collection_id, limit=10)
+            assert len(good_search) == 1
+            good_search = metadata_editor.list_projects_in_collection(collection_id, offset=1)
+            assert len(good_search) == 0
+            good_search = metadata_editor.list_projects_in_collection(collection_id, sort_by="updated_asc")
+            assert len(good_search) == 1
 
-    # remove that project by idno
-    metadata_editor.remove_projects_from_collection(collection_id, "idno", project_idno)
-    final_collection = metadata_editor.list_projects_in_collection(collection_id)
-    assert len(final_collection) == 0
-    metadata_editor.delete_project_by_id(project_id)
+            # remove that project by idno
+            metadata_editor.remove_projects_from_collection(collection_id, "idno", project_idno)
+            final_collection = metadata_editor.list_projects_in_collection(collection_id)
+            assert len(final_collection) == 0
+        except Exception as e:
+            metadata_editor.delete_project_by_id(project_id)
+            raise e
+        metadata_editor.delete_project_by_id(project_id)
+    except Exception as e:
+        metadata_editor.delete_collection_by_id(collection_id)
+        raise e
 
     # delete collection
     metadata_editor.delete_collection_by_id(collection_id)

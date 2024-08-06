@@ -173,8 +173,8 @@ class MetadataEditor(BaseModel, ExcelInterface):
                 raise Exception(f"Status Code: {response.status_code}, Response: {response.text}") from e
         try:
             json_response = response.json()
-        except JSONDecodeError as e:
-            raise json.JSONDecodeError(
+        except (JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
+            raise JSONDecodeError(
                 f"Error decoding JSON response: {e.msg}\nFull Response: {response}", e.doc, e.pos
             ) from e
         # if self.verify_ssl == False:
@@ -211,8 +211,8 @@ class MetadataEditor(BaseModel, ExcelInterface):
         self,
         keywords: Optional[Union[str, List[str]]] = None,
         metadata_type: Optional[str] = None,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
+        offset: int = 0,
+        limit: Union[int, str] = 100,
         sort_by: Optional[str] = None,
     ) -> pd.DataFrame:
         """
@@ -222,16 +222,35 @@ class MetadataEditor(BaseModel, ExcelInterface):
 
             keywords (optional str or list of str): Keywords for filtering projects by title and/or idno.
             metadata_type (optional str): If given, only projects of this type are returned.
-            offset (optional int): Offset for pagination e.g. 10 to skip first 10 records.
-            limit (optional int): Page size e.g. 10 to show 10 records.
+            offset (int): Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
+            limit (int or str): Page size e.g. 10 to show 10 records. Default is 100.
+                If limit='All' then all records are retrieved.
             sort_by (optional str): valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
 
         Returns:
-            pd.DataFrame: Projects sorted by the date on which they were created
+            pd.DataFrame: Information about the projects
         """
+        if isinstance(limit, str):
+            assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
+            new_offset = offset
+            new_limit = 100
+            dfs = []
+            while True:
+                df = self.list_projects(
+                    keywords=keywords, metadata_type=metadata_type, offset=new_offset, limit=new_limit, sort_by=sort_by
+                )
+                dfs.append(df)
+                if len(df) < new_limit:
+                    break
+                new_offset += new_limit
+            return pd.concat(dfs)
+
         list_projects_get_path = "/editor"
-        params = {}
+        params = {"offset": offset, "limit": limit}
         if keywords is not None:
+            if not isinstance(keywords, str) and isinstance(keywords, Iterable):
+                keywords = "%".join(keywords)
+            keywords = keywords.replace(" ", "%")
             params["keywords"] = keywords
         if metadata_type is not None:
             metadata_type = metadata_type.lower()
@@ -239,21 +258,18 @@ class MetadataEditor(BaseModel, ExcelInterface):
                 metadata_type in self._metadata_types.keys()
             ), f"{metadata_type} not found in {list(self._metadata_types.keys())}"
             params["type"] = metadata_type.replace("_", "-")
-        if offset is not None:
-            params["offset"] = offset
-        if limit is not None:
-            params["limit"] = limit
         if sort_by is not None:
             sort_by = sort_by.lower()
             valid_sort_by = ["title_asc", "title_desc", "updated_asc", "updated_desc"]
             assert sort_by in valid_sort_by, f"{sort_by} not valid, must be one of {valid_sort_by}"
             params["sort_by"] = sort_by
         response = self._get_request(pth=list_projects_get_path, params=params)
+        # return response
         try:
             projects = response["projects"]
-            projects = pd.DataFrame.from_dict(projects).set_index("id").sort_values("created")
+            projects = pd.DataFrame.from_dict(projects).set_index("id")
         except KeyError:  # is this the best way to cope with times when there are no projects?
-            return pd.DataFrame(columns=["id", "created"]).set_index("id").sort_values("created")
+            return pd.DataFrame(columns=["id", "created"]).set_index("id")
         return projects
 
     def get_project_by_id(self, id: int) -> pd.Series:
@@ -354,7 +370,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
         # check that the entity was deleted
         try:
             checker_fn(id)
-        except PermissionError:
+        except (PermissionError, JSONDecodeError):
             pass  # evidently the entity was deleted because now it can't be found
         # except JSONDecodeError as e:
 
@@ -1642,12 +1658,12 @@ class MetadataEditor(BaseModel, ExcelInterface):
         Lists all the collections associated with your API key.
 
         Returns:
-            pd.DataFrame: Collections sorted by the date on which they were created
+            pd.DataFrame: Collection information
         """
         response = self._get_request("collections")
         if "collections" not in response or len(response["collections"]) == 0:
             return pd.DataFrame([], columns=["id", "title", "created"]).set_index("id")
-        return pd.DataFrame(response["collections"]).set_index("id").sort_values("created")
+        return pd.DataFrame(response["collections"]).set_index("id")
 
     def get_collection_by_id(self, id: int) -> pd.Series:
         """
@@ -1702,7 +1718,12 @@ class MetadataEditor(BaseModel, ExcelInterface):
         self._post_request("collections/update/{}", id=id, metadata=metadata)
 
     def list_projects_in_collection(
-        self, collection: int, keywords: Optional[Union[str, List[str]]] = None
+        self,
+        collection: int,
+        keywords: Optional[Union[str, List[str]]] = None,
+        offset: int = 0,
+        limit: Union[int, str] = 100,
+        sort_by: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Retrieve projects that have been added to the given collection.
@@ -1710,16 +1731,48 @@ class MetadataEditor(BaseModel, ExcelInterface):
         Args:
 
             collection (int):
-                The id of the collection
+                The id of the collection.
+            keyword (optional str):
+                filter projects based on whether the project title or idno contains this keyword
+            offset (int):
+                Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
+            limit (int):
+                The maximum number of projects to return, defaults to 100.
+                If limit='All' then all records are retrieved.
+            sort_by (optional str): valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
 
         Returns:
 
             pd.DataFrame:
-                Information on the projects in the collection, such as id, idno, title and type
+                Information on the projects in the collection, such as id, idno, title and type.
         """
-        params = {"limit": 100}
+
+        if isinstance(limit, str):
+            assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
+            new_offset = offset
+            new_limit = 100
+            dfs = []
+            while True:
+                df = self.list_projects_in_collection(
+                    collection=collection, keywords=keywords, offset=new_offset, limit=new_limit, sort_by=sort_by
+                )
+                dfs.append(df)
+                if len(df) < new_limit:
+                    break
+                new_offset += new_limit
+            return pd.concat(dfs)
+
+        params = {"limit": limit, "offset": offset}
         if keywords is not None:
+            if not isinstance(keywords, str) and isinstance(keywords, Iterable):
+                keywords = "%".join(keywords)
+            keywords = keywords.replace(" ", "%")
             params["keywords"] = keywords
+        if sort_by is not None:
+            sort_by = sort_by.lower()
+            valid_sort_by = ["title_asc", "title_desc", "updated_asc", "updated_desc"]
+            assert sort_by in valid_sort_by, f"{sort_by} not valid, must be one of {valid_sort_by}"
+            params["sort_by"] = sort_by
         ret = self._get_request("editor?collection={}", id=collection, params=params)
         if ret["total"] > ret["limit"]:
             warnings.warn(
@@ -1758,12 +1811,6 @@ class MetadataEditor(BaseModel, ExcelInterface):
 
             AssertionError
                 If `id_format` is not 'id' or 'idno'.
-
-            ValueError
-                If a specified collection ID does not exist.
-
-            ValueError
-                If a specified project ID or idno does not exist.
 
             AssertionError
                 If a project ID is not an integer when `id_format` is 'id'.
@@ -1804,6 +1851,9 @@ class MetadataEditor(BaseModel, ExcelInterface):
         of project idnos. The `id_format` parameter specifies whether the project identifiers
         are in the form of IDs or idnos.
 
+        Note that if the project(s) are not in the collection there is no error raised since either way the project
+            will not be in the collection after this function executes
+
         Args
 
             collection : Union[int, List[int]]
@@ -1820,9 +1870,6 @@ class MetadataEditor(BaseModel, ExcelInterface):
 
             AssertionError
                 If `id_format` is not 'id' or 'idno'.
-
-            ValueError
-                If a specified collection ID does not exist.
 
             AssertionError
                 If a project ID is not an integer when `id_format` is 'id'.
@@ -1849,7 +1896,7 @@ class MetadataEditor(BaseModel, ExcelInterface):
 
         self._post_request(
             "collections/remove_projects",
-            metadata={"collection_id": collection, "id_format": id_format, "projects": projects},
+            metadata={"collections": collection, "id_format": id_format, "projects": projects},
         )
 
     def list_templates(self) -> pd.DataFrame:

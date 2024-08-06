@@ -176,13 +176,15 @@ def test_list_projects(monkeypatch, metadata_editor):
 
     # bad then good metadata_type
     with pytest.raises(AssertionError):
-        metadata_editor.list_projects(1, metadata_type="bad_type")
-    metadata_editor.list_projects(1, metadata_type="geospatial")
+        metadata_editor.list_projects(metadata_type="bad_type")
+    metadata_editor.list_projects(metadata_type="geospatial")
 
     # bad then good sort_by
     with pytest.raises(AssertionError):
-        metadata_editor.list_projects(1, sort_by="bad_key")
-    metadata_editor.list_projects(1, sort_by="title_asc")
+        metadata_editor.list_projects(sort_by="bad_key")
+    metadata_editor.list_projects(sort_by="title_asc")
+
+    assert len(metadata_editor.list_projects(limit="all")) == 2
 
 
 def test_get_project_by_id(monkeypatch, metadata_editor):

@@ -171,7 +171,9 @@ class APInterface(BaseModel):
 class MetadataEditor:
     def __init__(self, api_url: str, api_key: str, allow_http: bool = False, verify_ssl: bool = True):
         """
-        MetadataEditor allows you to list and create projects in a metadata database.
+        MetadataEditor allows you to list, create, update and delete projects, manage collections and list templates in
+          a metadata database.
+
         First obtain an API key.
 
         Then run
@@ -180,13 +182,15 @@ class MetadataEditor:
 
             api_url = <Generally the required URL looks like:
                 'https://<name_of_your_metadata_database>.org/index.php/api'>
-            api_key = "<the api key you generated for accessing the metadata database"
+            api_key = "<the api key you generated for accessing the metadata database>"
             me = MetadataEditor(api_url = api_url, api_key = api_key)
 
         Then you can list and create new projects like so:
 
             me.list_projects()
-            me.create_timeseries(idno = "<unique id of your metadata>", series_description = {...}, ...)
+            dict_of_timeseries = me.outline_metadata("timeseries", "dict")
+            <update the timeseries metadata dictionary as needed>
+            me.create_log("timeseries", dict_of_timeseries)
         """
         self._apinterface = APInterface(api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl)
         self._ei = ExcelInterface()
@@ -273,6 +277,9 @@ class MetadataEditor:
         Args:
             id (int): the id of the project, not to be confused with the idno.
 
+        Returns:
+            pd.Series: project information
+
         Raises:
             Exception: You don't have permission to access this project - often this means the id is incorrect
         """
@@ -292,9 +299,9 @@ class MetadataEditor:
         """
         Args:
             id (int): the id of the project, not to be confused with the idno.
-            mode (str)
-            exclude_unset (bool): when returning a dictionary (that is when mode='dict'), then if True the fields
-                that were not set or have a None value are removed from the dictionary. Defaults to True
+            mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
+            exclude_unset (bool): when mode=='dict', then if exclude_unset is True the fields that were not set or have
+                a None value are removed from the dictionary. Defaults to True
             filename (Optional[str]): If mode=='excel' then this is the path to the Excel file.
                 If None and mode=='excel', defaults to {metadata_type}_metadata.xlsx
             title (Optional[str]): If mode=='excel' then the title for the Excel sheet.
@@ -361,7 +368,7 @@ class MetadataEditor:
 
     def _delete_by_id(self, pth: str, id: Union[int, str], checker_fn: Callable[[int], pd.Series]):
         """
-        Internal, generic method for deleting either collections or projects
+        Internal, generic method for deleting either collections or projects or similar.
         """
         # first check that the project/collection is there to be deleted
         checker_fn(id)
@@ -382,10 +389,40 @@ class MetadataEditor:
 
     def outline_metadata(
         self, metadata_type: str, mode: str, filename: Optional[str] = None, title: Optional[str] = None
-    ) -> Union[Path, Dict, BaseModel]:
+    ) -> Union[Dict, BaseModel, Path]:
         """
-        filename (Optional[str]): The path to the Excel file. If None, defaults to {metadata_type}_metadata.xlsx
-        title (Optional[str]): The title for the Excel sheet. If None, defaults to '{metadata_type} Metadata'
+        Creates a skeleton outline of a given metadata type. Since the metadata can be quite complex, this function
+        creates all the possible fields and their subfields.
+
+        Args:
+            metadata_type (str):
+                The name of a supported metadata type, currently:
+                    document, script, series, survey, table, timeseries, timeseries_DB, video
+                Currently not supported:
+                    geospatial, image
+            mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
+            filename (Optional[str]): If mode=='excel', the path to the Excel file.
+                If None, defaults to {metadata_type}_metadata.xlsx
+            title (Optional[str]): If mode=='excel', the title for the Excel sheet.
+                If None, defaults to '{metadata_type} Metadata'
+
+        Returns:
+            Union[Dict, BaseModel, str]:
+                If mode == 'dict', a dictionary is returned.
+                If mode == 'pydantic', a pydantic model object is returned.
+                If mode=='excel' then the metadata was saved to a file and the filename is returned.
+
+        Examples:
+
+            me = MetadataEditor(api_url=..., api_key=...)
+
+            timeseries_dict = me.outline_metadata("timeseries", "dict")
+            timeseries_dict['metadata_information']['idno'] = "my_idno"
+
+            timeseries_pydantic = me.outline_metadata("timeseries", "pydantic")
+            timeseries_pydantic.metadata_information.idno = "my_idno"
+
+            path_to_timeseries_excel_file = me.outline_metadata("timeseries", "excel")
         """
         assert metadata_type in self._metadata_types, (
             f"this project is listed as a '{metadata_type}' type project but this is"
@@ -411,6 +448,19 @@ class MetadataEditor:
                 return pydantic_object.model_dump(mode="json")
 
     def print_metadata(self, metadata: Union[Dict, BaseModel, str], metadata_type: Optional[str] = None):
+        """
+        Helper function to nicely print the metedata.
+
+        Args:
+            metadata (dictionary or BaseModel or str):
+                If str, it's assumed this is a path to an appropriately formatted Excel file
+            metadata_type (optional str):
+                If the metadata is passed as an Excel file then the type of metadata it contains must be given.
+                Excel supported metadata types are:
+                    document, script, series, survey, table, timeseries, timeseries_DB, video
+                Currently not supported for Excel:
+                    geospatial, image
+        """
         if isinstance(metadata, str):
             assert metadata_type in self._metadata_types, (
                 f"this project is listed as a '{metadata_type}' type project but this is"
@@ -431,7 +481,8 @@ class MetadataEditor:
                 the name of a supported metadata type, currently:
                     document, script, series, survey, table, timeseries, timeseries_DB, video
                 Currently not supported:
-                    geospatial, image
+                    image
+                Note that geospatial is supported when the metadata is a dict or pydantic model, but not as Excel file.
             metadata (dictionary or BaseModel or str):
                 If str, it's assumed this is a path to an appropriately formatted Excel file
 
@@ -468,7 +519,7 @@ class MetadataEditor:
         Args:
             id (int):
                 The ID of the metadata to update.
-            metadata (dictionary or BaseModel or str):
+            new_metadata (dictionary, BaseModel or str):
                 If str, it's assumed this is a path to an appropriately formatted Excel file
         """
         # (todo) figure out the best way to allow users to replace all or only some of the metadata and also to delete
@@ -584,7 +635,8 @@ class MetadataEditor:
             limit (int):
                 The maximum number of projects to return, defaults to 100.
                 If limit='All' then all records are retrieved.
-            sort_by (optional str): valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
+            sort_by (optional str):
+                valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
 
         Returns:
 
@@ -644,10 +696,8 @@ class MetadataEditor:
 
             collection : Union[int, List[int]]
                 A single collection ID or a list of collection IDs to which projects should be added.
-
             id_format : str
                 Specifies the format of the project identifiers. Must be either 'id' or 'idno'.
-
             projects : Union[int, List[int], str, List[str]]
                 A single project ID, a single project idno, a list of project IDs, or a list of
                 project idnos to be added to the specified collection(s).

@@ -1,16 +1,18 @@
+import itertools
+import os
 from json import JSONDecodeError
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 # import pymetadataeditor.schemas.timeseries_schema as tss
 import metadataschemas.timeseries_schema as tss
 import pandas as pd
 import pytest
 import requests
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from requests.exceptions import SSLError
 
 from pymetadataeditor import MetadataEditor
-from pymetadataeditor.interface import DeleteNotAppliedError, MetadataDict
+from pymetadataeditor.interface import APInterface, DeleteNotAppliedError
 
 
 class MockResponse:
@@ -18,7 +20,7 @@ class MockResponse:
         self,
         http_status_code: int = None,
         error_message: Optional[str] = None,
-        json_data: Optional[MetadataDict] = None,
+        json_data: Optional[Dict] = None,
         raise_json_decode_error: bool = False,
         raise_ssl: bool = False,
     ):
@@ -52,7 +54,7 @@ class MockResponse:
         elif self.status_code != 200:
             raise requests.exceptions.HTTPError(f"{self.status_code} Error")
 
-    def json(self) -> MetadataDict:
+    def json(self) -> Dict:
         if self.raise_json_decode_error:
             raise JSONDecodeError(msg="could not decode", doc="...", pos=2)
         elif self.json_data is not None:
@@ -122,8 +124,8 @@ def test_MetadataEditor_instantiation(monkeypatch):
     monkeypatch.setattr(requests, "request", mock_response)
     me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
     me.list_projects()
-    assert me.api_key != test_api_key
-    assert me.api_key.get_secret_value() == test_api_key
+    assert me._apinterface.api_key != test_api_key
+    assert me._apinterface.api_key.get_secret_value() == test_api_key
 
 
 @pytest.mark.parametrize("method", ["get", "post"])
@@ -131,12 +133,12 @@ def test_given_request(monkeypatch, metadata_editor, method: str):
     if method == "get":
 
         def func(*args, **kwargs):
-            return metadata_editor._get_request(*args, **kwargs)
+            return metadata_editor._apinterface._get_request(*args, **kwargs)
 
     elif method == "post":
 
         def func(*args, **kwargs):
-            return metadata_editor._post_request(*args, **kwargs, metadata={})
+            return metadata_editor._apinterface._post_request(*args, **kwargs, metadata={})
 
     # api raises some http error
     def mock_response(*args, **kwargs):
@@ -213,172 +215,67 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
     assert len(actual_project) == 2
 
 
-def test_create_log_of_document(monkeypatch, metadata_editor):
+@pytest.mark.parametrize(
+    "metadata_type, bad_metadata, good_metadata",
+    [
+        (
+            "document",
+            {},
+            {"document_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}},
+        ),
+        ("geospatial", {}, {"description": {"idno": "example_idno"}}),
+        ("script", None, {"doc_desc": {"idno": "example_idno"}}),
+        ("series", {}, {"idno": "example_idno", "name": "example_name"}),
+        ("table", None, {"table_description": {"title_statement": {"idno": "example idno", "title": "example title"}}}),
+        (
+            "timeseries",
+            {
+                "idno": "GB123",
+                "series_description": {"doi": "string", "name": "Gordons Test", "display_name": "string"},
+            },
+            {
+                "idno": "GB123",
+                "series_description": {
+                    "idno": "string",
+                    "doi": "string",
+                    "name": "Gordons Test",
+                    "display_name": "string",
+                },
+            },
+        ),
+        (
+            "timeseries_db",
+            {},
+            {"database_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}},
+        ),
+        (
+            "survey",
+            {"study_desc": {}},
+            {
+                "study_desc": {
+                    "title_statement": {"idno": "1", "title": "survey1"},
+                    "study_info": {"nation": [{"name": "nation_name"}]},
+                }
+            },
+        ),
+        ("video", {}, {"video_description": {"idno": "example_idno", "title": "example_title"}}),
+    ],
+)
+def test_create_log(monkeypatch, metadata_editor, metadata_type, bad_metadata, good_metadata):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
     monkeypatch.setattr(requests, "request", mock_response)
 
-    # metadata no metadata
-    with pytest.raises(TypeError):
-        metadata_editor.create_log_of_document()
+    if bad_metadata is not None:
+        with pytest.raises(ValidationError):
+            metadata_editor.create_log(metadata_type=metadata_type, metadata=bad_metadata)
 
-    # good
-    document_id = metadata_editor.create_log_of_document(
-        document_description={"title_statement": {"idno": "example_idno", "title": "example_title"}}
-    )
-    assert document_id == 1
+    metadata_id = metadata_editor.create_log(metadata_type=metadata_type, metadata=good_metadata)
+    assert metadata_id == 1
 
 
-def test_create_log_of_geospatial(monkeypatch, metadata_editor):
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"id": 1})
-
-    monkeypatch.setattr(requests, "request", mock_response)
-
-    # metadata no metadata
-    with pytest.raises(TypeError):
-        metadata_editor.create_log_of_geospatial()
-
-    # good
-    geospatial_id = metadata_editor.create_log_of_geospatial(description={"idno": "example_idno"})
-    assert geospatial_id == 1
-
-
-def test_create_log_of_script(monkeypatch, metadata_editor):
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"id": 1})
-
-    monkeypatch.setattr(requests, "request", mock_response)
-
-    # metadata no metadata
-    metadata_editor.create_log_of_script()
-
-    # also good
-    script_id = metadata_editor.create_log_of_script(doc_desc={"idno": "example_idno"})
-    assert script_id == 1
-
-
-# def test_create_log_of_series(monkeypatch, metadata_editor):
-#     def mock_response(*args, **kwargs):
-#         return MockResponse(http_status_code=200, json_data={"id": 1})
-
-#     monkeypatch.setattr(requests, "request", mock_response)
-
-#     # metadata no metadata
-#     with pytest.raises(TypeError):
-#         metadata_editor.create_log_of_series()
-
-#     # good
-#     series_id = metadata_editor.create_log_of_series(idno="example_idno", name="example_name")
-#     assert series_id == 1
-
-
-def test_create_log_of_table(monkeypatch, metadata_editor):
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"id": 1})
-
-    monkeypatch.setattr(requests, "request", mock_response)
-
-    # no metadata is required...
-    metadata_editor.create_log_of_table()
-
-    # also good
-    table_id = metadata_editor.create_log_of_table(
-        table_description={"title_statement": {"idno": "example idno", "title": "example title"}}
-    )
-    assert table_id == 1
-
-
-def test_create_log_of_timeseries(monkeypatch, metadata_editor):
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"id": 1})
-
-    monkeypatch.setattr(requests, "request", mock_response)
-
-    # metadata no series description
-    with pytest.raises(TypeError):
-        metadata_editor.create_log_of_timeseries(idno="GB123")
-
-    # metadata series description has no idno
-    with pytest.raises(ValueError):
-        metadata_editor.create_log_of_timeseries(
-            idno="GB123", series_description={"doi": "string", "name": "Gordons Test", "display_name": "string"}
-        )
-
-    # call is good
-    timeseries_id = metadata_editor.create_log_of_timeseries(
-        idno="GB123",
-        series_description={"idno": "string", "doi": "string", "name": "Gordons Test", "display_name": "string"},
-    )
-    assert timeseries_id == 1
-
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=400)
-
-    monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(Exception):
-        metadata_editor.create_log_of_timeseries(
-            idno="GB123",
-            series_description={"idno": "string", "doi": "string", "name": "Gordons Test", "display_name": "string"},
-        )
-
-
-# def test_create_log_of_timeseries_db(monkeypatch, metadata_editor):
-#     def mock_response(*args, **kwargs):
-#         return MockResponse(http_status_code=200, json_data={"id": 1})
-
-#     monkeypatch.setattr(requests, "request", mock_response)
-
-#     # metadata no metadata
-#     with pytest.raises(TypeError):
-#         metadata_editor.create_log_of_timeseries_db()
-
-#     # good
-#     timeseries_db_id = metadata_editor.create_log_of_timeseries_db(
-#         database_description={"title_statement": {"idno": "example_idno", "title": "example_title"}}
-#     )
-#     assert timeseries_db_id == 1
-
-
-def test_create_log_of_survey(monkeypatch, metadata_editor):
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"id": 1})
-
-    monkeypatch.setattr(requests, "request", mock_response)
-
-    # metadata no metadata
-    metadata_editor.create_log_of_survey()
-
-    # # metadata doc_desc no idno
-    with pytest.raises(ValueError):
-        metadata_editor.create_log_of_survey(study_desc={})
-
-    survey_id = metadata_editor.create_log_of_survey(
-        study_desc={
-            "title_statement": {"idno": "1", "title": "survey1"},
-            "study_info": {"nation": [{"name": "nation_name"}]},
-        }
-    )
-    assert survey_id == 1
-
-
-def test_create_log_of_video(monkeypatch, metadata_editor):
-    def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"id": 1})
-
-    monkeypatch.setattr(requests, "request", mock_response)
-
-    # metadata no metadata
-    with pytest.raises(TypeError):
-        metadata_editor.create_log_of_video()
-
-    # good
-    video_id = metadata_editor.create_log_of_video(video_description={"idno": "example_idno", "title": "example_title"})
-    assert video_id == 1
-
-
-def test_update_timeseries_by_id(monkeypatch, metadata_editor):
+def test_update_log_by_id(tmpdir, monkeypatch, metadata_editor):
     series_description = tss.SeriesDescription(idno="17", name="1")
     metadata_information = {"title": "check we can pass in a dict as well as a pydantic object"}
 
@@ -392,8 +289,8 @@ def test_update_timeseries_by_id(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception) as e:
-        metadata_editor.update_timeseries_by_id(
-            1, series_description=series_description, metadata_information=metadata_information
+        metadata_editor.update_log_by_id(
+            id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
         )
     assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
 
@@ -410,67 +307,68 @@ def test_update_timeseries_by_id(monkeypatch, metadata_editor):
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    metadata_editor.update_timeseries_by_id(
-        1, series_description=series_description, metadata_information=metadata_information
+    metadata_editor.update_log_by_id(
+        id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
+    )
+
+    # use pydantic
+    model = metadata_editor.outline_metadata("timeseries", "pydantic")
+    metadata_editor.update_log_by_id(id=1, new_metadata=model)
+
+    # use excel
+    metadata_editor.outline_metadata("timeseries", "excel", filename=os.path.join(tmpdir, "test_update_log_by_id.xlsx"))
+
+
+metadata_types = ["document", "script", "series", "table", "timeseries", "timeseries_db", "video"]  # 'geospatial',
+modes = ["excel", "dict", "pydantic"]
+
+
+@pytest.mark.parametrize("metadata_type, mode", list(itertools.product(metadata_types, modes)))
+def test_outline_metadata(tmpdir, metadata_editor, metadata_type, mode):
+    if mode == "excel" and metadata_editor == "geospatial":
+        pass
+    metadata_editor.outline_metadata(
+        metadata_type=metadata_type, mode=mode, filename=os.path.join(tmpdir, f"outline_{metadata_type}.xlsx")
     )
 
 
-def test_update_survey_by_id(monkeypatch, metadata_editor):
-    series_description = tss.SeriesDescription(idno="17", name="1")
-    metadata_information = {"title": "check we can pass in a dict as well as a pydantic object"}
-
-    # id is bad
-    def mock_response(*args, **kwargs):
-        return MockResponse(
-            http_status_code=400,
-            json_data={},
-            error_message="""{"message": "You don't have permission to access this project"}""",
-        )
-
-    monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(Exception) as e:
-        metadata_editor.update_survey_by_id(1, repositoryid="123abc")
-    assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
-
-    # id is good but type of existing data is listed as timeseries even though the user is trying to update a survey
-    def mock_response(*args, **kwargs):
-        return MockResponse(
-            http_status_code=200,
-            json_data={
-                "project": {
-                    "type": "timeseries",
-                    "metadata": {"idno": "12", "series_description": {"idno": "12", "name": "oldname"}},
+@pytest.mark.parametrize(
+    "metadata_type, metadata",
+    [
+        ("document", {"document_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}}),
+        ("geospatial", {"description": {"idno": "example_idno"}}),
+        ("script", {"doc_desc": {"idno": "example_idno"}}),
+        ("series", {"idno": "example_idno", "name": "example_name"}),
+        ("table", {"table_description": {"title_statement": {"idno": "example idno", "title": "example title"}}}),
+        (
+            "timeseries",
+            {
+                "idno": "GB123",
+                "series_description": {
+                    "idno": "string",
+                    "doi": "string",
+                    "name": "Gordons Test",
+                    "display_name": "string",
+                },
+            },
+        ),
+        (
+            "timeseries_db",
+            {"database_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}},
+        ),
+        (
+            "survey",
+            {
+                "study_desc": {
+                    "title_statement": {"idno": "1", "title": "survey1"},
+                    "study_info": {"nation": [{"name": "nation_name"}]},
                 }
             },
-        )
-
-    monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(Exception) as e:
-        metadata_editor.update_survey_by_id(
-            1, series_description=series_description, metadata_information=metadata_information
-        )
-
-    def mock_response(*args, **kwargs):
-        return MockResponse(
-            http_status_code=200,
-            json_data={
-                "project": {
-                    "type": "survey",
-                    "metadata": {
-                        "study_desc": {
-                            "title_statement": {"idno": "1", "title": "survey1"},
-                            "study_info": {"nation": [{"name": "nation_name"}]},
-                        }
-                    },
-                }
-            },
-        )
-
-    monkeypatch.setattr(requests, "request", mock_response)
-    metadata_editor.update_survey_by_id(1, repositoryid="1")
-
-
-def test_get_project_metadata_by_id(monkeypatch, metadata_editor):
+        ),
+        ("video", {"video_description": {"idno": "example_idno", "title": "example_title"}}),
+    ],
+)
+def test_get_project_metadata_by_id(tmpdir, monkeypatch, metadata_editor, metadata_type, metadata):
     # bad project type
     def mock_response(*args, **kwargs):
         return MockResponse(
@@ -478,24 +376,24 @@ def test_get_project_metadata_by_id(monkeypatch, metadata_editor):
             json_data={
                 "project": {
                     "type": "unknown",
-                    "metadata": {"idno": "12", "series_description": {"idno": "12", "name": "oldname"}},
+                    "metadata": metadata,
                 }
             },
         )
 
+    # unknown metadata type can't be returned as an object, only as a dict
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(AssertionError):
-        ts = metadata_editor.get_project_metadata_by_id(
-            1,
-        )
+        ts = metadata_editor.get_project_metadata_by_id(1, mode="pydantic")
+    ts = metadata_editor.get_project_metadata_by_id(1, mode="dict")
 
     def mock_response(*args, **kwargs):
         return MockResponse(
             http_status_code=200,
             json_data={
                 "project": {
-                    "type": "timeseries",
-                    "metadata": {"idno": "12", "series_description": {"idno": "12", "name": "oldname"}},
+                    "type": metadata_type,
+                    "metadata": metadata,
                 }
             },
         )
@@ -503,30 +401,21 @@ def test_get_project_metadata_by_id(monkeypatch, metadata_editor):
     monkeypatch.setattr(requests, "request", mock_response)
 
     # as object
-    ts = metadata_editor.get_project_metadata_by_id(1, as_object=True)
-    assert isinstance(ts, tss.TimeseriesSchema), type(ts)
-    assert ts.idno == "12"
-    assert ts.series_description.idno == "12"
-    assert ts.series_description.name == "oldname"
+    ts = metadata_editor.get_project_metadata_by_id(1, mode="pydantic")
+    assert isinstance(ts, BaseModel), type(ts)
 
     # as basic dictionary
-    ts = metadata_editor.get_project_metadata_by_id(1, as_object=False)
+    ts = metadata_editor.get_project_metadata_by_id(1, mode="dict")
     assert isinstance(ts, dict)
-    assert ts["idno"] == "12"
-    assert ts["series_description"]["idno"] == "12"
-    assert ts["series_description"]["name"] == "oldname"
-    assert len(ts) == 2
 
     # as full dictionary
-    ts = metadata_editor.get_project_metadata_by_id(1, exclude_unset=False, as_object=False)
-    assert isinstance(ts, dict)
-    assert ts["idno"] == "12"
-    assert ts["series_description"]["idno"] == "12"
-    assert ts["series_description"]["name"] == "oldname"
-    assert len(ts) == 9
-    additional_fields = ["metadata_information", "datacite", "provenance", "tags", "additional"]
-    for field in additional_fields:
-        assert field in ts
+    ts = metadata_editor.get_project_metadata_by_id(1, mode="dict", exclude_unset=False)
+
+    if metadata_type != "geospatial":
+        filename = os.path.join(tmpdir, f"get_project_metadata_by_id_test_{metadata_type}.xlsx")
+        metadata_editor.get_project_metadata_by_id(
+            1, mode="excel", filename=filename, title="get_project_metadata_by_id"
+        )
 
 
 class MockGetProjectById:
@@ -577,7 +466,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=True)
 
-    monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
+    monkeypatch.setattr(APInterface, "_post_request", mock_response)
     with pytest.raises(DeleteNotAppliedError):
         metadata_editor.delete_project_by_id(1)
 
@@ -587,7 +476,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=True)
 
-    monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
+    monkeypatch.setattr(APInterface, "_post_request", mock_response)
     metadata_editor.delete_project_by_id(1)
 
     # the project was deleted
@@ -596,8 +485,8 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=False)
 
-    monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
-    monkeypatch.setattr(MetadataEditor, "_post_request", mock_response)
+    monkeypatch.setattr(APInterface, "_post_request", mock_response)
+    monkeypatch.setattr(APInterface, "_post_request", mock_response)
     metadata_editor.delete_project_by_id(1)
 
 

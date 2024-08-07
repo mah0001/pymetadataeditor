@@ -1,11 +1,10 @@
-import json
 from typing import Dict, Type, Union
 
 from metadataschemas.schema_base_model import SchemaBaseModel
 from pydantic import BaseModel
 
 
-def validate_metadata(metadata: Union[Dict, SchemaBaseModel, str], schema_definition: Type[SchemaBaseModel]) -> None:
+def validate_metadata(metadata: Union[Dict, SchemaBaseModel], schema_definition: Type[SchemaBaseModel]) -> None:
     """
     Checks that the metadata contains the key information that all metadata must have, namely idno
 
@@ -18,17 +17,12 @@ def validate_metadata(metadata: Union[Dict, SchemaBaseModel, str], schema_defini
 
     """
     assert isinstance(schema_definition, type) and issubclass(schema_definition, BaseModel)
-    if not isinstance(metadata, (dict, SchemaBaseModel, str)):
+    if not isinstance(metadata, (dict, SchemaBaseModel)):
         raise ValueError(
             "Metadata must be passed as a python dictionary or as a pydantic object or a json string, "
             f"but {type(metadata)} was passed instead"
         )
 
-    if isinstance(metadata, str):
-        try:
-            metadata = json.loads(metadata)
-        except json.decoder.JSONDecodeError as e:
-            raise json.decoder.JSONDecodeError(f"This string is not valid json: '{e.doc}'", doc=e.doc, pos=e.pos)
     if isinstance(metadata, SchemaBaseModel):
         metadata = metadata.model_dump()  # SchemaBaseModel validates on assignment so shouldn't need to be re-validated
     schema_definition.model_validate(metadata)

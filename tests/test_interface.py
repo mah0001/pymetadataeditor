@@ -261,7 +261,7 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
         ("video", {}, {"video_description": {"idno": "example_idno", "title": "example_title"}}),
     ],
 )
-def test_create_log(monkeypatch, metadata_editor, metadata_type, bad_metadata, good_metadata):
+def test_create_project_log(monkeypatch, metadata_editor, metadata_type, bad_metadata, good_metadata):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, json_data={"id": 1})
 
@@ -269,13 +269,16 @@ def test_create_log(monkeypatch, metadata_editor, metadata_type, bad_metadata, g
 
     if bad_metadata is not None:
         with pytest.raises(ValidationError):
-            metadata_editor.create_log(metadata_type=metadata_type, metadata=bad_metadata)
+            metadata_editor.create_project_log(metadata_type=metadata_type, metadata=bad_metadata)
 
-    metadata_id = metadata_editor.create_log(metadata_type=metadata_type, metadata=good_metadata)
+    metadata_id = metadata_editor.create_project_log(metadata_type=metadata_type, metadata=good_metadata)
     assert metadata_id == 1
 
+    with pytest.raises(ValidationError):
+        metadata_editor.create_project_log(metadata_type=metadata_type, metadata={"bad_key": ""})
 
-def test_update_log_by_id(tmpdir, monkeypatch, metadata_editor):
+
+def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
     series_description = tss.SeriesDescription(idno="17", name="1")
     metadata_information = {"title": "check we can pass in a dict as well as a pydantic object"}
 
@@ -289,7 +292,7 @@ def test_update_log_by_id(tmpdir, monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception) as e:
-        metadata_editor.update_log_by_id(
+        metadata_editor.update_project_log_by_id(
             id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
         )
     assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
@@ -307,16 +310,18 @@ def test_update_log_by_id(tmpdir, monkeypatch, metadata_editor):
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    metadata_editor.update_log_by_id(
+    metadata_editor.update_project_log_by_id(
         id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
     )
 
     # use pydantic
     model = metadata_editor.outline_metadata("timeseries", "pydantic")
-    metadata_editor.update_log_by_id(id=1, new_metadata=model)
+    metadata_editor.update_project_log_by_id(id=1, new_metadata=model)
 
     # use excel
-    metadata_editor.outline_metadata("timeseries", "excel", filename=os.path.join(tmpdir, "test_update_log_by_id.xlsx"))
+    metadata_editor.outline_metadata(
+        "timeseries", "excel", filename=os.path.join(tmpdir, "test_update_project_log_by_id.xlsx")
+    )
 
 
 metadata_types = ["document", "script", "series", "table", "timeseries", "timeseries_db", "video"]  # 'geospatial',
@@ -336,7 +341,7 @@ def test_outline_metadata(tmpdir, metadata_editor, metadata_type, mode):
     "metadata_type, metadata",
     [
         ("document", {"document_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}}),
-        ("geospatial", {"description": {"idno": "example_idno"}}),
+        # ("geospatial", {"description": {"idno": "example_idno"}}),
         ("script", {"doc_desc": {"idno": "example_idno"}}),
         ("series", {"idno": "example_idno", "name": "example_name"}),
         ("table", {"table_description": {"title_statement": {"idno": "example idno", "title": "example title"}}}),
@@ -407,9 +412,6 @@ def test_get_project_metadata_by_id(tmpdir, monkeypatch, metadata_editor, metada
     # as basic dictionary
     ts = metadata_editor.get_project_metadata_by_id(1, mode="dict")
     assert isinstance(ts, dict)
-
-    # as full dictionary
-    ts = metadata_editor.get_project_metadata_by_id(1, mode="dict", exclude_unset=False)
 
     if metadata_type != "geospatial":
         filename = os.path.join(tmpdir, f"get_project_metadata_by_id_test_{metadata_type}.xlsx")

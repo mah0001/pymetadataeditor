@@ -25,8 +25,6 @@ from metadataschemas.utils.utils import standardize_keys_in_dict
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, model_validator
 from requests.exceptions import HTTPError, SSLError
 
-from pymetadataeditor.tools import update_metadata, validate_metadata
-
 warnings.filterwarnings(
     "ignore", category=UserWarning, module="pydantic"
 )  # suppresses warning when metadata passed as dict instead of a pydantic object
@@ -180,8 +178,7 @@ class MetadataEditor:
 
             from pymetadataeditor import MetadataEditor
 
-            api_url = <Generally the required URL looks like:
-                'https://<name_of_your_metadata_database>.org/index.php/api'>
+            api_url = "<url of the API>"
             api_key = "<the api key you generated for accessing the metadata database>"
             me = MetadataEditor(api_url = api_url, api_key = api_key)
 
@@ -190,7 +187,15 @@ class MetadataEditor:
             me.list_projects()
             dict_of_timeseries = me.outline_metadata("timeseries", "dict")
             <update the timeseries metadata dictionary as needed>
-            me.create_log("timeseries", dict_of_timeseries)
+            me.create_project_log("timeseries", dict_of_timeseries)
+
+        Args:
+            api_url (str): the URL typically looks like 'https://<name_of_your_metadata_database>.org/index.php/api'
+            api_key (str): typically this is created through the web interface of the metadata system
+            allow_http (bool): whether to allow calls to the metadata system when the URL begins "http" instead of the
+                more secure "https". Defaults to False.
+            verify_ssl (bool): Although it is good practice for API requests to verify SSL, some systems do not allow
+                this so setting verify_ssl=False may be required. Defaults to True.
         """
         self._apinterface = APInterface(api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl)
         self._ei = ExcelInterface()
@@ -233,7 +238,7 @@ class MetadataEditor:
         if isinstance(limit, str):
             assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
             new_offset = offset
-            new_limit = 100
+            new_limit = 500
             dfs = []
             while True:
                 df = self.list_projects(
@@ -288,6 +293,42 @@ class MetadataEditor:
         response = self._apinterface._get_request(get_project_template, id=id)
         return pd.Series(response["project"])
 
+    @staticmethod
+    def _remove_empty_from_dict(old_dict: Dict) -> Dict:
+        """Helper function for removing entries from dictionaries that look like:
+        [{'name': ''}]
+        """
+        new_dict = {}
+        for k, v in old_dict.items():
+            if v is None:
+                continue
+            if isinstance(v, str):
+                if v != "":
+                    new_dict[k] = v
+            elif isinstance(v, dict):
+                new_sub_dict = MetadataEditor._remove_empty_from_dict(v)
+                if len(new_sub_dict) > 0:
+                    new_dict[k] = new_sub_dict
+            elif isinstance(v, list):
+                new_list = []
+                for elem in v:
+                    if elem is None:
+                        continue
+                    if isinstance(elem, dict):
+                        new_elem = MetadataEditor._remove_empty_from_dict(elem)
+                        if len(new_elem) > 0:
+                            new_list.append(new_elem)
+                    elif isinstance(elem, str):
+                        if elem != "":
+                            new_list.append(elem)
+                    else:
+                        new_list.append(elem)
+                if len(new_list) > 0:
+                    new_dict[k] = new_list
+            else:
+                new_dict[k] = v
+        return new_dict
+
     def get_project_metadata_by_id(
         self,
         id: int,
@@ -300,8 +341,8 @@ class MetadataEditor:
         Args:
             id (int): the id of the project, not to be confused with the idno.
             mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
-            exclude_unset (bool): when mode=='dict', then if exclude_unset is True the fields that were not set or have
-                a None value are removed from the dictionary. Defaults to True
+            exclude_unset (bool): If mode=='dict', then if exclude_unset=True, only elements that were explicitly set
+                with non-null, non-empty values are returned in the dictionary.
             filename (Optional[str]): If mode=='excel' then this is the path to the Excel file.
                 If None and mode=='excel', defaults to {metadata_type}_metadata.xlsx
             title (Optional[str]): If mode=='excel' then the title for the Excel sheet.
@@ -324,21 +365,36 @@ class MetadataEditor:
             "object",
         ], f"mode should be 'excel', 'dict' or 'pydantic' but found '{mode}'"
         project = self.get_project_by_id(id=id)
-        project_type = project["type"].replace("-", "_")
-        if project_type not in self._metadata_types and mode in ["dict", "dictionary"]:
+        metadata_type = project["type"].replace("-", "_")
+        if (metadata_type not in self._metadata_types or metadata_type == "geospatial") and mode in [
+            "dict",
+            "dictionary",
+        ]:
             # if the method is unknown then we can still return a dict since we retrieved something
             return project["metadata"]
-        assert project_type in self._metadata_types, (
-            f"this project is listed as a '{project_type}' type project but this is"
-            f" unknown. Try using mode='dict' to view the metadata."
+        assert metadata_type in self._metadata_types, (
+            f"this project is listed as a '{metadata_type}' type project but this is"
+            f" not supported. Try using mode='dict' to view the metadata in raw form."
         )
-        metadata_object = self._metadata_types[project_type](**project["metadata"])
+
+        metadata_object = self._ei.inflate_read_data_to_schema(
+            metadata_type=metadata_type, read_object=project["metadata"]
+        )
+        # metadata_object = self._metadata_types[metadata_type](**project["metadata"])
         if mode in ["pydantic", "model", "basemodel", "object"]:
             return metadata_object
         elif mode in ["dict", "dictionary"]:
-            return metadata_object.model_dump(mode="json", exclude_none=exclude_unset, exclude_unset=exclude_unset)
+            if not exclude_unset:
+                return metadata_object.model_dump(mode="json")
+            else:
+                metadata_dict = metadata_object.model_dump(
+                    mode="json", exclude_none=exclude_unset, exclude_unset=exclude_unset
+                )
+                return self._remove_empty_from_dict(metadata_dict)
         else:
-            return self._ei.save_metadata_to_excel(project_type, object=metadata_object, filename=filename, title=title)
+            return self._ei.save_metadata_to_excel(
+                metadata_type, object=metadata_object, filename=filename, title=title
+            )
 
     def delete_project_by_id(self, id: int):
         """
@@ -472,7 +528,7 @@ class MetadataEditor:
             metadata = metadata.model_dump(mode="json")
         print(json.dumps(metadata, indent="  "))
 
-    def create_log(self, metadata_type: str, metadata: Union[Dict, BaseModel, str]):
+    def create_project_log(self, metadata_type: str, metadata: Union[Dict, BaseModel, str]):
         """
         Validates and logs metadata which can be a dictionary, a pydantic model or a path to an Excel spreadsheet.
 
@@ -503,7 +559,8 @@ class MetadataEditor:
         if isinstance(metadata, str):
             metadata = self._ei.read_metadata_excel(metadata_type, metadata)
 
-        validate_metadata(metadata, self._metadata_types[metadata_type])
+        self._metadata_types[metadata_type].model_validate(metadata, strict=True)
+        # validate_metadata(metadata, self._metadata_types[metadata_type])
         md = self._metadata_types[metadata_type](**metadata)
 
         post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
@@ -512,9 +569,10 @@ class MetadataEditor:
         )
         return ret["id"]
 
-    def update_log_by_id(self, id: int, new_metadata: Union[Dict, BaseModel, str]):
+    def update_project_log_by_id(self, id: int, new_metadata: Union[Dict, BaseModel, str]):
         """
-        Updates a record of your metadata by ID
+        Updates the record of the metadata. If a dictionary is passed that only contains a subset of the possible keys
+            then the remaining values not mentioned are left as is.
 
         Args:
             id (int):
@@ -530,23 +588,27 @@ class MetadataEditor:
             f"this project is listed as a '{metadata_type}' type project but this is"
             f" unknown. Projects must be one of {list(self._metadata_types.keys())}"
         )
-        original_metadata = self.get_project_by_id(id)["metadata"]
-        md = self._metadata_types[metadata_type](**original_metadata)
+        if metadata_type == "geospatial":
+            assert isinstance(new_metadata, dict), "geospatial data not yet supported in pydantic or excel modes"
+            md = new_metadata
+        else:
+            md = self.get_project_metadata_by_id(id, mode="pydantic")
 
-        if isinstance(new_metadata, str):
-            new_metadata = self._ei.read_metadata_excel(metadata_type, new_metadata)
-            new_metadata = new_metadata.model_dump(mode="json")
-        elif isinstance(new_metadata, BaseModel):
-            new_metadata = new_metadata.model_dump(mode="json")
+            if isinstance(new_metadata, str):
+                new_metadata = self._ei.read_metadata_excel(metadata_type, new_metadata)
+                new_metadata = new_metadata.model_dump(mode="json")
+            elif isinstance(new_metadata, BaseModel):
+                new_metadata = new_metadata.model_dump(mode="json")
 
-        new_metadata = standardize_keys_in_dict(new_metadata)
-        md = update_metadata(md, **new_metadata)
+            new_metadata = standardize_keys_in_dict(new_metadata)
+            md = md.model_copy(update=new_metadata)
+            md = md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
 
         post_request_template_path = f"/editor/update/{metadata_type.replace('_', '-')}/" + "{}"
         self._apinterface._post_request(
             post_request_template_path,
             id=id,
-            metadata=md.model_dump(mode="json", exclude_none=True, exclude_unset=True),
+            metadata=md,
         )
 
     def list_collections(self) -> pd.DataFrame:
@@ -647,7 +709,7 @@ class MetadataEditor:
         if isinstance(limit, str):
             assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
             new_offset = offset
-            new_limit = 100
+            new_limit = 500
             dfs = []
             while True:
                 df = self.list_projects_in_collection(

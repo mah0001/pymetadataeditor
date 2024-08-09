@@ -14,20 +14,23 @@ def metadata_editor():
     return me
 
 
-def test_projects_integration(metadata_editor):
+def test_projects_integration(tmpdir, metadata_editor):
     """Do not use pytest.mark.parametrize since parallel runs cause the counts of projects to be off"""
 
     projects = metadata_editor.list_projects(limit="all")
     num_original_projects = len(projects)
     assert min(10, num_original_projects) == len(metadata_editor.list_projects(limit=10))
     assert num_original_projects - 1 == len(metadata_editor.list_projects(limit="all", offset=1))
-    assert num_original_projects >= len(metadata_editor.list_projects(metadata_type="timeseries"))
-    assert num_original_projects == len(metadata_editor.list_projects(sort_by="updated_asc"))
+    assert num_original_projects >= len(metadata_editor.list_projects(limit="all", metadata_type="timeseries"))
+    assert num_original_projects == len(metadata_editor.list_projects(limit="all", sort_by="updated_asc"))
 
-    # fail due to api saying "unknown type": "series", "timeseries_db",
+    # Good: "document", "survey", "table", "timeseries", "timeseries_db", "video"
+    # fail due to not searchable: "geospatial", "script"
+    # fail due to api saying "unknown type": "series"
+
     metadata_types = [
-        "timeseries_db"
-    ]  # , "document", "geospatial", "script", "survey", "table", "timeseries", "video"]
+        "document"
+    ]  # "document", "geospatial", "script", "series", "survey", "table", "timeseries", "timeseries_db", "video"
     creation_data = {
         "document": {
             "document_description": {
@@ -81,7 +84,7 @@ def test_projects_integration(metadata_editor):
                 "title": "integration test geospatial updated",
             }
         },
-        "script": {"doc_desc": {"idno": "integration_test_script", "title": "integration_test_script_updated"}},
+        "script": {"doc_desc": {"idno": "integration_test_script", "title": "integration test script updated"}},
         "series": {"idno": "integration_test_series", "name": "integration_test_series_updated"},
         "survey": {
             "study_desc": {
@@ -115,12 +118,12 @@ def test_projects_integration(metadata_editor):
 
     for metadata_type in metadata_types:
         # create project
-        create_function = getattr(metadata_editor, "create_log_of_{}".format(metadata_type))
-        update_function = getattr(metadata_editor, "update_{}_by_id".format(metadata_type))
-        project_id = create_function(**creation_data[metadata_type])
+        project_id = metadata_editor.create_project_log(
+            metadata_type=metadata_type, metadata=creation_data[metadata_type]
+        )
 
         try:
-            assert len(metadata_editor.list_projects()) == num_original_projects + 1
+            assert len(metadata_editor.list_projects(limit="all")) == num_original_projects + 1
 
             # get project
             project_metadata = metadata_editor.get_project_by_id(project_id).metadata
@@ -128,38 +131,43 @@ def test_projects_integration(metadata_editor):
                 assert project_metadata[k] == v
 
             # update project
-            update_function(project_id, **update_data[metadata_type])
-            project_metadata_updated = metadata_editor.get_project_metadata_by_id(project_id)
+            metadata_editor.update_project_log_by_id(project_id, new_metadata=update_data[metadata_type])
+            project_metadata_updated = metadata_editor.get_project_metadata_by_id(project_id, mode="dict")
             for k, v in update_data[metadata_type].items():
                 assert project_metadata_updated[k] == v
 
-            # # check project is searchable and updated
-            # title_contains_updated = metadata_editor.list_projects(keywords="updated", metadata_type=metadata_type)
-            # assert (
-            #     project_id in title_contains_updated.index or str(project_id) in title_contains_updated.index
-            # ), title_contains_updated
-            # title_contains_bogus = metadata_editor.list_projects(keywords="bogus", metadata_type=metadata_type)
-            # assert (
-            #     project_id not in title_contains_bogus.index and str(project_id) not in title_contains_bogus.index
-            # ), title_contains_bogus
+            # check project is searchable and updated
+            title_contains_updated = metadata_editor.list_projects(
+                limit="all", keywords="updated", metadata_type=metadata_type
+            )
+            assert (
+                project_id in title_contains_updated.index or str(project_id) in title_contains_updated.index
+            ), title_contains_updated
+            title_contains_bogus = metadata_editor.list_projects(
+                limit="all", keywords="bogus", metadata_type=metadata_type
+            )
+            assert (
+                project_id not in title_contains_bogus.index and str(project_id) not in title_contains_bogus.index
+            ), title_contains_bogus
 
             # save project to excel and then upload it
             if metadata_type == "geospatial":
                 with pytest.raises(NotImplementedError):
                     filename = f"{metadata_type}_{project_id}.xlsx"
-                    metadata_editor.save_project_metadata_to_excel(project_id, filename)
-                    metadata_editor.update_by_id_from_excel(project_id, metadata_type, filename)
+                    metadata_editor.get_project_metadata_by_id(project_id, mode="excel", filename=filename)
+                    metadata_editor.update_project_log_by_id(project_id, filename)
             else:
                 filename = f"{metadata_type}_{project_id}.xlsx"
-                metadata_editor.save_project_metadata_to_excel(project_id, filename)
-                metadata_editor.update_by_id_from_excel(project_id, metadata_type, filename)
+                filename = os.path.join(tmpdir, filename)
+                metadata_editor.get_project_metadata_by_id(project_id, mode="excel", filename=filename)
+                metadata_editor.update_project_log_by_id(project_id, filename)
         except Exception as e:
             metadata_editor.delete_project_by_id(project_id)
             raise e
 
         # delete project
         metadata_editor.delete_project_by_id(project_id)
-        final_projects = metadata_editor.list_projects()
+        final_projects = metadata_editor.list_projects(limit="all")
         assert len(final_projects) == num_original_projects
 
 
@@ -200,8 +208,9 @@ def test_collections_integration(metadata_editor):
         # create a project and add it to the collection by id
         project_idno = "project for collection integration test"
         project_name = "project for collection integration test"
-        project_id = metadata_editor.create_log_of_timeseries(
-            idno=project_idno, series_description={"idno": project_idno, "name": project_name}
+        project_id = metadata_editor.create_project_log(
+            metadata_type="timeseries",
+            metadata={"idno": project_idno, "series_description": {"idno": project_idno, "name": project_name}},
         )
         try:
             metadata_editor.add_projects_to_collection(collection_id, "id", project_id)

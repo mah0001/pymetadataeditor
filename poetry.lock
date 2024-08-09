@@ -890,23 +890,22 @@ traitlets = "*"
 
 [[package]]
 name = "metadataschemas"
-version = "0.1.10"
+version = "0.1.15"
 description = ""
 optional = false
 python-versions = ">=3.11,<4.0"
 files = [
-    {file = "metadataschemas-0.1.10-py3-none-any.whl", hash = "sha256:a57d868a8e2afbfa17a83a16179905c37f7505c4cd5fb2a77726835dcc9a1a3f"},
+    {file = "metadataschemas-0.1.15-py3-none-any.whl", hash = "sha256:1fed4dcfebbcb54aa69f82011792a9e9431493533ac08ce934dda61cf7f55556"},
 ]
 
 [package.dependencies]
-datamodel-code-generator = {version = ">=0.25.7,<0.26.0", extras = ["http"]}
 openpyxl = ">=3.1.5,<4.0.0"
 pandas = ">=2.2.2,<3.0.0"
 pydantic = ">=2.8.0,<3.0.0"
 
 [package.source]
 type = "file"
-url = "../metadata-schemas/dist/metadataschemas-0.1.10-py3-none-any.whl"
+url = "../metadata-schemas/dist/metadataschemas-0.1.15-py3-none-any.whl"
 
 [[package]]
 name = "mypy-extensions"
@@ -1822,4 +1821,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "755477878304c6b6128993b0268f6f8ed414e9f655f067ed70ea6f59fc997712"
+content-hash = "332bbd5bac2e125709793732721adbef43e91b9b6561082342efc90337c16f9d"

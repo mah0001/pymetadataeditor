@@ -184,7 +184,7 @@ class MetadataEditor:
 
         Then you can list and create new projects like so:
 
-            me.list_projects()
+            me.list_projects(limit=100)
             dict_of_timeseries = me.outline_metadata("timeseries", "dict")
             <update the timeseries metadata dictionary as needed>
             me.create_project_log("timeseries", dict_of_timeseries)
@@ -212,12 +212,24 @@ class MetadataEditor:
             "video": video_schema.Model,
         }
 
+    def count_projects(self) -> int:
+        """
+        Count the number of projects you have access to
+
+        Returns:
+            int: The number of projects
+        """
+        list_projects_get_path = "/editor"
+        params = {"offset": 0, "limit": 1}
+        response = self._apinterface._get_request(pth=list_projects_get_path, params=params)
+        return response["total"]
+
     def list_projects(
         self,
+        limit: Union[int, str],
         keywords: Optional[Union[str, List[str]]] = None,
         metadata_type: Optional[str] = None,
         offset: int = 0,
-        limit: Union[int, str] = 100,
         sort_by: Optional[str] = None,
     ) -> pd.DataFrame:
         """
@@ -225,18 +237,17 @@ class MetadataEditor:
 
         Args:
 
+            limit (int or str): Page size e.g. 10 to show 10 records. If limit='All' then all records are retrieved.
             keywords (optional str or list of str): Keywords for filtering projects by title and/or idno.
             metadata_type (optional str): If given, only projects of this type are returned.
             offset (int): Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
-            limit (int or str): Page size e.g. 10 to show 10 records. Default is 100.
-                If limit='All' then all records are retrieved.
             sort_by (optional str): valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
 
         Returns:
             pd.DataFrame: Information about the projects
         """
         if isinstance(limit, str):
-            assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
+            assert limit.lower() == "all", f"Expected limit to be 'All' or a positive integer but got '{limit}'"
             new_offset = offset
             new_limit = 500
             dfs = []
@@ -675,12 +686,27 @@ class MetadataEditor:
             metadata["description"] = description
         self._apinterface._post_request("collections/update/{}", id=id, metadata=metadata)
 
+    def count_projects_in_collection(self, collection: int) -> int:
+        """
+        Count the number of projects you have access to
+
+        Args:
+            collection (int):
+                The id of the collection.
+
+        Returns:
+            int: The number of projects
+        """
+        params = {"offset": 0, "limit": 1}
+        response = self._apinterface._get_request("editor?collection={}", id=collection, params=params)
+        return response["total"]
+
     def list_projects_in_collection(
         self,
         collection: int,
+        limit: Union[int, str],
         keywords: Optional[Union[str, List[str]]] = None,
         offset: int = 0,
-        limit: Union[int, str] = 100,
         sort_by: Optional[str] = None,
     ) -> pd.DataFrame:
         """
@@ -690,13 +716,12 @@ class MetadataEditor:
 
             collection (int):
                 The id of the collection.
+            limit (int):
+                The maximum number of projects to return. If limit='All' then all records are retrieved.
             keyword (optional str):
                 filter projects based on whether the project title or idno contains this keyword
             offset (int):
                 Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
-            limit (int):
-                The maximum number of projects to return, defaults to 100.
-                If limit='All' then all records are retrieved.
             sort_by (optional str):
                 valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
 
@@ -733,11 +758,11 @@ class MetadataEditor:
             assert sort_by in valid_sort_by, f"{sort_by} not valid, must be one of {valid_sort_by}"
             params["sort_by"] = sort_by
         ret = self._apinterface._get_request("editor?collection={}", id=collection, params=params)
-        if ret["total"] > ret["limit"]:
-            warnings.warn(
-                f"There are {ret['total']} projects in this collection but a limit of {ret['limit']} were retreived",
-                UserWarning,
-            )
+        # if ret["total"] > ret["limit"]:
+        #     warnings.warn(
+        #         f"There are {ret['total']} projects in this collection but a limit of {ret['limit']} were retreived",
+        #         UserWarning,
+        #     )
         if len(ret["projects"]) == 0:
             return pd.DataFrame([], columns=["id", "type", "idno", "title"]).set_index("id")
         return pd.DataFrame(ret["projects"]).set_index("id")

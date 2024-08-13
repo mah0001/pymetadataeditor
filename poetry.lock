@@ -890,12 +890,12 @@ traitlets = "*"
 
 [[package]]
 name = "metadataschemas"
-version = "0.1.15"
+version = "0.1.17"
 description = ""
 optional = false
 python-versions = ">=3.11,<4.0"
 files = [
-    {file = "metadataschemas-0.1.15-py3-none-any.whl", hash = "sha256:1fed4dcfebbcb54aa69f82011792a9e9431493533ac08ce934dda61cf7f55556"},
+    {file = "metadataschemas-0.1.17-py3-none-any.whl", hash = "sha256:3f81946b0adffa0eef4fd0b6b1ac5348e6ce36a839b91da7027fc823bcb49d1b"},
 ]
 
 [package.dependencies]
@@ -905,7 +905,7 @@ pydantic = ">=2.8.0,<3.0.0"
 
 [package.source]
 type = "file"
-url = "../metadata-schemas/dist/metadataschemas-0.1.15-py3-none-any.whl"
+url = "../metadata-schemas/dist/metadataschemas-0.1.17-py3-none-any.whl"
 
 [[package]]
 name = "mypy-extensions"
@@ -1821,4 +1821,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "332bbd5bac2e125709793732721adbef43e91b9b6561082342efc90337c16f9d"
+content-hash = "530339d6f7e05b7d689905902329054d2ba3f7fc9b0a91f6c82a037a71503a58"

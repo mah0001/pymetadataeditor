@@ -595,7 +595,7 @@ class MetadataEditor:
             md = self.get_project_metadata_by_id(id, mode="pydantic")
 
             if isinstance(new_metadata, str):
-                new_metadata = self._ei.read_metadata_excel(metadata_type, new_metadata)
+                new_metadata = self._ei.read_metadata_excel(new_metadata)
                 new_metadata = new_metadata.model_dump(mode="json")
             elif isinstance(new_metadata, BaseModel):
                 new_metadata = new_metadata.model_dump(mode="json")

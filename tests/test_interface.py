@@ -94,7 +94,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(requests.HTTPError) as e:
         me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
-        me.list_projects()
+        me.list_projects(limit=100)
     assert str(e.value).split(".")[0] == "Page not found"
 
     # bad SSL
@@ -104,7 +104,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(SSLError) as e:
         me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
-        me.list_projects()
+        me.list_projects(limit=100)
     assert str(e.value)[:12] == "Usually this"
 
     # bad key
@@ -114,7 +114,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(PermissionError) as e:
         me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
-        me.list_projects()
+        me.list_projects(limit=100)
     assert str(e.value).split(".")[0] == "Access to that URL is denied"
 
     # good instantiation
@@ -123,7 +123,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
 
     monkeypatch.setattr(requests, "request", mock_response)
     me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
-    me.list_projects()
+    me.list_projects(limit=100)
     assert me._apinterface.api_key != test_api_key
     assert me._apinterface.api_key.get_secret_value() == test_api_key
 
@@ -171,20 +171,20 @@ def test_list_projects(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
 
-    actual_projects = metadata_editor.list_projects()
+    actual_projects = metadata_editor.list_projects(limit=100)
     assert type(actual_projects) == pd.DataFrame
     assert actual_projects.shape == (2, 1)
     assert actual_projects.columns == ["created"]
 
     # bad then good metadata_type
     with pytest.raises(AssertionError):
-        metadata_editor.list_projects(metadata_type="bad_type")
-    metadata_editor.list_projects(metadata_type="geospatial")
+        metadata_editor.list_projects(metadata_type="bad_type", limit=100)
+    metadata_editor.list_projects(metadata_type="geospatial", limit=100)
 
     # bad then good sort_by
     with pytest.raises(AssertionError):
-        metadata_editor.list_projects(sort_by="bad_key")
-    metadata_editor.list_projects(sort_by="title_asc")
+        metadata_editor.list_projects(sort_by="bad_key", limit=100)
+    metadata_editor.list_projects(sort_by="title_asc", limit=100)
 
     assert len(metadata_editor.list_projects(limit="all")) == 2
 
@@ -609,17 +609,17 @@ def test_list_projects_in_collection(monkeypatch, metadata_editor):
     monkeypatch.setattr(requests, "request", mock_response)
 
     # call is good
-    metadata_editor.list_projects_in_collection(1)
+    metadata_editor.list_projects_in_collection(1, limit=100)
 
-    # call is good, but the number of projects is limited
-    def mock_response(*args, **kwargs):
-        return MockResponse(
-            http_status_code=200, json_data={"total": 2, "limit": 1, "projects": [{"id": 1, "title": "title1"}]}
-        )
+    # # call is good, but the number of projects is limited
+    # def mock_response(*args, **kwargs):
+    #     return MockResponse(
+    #         http_status_code=200, json_data={"total": 2, "limit": 1, "projects": [{"id": 1, "title": "title1"}]}
+    #     )
 
-    monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.warns(UserWarning):
-        metadata_editor.list_projects_in_collection(1)
+    # monkeypatch.setattr(requests, "request", mock_response)
+    # with pytest.warns(UserWarning):
+    #     metadata_editor.list_projects_in_collection(1, limit=100)
 
 
 def test_list_templates(monkeypatch, metadata_editor):

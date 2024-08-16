@@ -11,7 +11,7 @@ requests = "^2.32.3"
 urllib3 = "^2.2.2"  # earlier versions have known security issues
 pandas = "^2.2.2"
 pydantic = "^2.7.4"
-metadataschemas = {path = "C:/Users/wb625523/sources/metadata-schemas/dist/metadataschemas-0.1.17-py3-none-any.whl"}
+metadataschemas = {path = "C:/Users/wb625523/sources/metadata-schemas/dist/metadataschemas-0.1.18-py3-none-any.whl"}
 
 
 [tool.poetry.group.dev.dependencies]

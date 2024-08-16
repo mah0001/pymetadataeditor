@@ -202,7 +202,7 @@ def test_collections_integration(metadata_editor):
         updated_collection.description = collection_description_updated
 
         # count projects in collection (should be zero)
-        initial_projects_collection = metadata_editor.list_projects_in_collection(collection_id)
+        initial_projects_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
         assert len(initial_projects_collection) == 0, f"expected zero projects but got {initial_projects_collection}"
 
         # create a project and add it to the collection by id
@@ -216,32 +216,36 @@ def test_collections_integration(metadata_editor):
             metadata_editor.add_projects_to_collection(collection_id, "id", project_id)
 
             # check the project can be found
-            oneproject_collection = metadata_editor.list_projects_in_collection(collection_id)
+            oneproject_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
             assert len(oneproject_collection) == 1
             assert oneproject_collection.iloc[0].idno == project_idno
-            good_search = metadata_editor.list_projects_in_collection(collection_id, keywords="integration")
-            assert len(good_search) == 1
             good_search = metadata_editor.list_projects_in_collection(
-                collection_id, keywords=["project", "integration"]
+                collection_id, keywords="integration", limit="all"
             )
             assert len(good_search) == 1
-            good_search = metadata_editor.list_projects_in_collection(collection_id, keywords="project integration")
+            good_search = metadata_editor.list_projects_in_collection(
+                collection_id, keywords=["project", "integration"], limit="all"
+            )
+            assert len(good_search) == 1
+            good_search = metadata_editor.list_projects_in_collection(
+                collection_id, keywords="project integration", limit="all"
+            )
             assert len(good_search) == 1
             assert good_search.iloc[0].idno == project_idno
-            bad_search = metadata_editor.list_projects_in_collection(collection_id, keywords="bogus")
+            bad_search = metadata_editor.list_projects_in_collection(collection_id, keywords="bogus", limit="all")
             assert len(bad_search) == 0
             good_search = metadata_editor.list_projects_in_collection(collection_id, limit="all")
             assert len(good_search) == 1
             good_search = metadata_editor.list_projects_in_collection(collection_id, limit=10)
             assert len(good_search) == 1
-            good_search = metadata_editor.list_projects_in_collection(collection_id, offset=1)
+            good_search = metadata_editor.list_projects_in_collection(collection_id, offset=1, limit="all")
             assert len(good_search) == 0
-            good_search = metadata_editor.list_projects_in_collection(collection_id, sort_by="updated_asc")
+            good_search = metadata_editor.list_projects_in_collection(collection_id, sort_by="updated_asc", limit="all")
             assert len(good_search) == 1
 
             # remove that project by idno
             metadata_editor.remove_projects_from_collection(collection_id, "idno", project_idno)
-            final_collection = metadata_editor.list_projects_in_collection(collection_id)
+            final_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
             assert len(final_collection) == 0
         except Exception as e:
             metadata_editor.delete_project_by_id(project_id)

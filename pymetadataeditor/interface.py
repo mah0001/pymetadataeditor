@@ -1,5 +1,6 @@
 import json
 import warnings
+from io import BufferedReader
 from json import JSONDecodeError
 from pathlib import Path
 from ssl import SSLError as ssl_SSLError
@@ -68,6 +69,8 @@ class APInterface(BaseModel):
         json: Optional[Dict] = None,
         params: Optional[Dict[str, Union[str, List[str]]]] = None,
         id: Optional[Union[int, str]] = None,
+        data: Optional[Dict[str, str]] = None,
+        files: Optional[Dict[str, BufferedReader]] = None,
     ) -> Dict:
         """
         Sends a GET or POST request to the specified URL with the API key in the headers and returns the JSON response.
@@ -91,8 +94,12 @@ class APInterface(BaseModel):
         if method == "post":
             assert params is None, "when using post, pass json not params"
             request_kwargs["json"] = json
+            if data is not None:
+                request_kwargs["data"] = data
+            if files is not None:
+                request_kwargs["files"] = files
         if method == "get" and params is not None:
-            assert json is None, "when using post, pass params not json"
+            assert json is None, "when using get, pass params not json"
             request_kwargs["params"] = params
 
         if "{" in pth:
@@ -125,15 +132,20 @@ class APInterface(BaseModel):
                 raise HTTPError(error_msg) from None
             elif response.status_code == 403:
                 raise PermissionError("Access to that URL is denied. " "Check that the API key is correct") from None
-            elif response.status_code == 400 and id is not None:
-                raise PermissionError(f"Access to this id is denied. Check that '{id}' is correct") from e
+            elif response.status_code == 400 and id is not None and "message" in response.text:
+                if isinstance(response.text, dict):
+                    message = response.text["message"]
+                else:
+                    message = response.text
+                error_message = f"Access to this id is denied. {message}"
+                raise PermissionError(error_message) from e
             else:
                 raise Exception(f"Status Code: {response.status_code}, Response: {response.text}") from e
         try:
             json_response = response.json()
         except (JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
             raise JSONDecodeError(
-                f"Error decoding JSON response: {e.msg}\nFull Response: {response}", e.doc, e.pos
+                f"Error decoding JSON response: {e.msg}\n{response.text}\nFull Response: {response}", e.doc, e.pos
             ) from e
         # if self.verify_ssl == False:
         # we must have shown this warning the first time, ok to silence thereafter
@@ -154,7 +166,14 @@ class APInterface(BaseModel):
         """
         return self._request("get", pth=pth, id=id, params=params)
 
-    def _post_request(self, pth: str, metadata: Optional[Dict] = None, id: Optional[Union[int, str]] = None):
+    def _post_request(
+        self,
+        pth: str,
+        metadata: Optional[Dict] = None,
+        id: Optional[Union[int, str]] = None,
+        data: Optional[Dict[str, str]] = None,
+        files: Optional[Dict[str, BufferedReader]] = None,
+    ):
         """
         Args:
             pth (str): The path appended to the API_URL to which the POST request is sent.
@@ -163,7 +182,7 @@ class APInterface(BaseModel):
         Returns:
             Dict[str, str]: The JSON response from the server, parsed into a dictionary.
         """
-        return self._request("post", pth=pth, id=id, json=metadata)
+        return self._request("post", pth=pth, id=id, json=metadata, data=data, files=files)
 
 
 class MetadataEditor:
@@ -304,6 +323,149 @@ class MetadataEditor:
         response = self._apinterface._get_request(get_project_template, id=id)
         return pd.Series(response["project"])
 
+    def list_resources_by_id(self, id: int) -> pd.DataFrame:
+        """
+        List documentation (Reports, Questionnaires, Tables, etc.) for a project
+
+        Args:
+            id (int): project id
+
+        Returns:
+            (pd.DataFrame): resource information including titles, subtitles, authors and file formats
+        """
+        response = self._apinterface._get_request("resources/{}", id=id)
+        if "resources" in response and len(response["resources"]) > 0:
+            return pd.DataFrame(response["resources"])
+        else:
+            return pd.DataFrame(columns=["id", "sid", "dctype", "title", "subtitle", "author", "filename", "dcformat"])
+
+    def create_resource(
+        self,
+        project_id: int,
+        dctype: str,
+        title: str,
+        author: Optional[str] = None,
+        dcdate: Optional[str] = None,
+        country: Optional[str] = None,
+        language: Optional[str] = None,
+        contributor: Optional[str] = None,
+        publisher: Optional[str] = None,
+        rights: Optional[str] = None,
+        description: Optional[str] = None,
+        abstract: Optional[str] = None,
+        toc: Optional[str] = None,
+        filename: Optional[str] = None,
+    ) -> int:
+        """
+        Log a new resource associated with the project (Reports, Questionnaires, Tables, etc.)
+
+        If filename is provided then the file is uploaded and logged.
+
+        Args:
+            project_id (int): The project id the resource is associated with.
+            dctype (str): The type of the resource (e.g., 'txt', 'pdf').
+            title (str): The title of the resource.
+            author (Optional[str]): The author of the resource. Defaults to None.
+            dcdate (Optional[str]): The date of the resource. Defaults to None.
+            country (Optional[str]): The country associated with the resource. Defaults to None.
+            language (Optional[str]): The language of the resource. Defaults to None.
+            contributor (Optional[str]): The contributor to the resource. Defaults to None.
+            publisher (Optional[str]): The publisher of the resource. Defaults to None.
+            rights (Optional[str]): The rights associated with the resource. Defaults to None.
+            description (Optional[str]): A brief description of the resource. Defaults to None.
+            abstract (Optional[str]): An abstract summarizing the resource. Defaults to None.
+            toc (Optional[str]): The table of contents of the resource. Defaults to None.
+            filename (Optional[str]): The filename of the resource which will be uploaded. Defaults to None.
+
+        Returns:
+            int: The unique identifier of the logged resource.
+        """
+        data = {
+            "dctype": dctype,
+            "title": title,
+            "author": author,
+            "dcdate": dcdate,
+            "country": country,
+            "language": language,
+            "contributor": contributor,
+            "publisher": publisher,
+            "rights": rights,
+            "description": description,
+            "abstract": abstract,
+            "toc": toc,
+        }
+
+        if filename is not None:
+            files = {"file": open(filename, "rb")}
+        else:
+            files = None
+
+        response = self._apinterface._post_request(pth="resources/{}", id=project_id, data=data, files=files)
+        return int(response["resource"]["id"])
+
+    def update_resource(
+        self,
+        project_id: int,
+        resource_id: int,
+        dctype: str,
+        title: str,
+        author: Optional[str] = None,
+        dcdate: Optional[str] = None,
+        country: Optional[str] = None,
+        language: Optional[str] = None,
+        contributor: Optional[str] = None,
+        publisher: Optional[str] = None,
+        rights: Optional[str] = None,
+        description: Optional[str] = None,
+        abstract: Optional[str] = None,
+        toc: Optional[str] = None,
+        filename: Optional[str] = None,
+    ) -> int:
+        """
+        Log a new resource associated with the project (Reports, Questionnaires, Tables, etc.)
+
+        If filename is provided then the file is uploaded and logged.
+
+        Args:
+            project_id (int): The project id the resource is associated with.
+            resource_id (int): The id of the resource.
+            dctype (str): The type of the resource (e.g., 'txt', 'pdf').
+            title (str): The title of the resource.
+            author (Optional[str]): The author of the resource. Defaults to None.
+            dcdate (Optional[str]): The date of the resource. Defaults to None.
+            country (Optional[str]): The country associated with the resource. Defaults to None.
+            language (Optional[str]): The language of the resource. Defaults to None.
+            contributor (Optional[str]): The contributor to the resource. Defaults to None.
+            publisher (Optional[str]): The publisher of the resource. Defaults to None.
+            rights (Optional[str]): The rights associated with the resource. Defaults to None.
+            description (Optional[str]): A brief description of the resource. Defaults to None.
+            abstract (Optional[str]): An abstract summarizing the resource. Defaults to None.
+            toc (Optional[str]): The table of contents of the resource. Defaults to None.
+            filename (Optional[str]): The filename of the resource which will be uploaded. Defaults to None.
+        """
+
+        data = {
+            "dctype": dctype,
+            "title": title,
+            "author": author,
+            "dcdate": dcdate,
+            "country": country,
+            "language": language,
+            "contributor": contributor,
+            "publisher": publisher,
+            "rights": rights,
+            "description": description,
+            "abstract": abstract,
+            "toc": toc,
+        }
+
+        if filename is not None:
+            files = {"file": open(filename, "rb")}
+        else:
+            files = None
+
+        self._apinterface._post_request(pth="resources/{}/" + f"{resource_id}", id=project_id, data=data, files=files)
+
     @staticmethod
     def _remove_empty_from_dict(old_dict: Dict) -> Dict:
         """Helper function for removing entries from dictionaries that look like:
@@ -409,7 +571,7 @@ class MetadataEditor:
 
     def delete_project_by_id(self, id: int):
         """
-        Checks the project exists, deletes it, then checks it was deleted.
+        If the project exists then delete it and check it was deleted.
 
         Args:
             id (int): the id of the project, not to be confused with the idno.
@@ -422,7 +584,7 @@ class MetadataEditor:
 
     def delete_collection_by_id(self, id: int):
         """
-        Checks the collection exists, deletes it, then checks it was deleted.
+        If the collection exists then deletes it and check it was deleted.
 
         Args:
             id (int): the id of the colection.
@@ -433,12 +595,32 @@ class MetadataEditor:
         pth = "collections/delete/{}"
         self._delete_by_id(pth=pth, id=id, checker_fn=self.get_collection_by_id)
 
+    def delete_resource_by_id(self, project_id, resource_id):
+        """
+        If the resource exists then deletes it and check it was deleted.
+
+        Args:
+            project_id (int): The project id the resource is associated with.
+            resource_id (int): The id of the resource.
+
+        Raises:
+            DeleteNotAppliedError: This can be the result of system admins blocking data deletion
+        """
+
+        def check_exists(resource_id):
+            resource_ids = self.list_resources_by_id(project_id)["id"].apply(int).values
+            if resource_id not in resource_ids:
+                raise IndexError(f"{resource_id} not in list of resources for project id {project_id}")
+
+        pth = f"resources/delete/{project_id}/" + "{}"
+        self._delete_by_id(pth, resource_id, checker_fn=check_exists)
+
     def _delete_by_id(self, pth: str, id: Union[int, str], checker_fn: Callable[[int], pd.Series]):
         """
         Internal, generic method for deleting either collections or projects or similar.
         """
-        # first check that the project/collection is there to be deleted
-        checker_fn(id)
+        # # first check that the project/collection is there to be deleted
+        # checker_fn(id)
         try:
             self._apinterface._post_request(pth=pth, id=id)
         except JSONDecodeError:
@@ -447,10 +629,8 @@ class MetadataEditor:
         # check that the entity was deleted
         try:
             checker_fn(id)
-        except (PermissionError, JSONDecodeError):
+        except (PermissionError, JSONDecodeError, IndexError):
             pass  # evidently the entity was deleted because now it can't be found
-        # except JSONDecodeError as e:
-
         else:
             raise DeleteNotAppliedError()
 

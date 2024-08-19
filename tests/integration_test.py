@@ -1,5 +1,6 @@
 import os
 
+import pandas as pd
 import pytest
 
 from pymetadataeditor import MetadataEditor
@@ -29,7 +30,12 @@ def test_projects_integration(tmpdir, metadata_editor):
     # fail due to api saying "unknown type": "series"
 
     metadata_types = [
-        "document"
+        "document",
+        "survey",
+        "table",
+        "timeseries",
+        "timeseries_db",
+        "video",
     ]  # "document", "geospatial", "script", "series", "survey", "table", "timeseries", "timeseries_db", "video"
     creation_data = {
         "document": {
@@ -258,3 +264,52 @@ def test_collections_integration(metadata_editor):
     # delete collection
     metadata_editor.delete_collection_by_id(collection_id)
     assert len(metadata_editor.list_collections()) == num_original_collections
+
+
+def test_resources_integration(metadata_editor, tmpdir):
+    project_id = metadata_editor.create_project_log(
+        "timeseries",
+        {
+            "idno": "resources_integration_test",
+            "series_description": {"idno": "resources_integration_test", "name": "integration_test_of_resources"},
+        },
+    )
+    try:
+        initial_resources = metadata_editor.list_resources_by_id(project_id)
+        assert isinstance(initial_resources, pd.DataFrame)
+        assert len(initial_resources) == 0
+
+        filename = "resources_integration.txt"
+        temp_file = tmpdir.join(filename)
+        temp_file.write("dummy content")
+        filename = str(temp_file)
+
+        resource_id = metadata_editor.create_resource(
+            project_id, dctype="txt", title="resources_integration", filename=filename
+        )
+        try:
+            resources = metadata_editor.list_resources_by_id(project_id)
+            assert isinstance(resources, pd.DataFrame)
+            assert len(resources) == 1
+            resources.iloc[0].title = "resources_integration"
+
+            metadata_editor.update_resource(
+                project_id=project_id, resource_id=resource_id, dctype="txt", title="updated_resources_integration"
+            )
+            resources = metadata_editor.list_resources_by_id(project_id)
+            assert isinstance(resources, pd.DataFrame)
+            assert len(resources) == 1
+            resources.iloc[0].title = "updated_resources_integration"
+
+        except Exception as e:
+            metadata_editor.delete_resource_by_id(project_id=project_id, resource_id=resource_id)
+            raise e
+        else:
+            metadata_editor.delete_resource_by_id(project_id=project_id, resource_id=resource_id)
+            final_resources = metadata_editor.list_resources_by_id(project_id)
+            assert isinstance(final_resources, pd.DataFrame)
+            assert len(final_resources) == 0
+
+    except Exception as e:
+        metadata_editor.delete_project_by_id(project_id)
+        raise e

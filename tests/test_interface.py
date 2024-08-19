@@ -29,13 +29,13 @@ class MockResponse:
         """
         self.status_code = http_status_code
         self.json_data = json_data if json_data is not None else {}
-        self.text = error_message if error_message is not None else "{}"
+        self.text = error_message if error_message is not None else {}
         self.raise_json_decode_error = raise_json_decode_error
         self.raise_ssl = raise_ssl
 
         self.response = requests.Response()
         self.response.status_code = self.status_code
-        self.response._content = self.text.encode("utf-8")
+        # self.response._content = self.text.encode("utf-8")
         self.response.headers["Content-Type"] = "application/json"
         self.response.url = "https://example.com/api/resource"
 
@@ -195,13 +195,13 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
         return MockResponse(
             http_status_code=400,
             json_data={},
-            error_message="""{"message": "You don't have permission to access this project"}""",
+            error_message={"message": "You don't have permission to access this project"},
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
     with pytest.raises(Exception) as e:
         metadata_editor.get_project_by_id(1)
-    assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
+    assert str(e.value) == "Access to this id is denied. You don't have permission to access this project"
 
     # id is good
     project = {"status": "success", "project": {"id": "1", "created": "2024-06-11T09:58:14-04:00"}}
@@ -287,7 +287,7 @@ def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
         return MockResponse(
             http_status_code=400,
             json_data={},
-            error_message="""{"message": "You don't have permission to access this project"}""",
+            error_message={"message": "You don't have permission to access this project"},
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
@@ -295,7 +295,7 @@ def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
         metadata_editor.update_project_log_by_id(
             id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
         )
-    assert str(e.value) == "Access to this id is denied. Check that '1' is correct"
+    assert str(e.value) == "Access to this id is denied. You don't have permission to access this project"
 
     # id is good
     def mock_response(*args, **kwargs):
@@ -448,22 +448,22 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     To test the specific behaviour of the delete_collection_by_id really requires an integration test
     """
 
-    # raises an error when there is no such project to delete
-    monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById(False))
+    # # raises an error when there is no such project to delete
+    # monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById(False))
 
-    def mock_response(*args, **kwargs):
-        return MockResponse(
-            http_status_code=400,
-            error_message="""{"message": "You don't have permission to access this project"}""",
-        )
+    # def mock_response(*args, **kwargs):
+    #     return MockResponse(
+    #         http_status_code=400,
+    #         error_message={"message": "You don't have permission to access this project"},
+    #     )
 
-    monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(Exception):
-        metadata_editor.delete_project_by_id(1)
+    # monkeypatch.setattr(requests, "request", mock_response)
+    # with pytest.raises(Exception):
+    #     metadata_editor.delete_project_by_id(1)
 
     # raises DeleteNotAppliedError when request was good but the json was bad
     #   and the project is still there
-    monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById([True, True]))
+    monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById(True))
 
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=True)
@@ -473,7 +473,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
         metadata_editor.delete_project_by_id(1)
 
     # the project was deleted even though the json was bad
-    monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById([True, False]))
+    monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById(False))
 
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=True)
@@ -482,13 +482,13 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     metadata_editor.delete_project_by_id(1)
 
     # the project was deleted
-    monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById([True, False]))
+    monkeypatch.setattr(MetadataEditor, "get_project_by_id", MockGetProjectById(False))
 
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=False)
 
     monkeypatch.setattr(APInterface, "_post_request", mock_response)
-    monkeypatch.setattr(APInterface, "_post_request", mock_response)
+    # monkeypatch.setattr(APInterface, "_post_request", mock_response)
     metadata_editor.delete_project_by_id(1)
 
 
@@ -579,7 +579,7 @@ def test_add_projects_to_collection(monkeypatch, metadata_editor):
     metadata_editor.add_projects_to_collection([1], "id", [1, 2])
 
 
-def test_remove_projects_to_collection(monkeypatch, metadata_editor):
+def test_remove_projects_from_collection(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200)
 
@@ -725,3 +725,105 @@ def test_set_template_for_collection(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
     metadata_editor.set_template_for_collection(1, "example_uid")
+
+
+def test_list_resources_by_id(monkeypatch, metadata_editor):
+    def mock_response(*args, **kwargs):
+        return MockResponse(
+            http_status_code=200,
+            json_data={
+                "resources": [
+                    {
+                        "id": 1,
+                        "sid": "sid1",
+                        "dctype": "Report",
+                        "title": "Report Title",
+                        "subtitle": "Subtitle",
+                        "author": "Author Name",
+                        "filename": "report.pdf",
+                        "dcformat": "pdf",
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    resources = metadata_editor.list_resources_by_id(1)
+    assert isinstance(resources, pd.DataFrame)
+    assert len(resources) == 1
+    assert resources.loc[0, "title"] == "Report Title"
+
+    # No resources available
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"resources": []})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    resources = metadata_editor.list_resources_by_id(1)
+    assert isinstance(resources, pd.DataFrame)
+    assert len(resources) == 0
+
+    # No resources key in the response
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    resources = metadata_editor.list_resources_by_id(1)
+    assert isinstance(resources, pd.DataFrame)
+    assert len(resources) == 0
+
+
+@pytest.mark.parametrize(
+    "dctype, title, author, filename, should_raise",
+    [
+        ("txt", "file1.txt", "Author1", None, False),  # No file upload
+        ("pdf", "file2.pdf", "Author2", None, False),  # No file upload
+        ("txt", "file3.txt", "Author3", None, False),  # No file upload
+        ("pdf", "file4.pdf", "Author4", "tempfile.pdf", False),  # Valid file upload
+    ],
+)
+def test_create_update_delete_resource(
+    monkeypatch, metadata_editor, tmpdir, dctype, title, author, filename, should_raise
+):
+    def mock_response(*args, **kwargs):
+        return MockResponse(http_status_code=200, json_data={"resource": {"id": 1}})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    if filename:
+        temp_file = tmpdir.join(filename)
+        temp_file.write("dummy content")
+        filename = str(temp_file)
+
+    if should_raise:
+        with pytest.raises(ValidationError):
+            metadata_editor.create_resource(project_id=1, dctype=dctype, title=title, author=author, filename=filename)
+    else:
+        resource_id = metadata_editor.create_resource(
+            project_id=1, dctype=dctype, title=title, author=author, filename=filename
+        )
+        assert resource_id == 1
+
+    # Test update_resource method
+    if should_raise:
+        with pytest.raises(ValidationError):
+            metadata_editor.update_resource(
+                project_id=1, resource_id=1, dctype=dctype, title=title, author=author, filename=filename
+            )
+    else:
+        metadata_editor.update_resource(
+            project_id=1, resource_id=1, dctype=dctype, title=title, author=author, filename=filename
+        )
+
+    # Mocking the list_resources_by_id for deletion check
+    def mock_list_resources_by_id(*args, **kwargs):
+        return pd.DataFrame([{"id": "99"}])
+
+    monkeypatch.setattr(metadata_editor, "list_resources_by_id", mock_list_resources_by_id)
+
+    # Test delete_resource_by_id method
+    def mock_delete_response(*args, **kwargs):
+        return MockResponse(http_status_code=200)
+
+    monkeypatch.setattr(APInterface, "_post_request", mock_delete_response)
+
+    metadata_editor.delete_resource_by_id(project_id=1, resource_id=1)

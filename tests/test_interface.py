@@ -688,6 +688,27 @@ def test_get_template_by_uid(monkeypatch, metadata_editor):
     assert actual.name == "example name"
 
 
+def test_simplify_metadata(metadata_editor, tmpdir):
+    project_filename = metadata_editor.outline_metadata(
+        "document", "excel", filename=os.path.join(tmpdir, "simplify.xlsx")
+    )
+    assert metadata_editor.simplify_metadata(project_filename) == {}
+
+    project = metadata_editor.outline_metadata("document", "pydantic")
+    assert metadata_editor.simplify_metadata(project) == {}
+    project.metadata_information.producers[0].name = "test"
+    simplified_project = metadata_editor.simplify_metadata(project)
+    assert len(simplified_project) == 1
+    assert simplified_project["metadata_information"]["producers"][0]["name"] == "test"
+
+    project = metadata_editor.outline_metadata("document", "dict")
+    assert metadata_editor.simplify_metadata(project) == {}
+    project["metadata_information"]["producers"][0]["name"] = "test"
+    simplified_project = metadata_editor.simplify_metadata(project)
+    assert len(simplified_project) == 1
+    assert simplified_project["metadata_information"]["producers"][0]["name"] == "test"
+
+
 def test_set_template_for_collection(monkeypatch, metadata_editor):
     # This test also feel unsatisfying since it's testing the implementation not the funcationality.
     # An integration test is surely required

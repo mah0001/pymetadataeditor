@@ -502,6 +502,27 @@ class MetadataEditor:
                 new_dict[k] = v
         return new_dict
 
+    def simplify_metadata(self, metadata: Union[Dict, BaseModel, str]) -> Dict:
+        """
+        Returns a dictionary of only the elements that have set values, exluding Nones, unsets, defaults, empty strings,
+          empty lists and empty dictionaries.
+
+
+        Args:
+            metadata (dictionary or BaseModel or str):
+                Can be a dictionary, a pydantic object or a string. If string, it's assumed this is a path to an
+                appropriately formatted Excel file.
+
+        Returns:
+            (dict): a metadata dictionary of set elements.
+        """
+        if isinstance(metadata, str):
+            metadata = self._ei.read_metadata_excel(metadata)
+            metadata = metadata.model_dump(mode="json", exclude_defaults=True, exclude_none=True, exclude_unset=True)
+        elif isinstance(metadata, BaseModel):
+            metadata = metadata.model_dump(mode="json", exclude_defaults=True, exclude_none=True, exclude_unset=True)
+        return self._remove_empty_from_dict(metadata)
+
     def get_project_metadata_by_id(
         self,
         id: int,
@@ -713,7 +734,7 @@ class MetadataEditor:
                 f"this project is listed as a '{metadata_type}' type project but this is"
                 f" unknown. Projects must be one of {list(self._metadata_types.keys())}"
             )
-            metadata = self._ei.read_metadata_excel(metadata_type, metadata)
+            metadata = self._ei.read_metadata_excel(metadata)
             metadata = metadata.model_dump(mode="json")
         elif isinstance(metadata, BaseModel):
             metadata = metadata.model_dump(mode="json")
@@ -748,7 +769,7 @@ class MetadataEditor:
         )
 
         if isinstance(metadata, str):
-            metadata = self._ei.read_metadata_excel(metadata_type, metadata)
+            metadata = self._ei.read_metadata_excel(metadata)
 
         self._metadata_types[metadata_type].model_validate(metadata, strict=True)
         # validate_metadata(metadata, self._metadata_types[metadata_type])

@@ -121,6 +121,41 @@ def test_projects_integration(tmpdir, metadata_editor):
             "video_description": {"idno": "integration_test_video", "title": "integration_test_video title updated"}
         },
     }
+    patch_update_data = {
+        "document": {
+            "op": "add",
+            "path": "/document_description/title_statement/title",
+            "value": "patched integration test document updated",
+        },
+        "survey": [
+            {
+                "op": "replace",
+                "path": "study_desc/title_statement/title",
+                "value": "integration_test_survey title updated patched",
+            }
+        ],
+        "table": [
+            {"op": "remove", "path": "/table_description/title_statement/title"},
+            {
+                "op": "add",
+                "path": "/table_description/title_statement/title",
+                "value": "patched integration test table updated",
+            },
+        ],
+        "timeseries": [
+            {"op": "replace", "path": "series_description/name", "value": "patched integration_test_timeseries_updated"}
+        ],
+        "timeseries_db": {
+            "op": "add",
+            "path": "database_description/title_statement/title",
+            "value": "integration_test_timeseries_db title updated patched",
+        },
+        "video": {
+            "op": "replace",
+            "path": "/video_description",
+            "value": {"idno": "integration_test_video", "title": "integration_test_video title updated patched"},
+        },
+    }
 
     for metadata_type in metadata_types:
         # create project
@@ -156,6 +191,21 @@ def test_projects_integration(tmpdir, metadata_editor):
                 project_id not in title_contains_bogus.index and str(project_id) not in title_contains_bogus.index
             ), title_contains_bogus
 
+            # patch update
+            title_contains_updated = metadata_editor.list_projects(
+                limit="all", keywords="patched", metadata_type=metadata_type
+            )
+            assert (
+                project_id not in title_contains_updated.index or str(project_id) in title_contains_updated.index
+            ), title_contains_updated
+            metadata_editor.patch_update_project_log_by_id(project_id, patches=patch_update_data[metadata_type])
+            title_contains_updated = metadata_editor.list_projects(
+                limit="all", keywords="patched", metadata_type=metadata_type
+            )
+            assert (
+                project_id in title_contains_updated.index or str(project_id) in title_contains_updated.index
+            ), title_contains_updated
+
             # save project to excel and then upload it
             if metadata_type == "geospatial":
                 with pytest.raises(NotImplementedError):
@@ -167,12 +217,14 @@ def test_projects_integration(tmpdir, metadata_editor):
                 filename = os.path.join(tmpdir, filename)
                 metadata_editor.get_project_metadata_by_id(project_id, mode="excel", filename=filename)
                 metadata_editor.update_project_log_by_id(project_id, filename)
-        except Exception as e:
+        finally:
             metadata_editor.delete_project_by_id(project_id)
-            raise e
+        # except Exception as e:
+        #     metadata_editor.delete_project_by_id(project_id)
+        #     raise e
 
-        # delete project
-        metadata_editor.delete_project_by_id(project_id)
+        # # delete project
+        # metadata_editor.delete_project_by_id(project_id)
         final_projects = metadata_editor.list_projects(limit="all")
         assert len(final_projects) == num_original_projects
 
@@ -313,3 +365,5 @@ def test_resources_integration(metadata_editor, tmpdir):
     except Exception as e:
         metadata_editor.delete_project_by_id(project_id)
         raise e
+    else:
+        metadata_editor.delete_project_by_id(project_id)

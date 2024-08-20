@@ -138,7 +138,7 @@ def test_given_request(monkeypatch, metadata_editor, method: str):
     elif method == "post":
 
         def func(*args, **kwargs):
-            return metadata_editor._apinterface._post_request(*args, **kwargs, metadata={})
+            return metadata_editor._apinterface._post_request(*args, **kwargs, json={})
 
     # api raises some http error
     def mock_response(*args, **kwargs):
@@ -199,9 +199,8 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(Exception) as e:
+    with pytest.raises(Exception, match="You don't have permission to access this project"):
         metadata_editor.get_project_by_id(1)
-    assert str(e.value) == "Access to this id is denied. You don't have permission to access this project"
 
     # id is good
     project = {"status": "success", "project": {"id": "1", "created": "2024-06-11T09:58:14-04:00"}}
@@ -291,11 +290,10 @@ def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(Exception) as e:
+    with pytest.raises(Exception, match="You don't have permission to access this project"):
         metadata_editor.update_project_log_by_id(
             id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
         )
-    assert str(e.value) == "Access to this id is denied. You don't have permission to access this project"
 
     # id is good
     def mock_response(*args, **kwargs):
@@ -322,6 +320,48 @@ def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
     metadata_editor.outline_metadata(
         "timeseries", "excel", filename=os.path.join(tmpdir, "test_update_project_log_by_id.xlsx")
     )
+
+
+def test_patch_update_project_log_by_id(monkeypatch, metadata_editor):
+    def mock_get_project_by_id(*args, **kwargs):
+        return pd.Series({"type": "timeseries"})
+
+    monkeypatch.setattr(MetadataEditor, "get_project_by_id", mock_get_project_by_id)
+
+    def mock_response(*args, **kwargs):
+        return MockResponse(
+            http_status_code=200,
+        )
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    # Test case: single patch as a dict
+    single_patch = {"op": "remove", "path": "/toc"}
+    metadata_editor.patch_update_project_log_by_id(1, single_patch)
+
+    # List of patches
+    patches = [
+        {"op": "replace", "path": "/title", "value": "New Title"},
+        {"op": "add", "path": "/description", "value": "Updated description."},
+    ]
+    metadata_editor.patch_update_project_log_by_id(1, patches)
+
+    # patches with bad ops should raise ValueError
+    bad_patches = [{"op": "bad_op", "path": "/title", "value": "Should raise error"}]
+    with pytest.raises(ValueError, match="Invalid operation"):
+        metadata_editor.patch_update_project_log_by_id(1, bad_patches)
+
+    # patches where the path doesn't begin with a slash, should be ok
+    patches_without_slash = [
+        {"op": "replace", "path": "title", "value": "Title without leading slash"},
+        {"op": "add", "path": "description", "value": "Description without leading slash"},
+    ]
+    metadata_editor.patch_update_project_log_by_id(1, patches_without_slash)
+
+    # patches where value is required but not provided should raise ValueError
+    patches_missing_value = [{"op": "replace", "path": "/title"}]
+    with pytest.raises(ValueError, match="Operation 'replace' requires a 'value' field."):
+        metadata_editor.patch_update_project_log_by_id(1, patches_missing_value)
 
 
 metadata_types = ["document", "script", "series", "table", "timeseries", "timeseries_db", "video"]  # 'geospatial',

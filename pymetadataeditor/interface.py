@@ -26,6 +26,8 @@ from metadataschemas.utils.utils import standardize_keys_in_dict
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, model_validator
 from requests.exceptions import HTTPError, SSLError
 
+from .utils import remove_empty_from_dict, validate_json_patches
+
 warnings.filterwarnings(
     "ignore", category=UserWarning, module="pydantic"
 )  # suppresses warning when metadata passed as dict instead of a pydantic object
@@ -132,12 +134,11 @@ class APInterface(BaseModel):
                 raise HTTPError(error_msg) from None
             elif response.status_code == 403:
                 raise PermissionError("Access to that URL is denied. " "Check that the API key is correct") from None
-            elif response.status_code == 400 and id is not None and "message" in response.text:
+            elif response.status_code == 400 and "message" in response.text:
                 if isinstance(response.text, dict):
-                    message = response.text["message"]
+                    error_message = response.text["message"]
                 else:
-                    message = response.text
-                error_message = f"Access to this id is denied. {message}"
+                    error_message = response.text
                 raise PermissionError(error_message) from e
             else:
                 raise Exception(f"Status Code: {response.status_code}, Response: {response.text}") from e
@@ -169,7 +170,7 @@ class APInterface(BaseModel):
     def _post_request(
         self,
         pth: str,
-        metadata: Optional[Dict] = None,
+        json: Optional[Dict] = None,
         id: Optional[Union[int, str]] = None,
         data: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, BufferedReader]] = None,
@@ -182,7 +183,7 @@ class APInterface(BaseModel):
         Returns:
             Dict[str, str]: The JSON response from the server, parsed into a dictionary.
         """
-        return self._request("post", pth=pth, id=id, json=metadata, data=data, files=files)
+        return self._request("post", pth=pth, id=id, json=json, data=data, files=files)
 
 
 class MetadataEditor:
@@ -466,47 +467,10 @@ class MetadataEditor:
 
         self._apinterface._post_request(pth="resources/{}/" + f"{resource_id}", id=project_id, data=data, files=files)
 
-    @staticmethod
-    def _remove_empty_from_dict(old_dict: Dict) -> Dict:
-        """Helper function for removing entries from dictionaries that look like:
-        [{'name': ''}]
-        """
-        new_dict = {}
-        for k, v in old_dict.items():
-            if v is None:
-                continue
-            if isinstance(v, str):
-                if v != "":
-                    new_dict[k] = v
-            elif isinstance(v, dict):
-                new_sub_dict = MetadataEditor._remove_empty_from_dict(v)
-                if len(new_sub_dict) > 0:
-                    new_dict[k] = new_sub_dict
-            elif isinstance(v, list):
-                new_list = []
-                for elem in v:
-                    if elem is None:
-                        continue
-                    if isinstance(elem, dict):
-                        new_elem = MetadataEditor._remove_empty_from_dict(elem)
-                        if len(new_elem) > 0:
-                            new_list.append(new_elem)
-                    elif isinstance(elem, str):
-                        if elem != "":
-                            new_list.append(elem)
-                    else:
-                        new_list.append(elem)
-                if len(new_list) > 0:
-                    new_dict[k] = new_list
-            else:
-                new_dict[k] = v
-        return new_dict
-
     def simplify_metadata(self, metadata: Union[Dict, BaseModel, str]) -> Dict:
         """
         Returns a dictionary of only the elements that have set values, exluding Nones, unsets, defaults, empty strings,
           empty lists and empty dictionaries.
-
 
         Args:
             metadata (dictionary or BaseModel or str):
@@ -518,10 +482,9 @@ class MetadataEditor:
         """
         if isinstance(metadata, str):
             metadata = self._ei.read_metadata_excel(metadata)
+        if isinstance(metadata, BaseModel):
             metadata = metadata.model_dump(mode="json", exclude_defaults=True, exclude_none=True, exclude_unset=True)
-        elif isinstance(metadata, BaseModel):
-            metadata = metadata.model_dump(mode="json", exclude_defaults=True, exclude_none=True, exclude_unset=True)
-        return self._remove_empty_from_dict(metadata)
+        return remove_empty_from_dict(metadata)
 
     def get_project_metadata_by_id(
         self,
@@ -584,7 +547,7 @@ class MetadataEditor:
                 metadata_dict = metadata_object.model_dump(
                     mode="json", exclude_none=exclude_unset, exclude_unset=exclude_unset
                 )
-                return self._remove_empty_from_dict(metadata_dict)
+                return remove_empty_from_dict(metadata_dict)
         else:
             return self._ei.save_metadata_to_excel(
                 metadata_type, object=metadata_object, filename=filename, title=title
@@ -777,7 +740,7 @@ class MetadataEditor:
 
         post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
         ret = self._apinterface._post_request(
-            pth=post_request_pth, metadata=md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+            pth=post_request_pth, json=md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
         )
         return ret["id"]
 
@@ -820,8 +783,77 @@ class MetadataEditor:
         self._apinterface._post_request(
             post_request_template_path,
             id=id,
-            metadata=md,
+            json=md,
         )
+
+    def patch_update_project_log_by_id(self, id: int, patches: Union[Dict, List[Dict]]):
+        """
+        Add, update, remove parts of a projects metadata using the json patch format.
+
+        "JSON Patch is a format for describing changes to a JSON document. It can be used to avoid sending a whole
+        document when only a part has changed." - https://jsonpatch.com/ accessed 2024-08-20
+
+        This method applies a series of JSON patches to update the metadata of a project specified by its ID.
+
+        Args:
+            id (int): The unique identifier of the project whose metadata is to be updated.
+            patches (Union[Dict, List[Dict]]): A single JSON patch or a list of JSON patches.
+                                            Each patch is a dictionary that follows the JSON Patch format.
+
+        Raises:
+            ValueError: If any of the provided patches are invalid.
+
+        JSON Patch Operations:
+            - "add": Adds a value to the specified path. If the path already exists, the value is replaced.
+            - "remove": Removes the value at the specified path.
+            - "replace": Replaces the value at the specified path with a new value.
+            - "test": Tests that the value at the specified path matches a given value.
+
+        Path Notation:
+            - The `path` in each patch operation is a string that uses a slash (`/`) notation to specify the location
+            within the JSON document. For example, `/author` refers to the "author" field, and `/metadata/title` refers
+            to the "title" field inside the "metadata" object. If the path does not start with a `/`, the method will
+            automatically prepend it.
+
+        Example JSON Patch:
+            To add an author to a project's metadata:
+            ```json
+            [
+                { "op": "add", "path": "/author", "value": "John Doe" }
+            ]
+            ```
+
+            To replace the title of a project:
+            ```json
+            [
+                { "op": "replace", "path": "/title", "value": "New Project Title" }
+            ]
+            ```
+
+            To remove the description of a project:
+            ```json
+            [
+                { "op": "remove", "path": "/description" }
+            ]
+            ```
+
+        Usage:
+            ```python
+            patches = [
+                { "op": "add", "path": "/author", "value": "John Doe" },
+                { "op": "replace", "path": "/title", "value": "New Project Title" }
+            ]
+            metadata_editor.patch_update_project_log_by_id(id=123, patches=patches)
+            ```
+        """
+
+        project_data = self.get_project_by_id(id)
+        metadata_type = project_data["type"]
+        pth = f"editor/patch/{metadata_type}/"
+        if isinstance(patches, dict):
+            patches = [patches]
+        patches = validate_json_patches(patches)
+        self._apinterface._post_request(pth=pth + "{}", id=id, json={"patches": patches, "validate": True})
 
     def list_collections(self) -> pd.DataFrame:
         """
@@ -863,7 +895,7 @@ class MetadataEditor:
             (int): The id of the newly created collection
         """
         assert title != "", "The collection must have a title but an empty string was passed"
-        ret = self._apinterface._post_request("collections", metadata={"title": title, "description": description})
+        ret = self._apinterface._post_request("collections", json={"title": title, "description": description})
         return ret["collection"]
 
     def update_collection(self, id: int, title: Optional[str] = None, description: Optional[str] = None):
@@ -885,7 +917,7 @@ class MetadataEditor:
             metadata["title"] = title
         if description is not None:
             metadata["description"] = description
-        self._apinterface._post_request("collections/update/{}", id=id, metadata=metadata)
+        self._apinterface._post_request("collections/update/{}", id=id, json=metadata)
 
     def count_projects_in_collection(self, collection: int) -> int:
         """
@@ -1019,7 +1051,7 @@ class MetadataEditor:
                 assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
         self._apinterface._post_request(
             "collections/add_projects",
-            metadata={"collections": collection, "id_format": id_format, "projects": projects},
+            json={"collections": collection, "id_format": id_format, "projects": projects},
         )
 
     def remove_projects_from_collection(
@@ -1079,7 +1111,7 @@ class MetadataEditor:
 
         self._apinterface._post_request(
             "collections/remove_projects",
-            metadata={"collections": collection, "id_format": id_format, "projects": projects},
+            json={"collections": collection, "id_format": id_format, "projects": projects},
         )
 
     def list_templates(self) -> pd.DataFrame:
@@ -1128,7 +1160,7 @@ class MetadataEditor:
         template_type = template["data_type"]
         self._apinterface._post_request(
             "collections/template",
-            metadata={"collection_id": collection_id, "template_uid": template_uid, "project_type": template_type},
+            json={"collection_id": collection_id, "template_uid": template_uid, "project_type": template_type},
         )
 
     def delete_template(self, uid: str):

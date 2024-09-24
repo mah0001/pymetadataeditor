@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 import pytest
+from metadataschemas.utils.quick_start import make_skeleton
 
 from pymetadataeditor import MetadataEditor
 
@@ -27,7 +28,6 @@ def test_projects_integration(tmpdir, metadata_editor):
 
     # Good: "document", "survey", "table", "timeseries", "timeseries_db", "video"
     # fail due to not searchable: "geospatial", "script"
-    # fail due to api saying "unknown type": "series"
 
     metadata_types = [
         "document",
@@ -36,7 +36,7 @@ def test_projects_integration(tmpdir, metadata_editor):
         "timeseries",
         "timeseries_db",
         "video",
-    ]  # "document", "geospatial", "script", "series", "survey", "table", "timeseries", "timeseries_db", "video"
+    ]  # "document", "geospatial", "script", "survey", "table", "timeseries", "timeseries_db", "video"
     creation_data = {
         "document": {
             "document_description": {
@@ -51,7 +51,6 @@ def test_projects_integration(tmpdir, metadata_editor):
             },
         },
         "script": {"doc_desc": {"idno": "integration_test_script"}},
-        "series": {"idno": "integration_test_series", "name": "integration_test_series"},
         "survey": {
             "repositoryid": "integration_test_survey_repository_id",
             "study_desc": {
@@ -91,7 +90,6 @@ def test_projects_integration(tmpdir, metadata_editor):
             }
         },
         "script": {"doc_desc": {"idno": "integration_test_script", "title": "integration test script updated"}},
-        "series": {"idno": "integration_test_series", "name": "integration_test_series_updated"},
         "survey": {
             "study_desc": {
                 "title_statement": {
@@ -160,7 +158,7 @@ def test_projects_integration(tmpdir, metadata_editor):
     for metadata_type in metadata_types:
         # create project
         project_id = metadata_editor.create_project_log(
-            metadata_type=metadata_type, metadata=creation_data[metadata_type]
+            metadata_type_or_template_uid=metadata_type, metadata=creation_data[metadata_type]
         )
 
         try:
@@ -168,6 +166,10 @@ def test_projects_integration(tmpdir, metadata_editor):
 
             # get project
             project_metadata = metadata_editor.get_project_by_id(project_id).metadata
+            for k, v in creation_data[metadata_type].items():
+                assert project_metadata[k] == v
+
+            project_metadata = metadata_editor.get_project_metadata_by_id(project_id, mode="dict")
             for k, v in creation_data[metadata_type].items():
                 assert project_metadata[k] == v
 
@@ -267,7 +269,7 @@ def test_collections_integration(metadata_editor):
         project_idno = "project for collection integration test"
         project_name = "project for collection integration test"
         project_id = metadata_editor.create_project_log(
-            metadata_type="timeseries",
+            metadata_type_or_template_uid="timeseries",
             metadata={"idno": project_idno, "series_description": {"idno": project_idno, "name": project_name}},
         )
         try:
@@ -336,7 +338,7 @@ def test_resources_integration(metadata_editor, tmpdir):
         temp_file.write("dummy content")
         filename = str(temp_file)
 
-        resource_id = metadata_editor.create_resource(
+        resource_id = metadata_editor.log_resource(
             project_id, dctype="txt", title="resources_integration", filename=filename
         )
         try:
@@ -367,3 +369,30 @@ def test_resources_integration(metadata_editor, tmpdir):
         raise e
     else:
         metadata_editor.delete_project_by_id(project_id)
+
+
+def test_templates(metadata_editor):
+    unknown_types = {}
+
+    for i, uid in enumerate(metadata_editor.list_templates()[["uid"]].values):
+        temp = metadata_editor.get_template_by_uid(uid[0])
+        metadata_type = temp.data_type
+        print(i, uid[0], metadata_type)
+
+        if metadata_type in ["image"]:
+            continue
+        metadata_type = metadata_type.replace("-", "_")
+        if metadata_type != "geospatial" and metadata_type not in metadata_editor._mm.metadata_type_names:
+            if temp.data_type not in unknown_types:
+                unknown_types[metadata_type] = 1
+            else:
+                unknown_types[metadata_type] += 1
+            continue
+        class_def = metadata_editor.get_metadata_class(uid[0])
+        # parent_schema = metadata_editor._mm.metadata_class_from_name(metadata_type)
+        # assert isinstance(parent_schema, type(BaseModel)), metadata_type
+        # class_def = pydantic_from_template(temp.template, parent_schema=parent_schema, name=temp.name)
+        if metadata_type == "geospatial":
+            continue
+        print("making skeleton", make_skeleton(class_def))
+        assert len(unknown_types) == 0, f"encountered unknown types {unknown_types}"

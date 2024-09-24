@@ -177,7 +177,7 @@ def test_list_projects(monkeypatch, metadata_editor):
     assert actual_projects.columns == ["created"]
 
     # bad then good metadata_type
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         metadata_editor.list_projects(metadata_type="bad_type", limit=100)
     metadata_editor.list_projects(metadata_type="geospatial", limit=100)
 
@@ -224,7 +224,6 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
         ),
         ("geospatial", {}, {"description": {"idno": "example_idno"}}),
         ("script", None, {"doc_desc": {"idno": "example_idno"}}),
-        ("series", {}, {"idno": "example_idno", "name": "example_name"}),
         ("table", None, {"table_description": {"title_statement": {"idno": "example idno", "title": "example title"}}}),
         (
             "timeseries",
@@ -268,13 +267,15 @@ def test_create_project_log(monkeypatch, metadata_editor, metadata_type, bad_met
 
     if bad_metadata is not None:
         with pytest.raises(ValidationError):
-            metadata_editor.create_project_log(metadata_type=metadata_type, metadata=bad_metadata)
+            metadata_editor.create_project_log(metadata_type_or_template_uid=metadata_type, metadata=bad_metadata)
 
-    metadata_id = metadata_editor.create_project_log(metadata_type=metadata_type, metadata=good_metadata)
+    metadata_id = metadata_editor.create_project_log(
+        metadata_type_or_template_uid=metadata_type, metadata=good_metadata
+    )
     assert metadata_id == 1
 
     with pytest.raises(ValidationError):
-        metadata_editor.create_project_log(metadata_type=metadata_type, metadata={"bad_key": ""})
+        metadata_editor.create_project_log(metadata_type_or_template_uid=metadata_type, metadata={"bad_key": ""})
 
 
 def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
@@ -313,11 +314,11 @@ def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
     )
 
     # use pydantic
-    model = metadata_editor.outline_metadata("timeseries", "pydantic")
+    model = metadata_editor.make_metadata_outline("timeseries", "pydantic")
     metadata_editor.update_project_log_by_id(id=1, new_metadata=model)
 
     # use excel
-    metadata_editor.outline_metadata(
+    metadata_editor.make_metadata_outline(
         "timeseries", "excel", filename=os.path.join(tmpdir, "test_update_project_log_by_id.xlsx")
     )
 
@@ -364,16 +365,18 @@ def test_patch_update_project_log_by_id(monkeypatch, metadata_editor):
         metadata_editor.patch_update_project_log_by_id(1, patches_missing_value)
 
 
-metadata_types = ["document", "script", "series", "table", "timeseries", "timeseries_db", "video"]  # 'geospatial',
+metadata_types = ["document", "script", "table", "timeseries", "timeseries_db", "video"]  # 'geospatial',
 modes = ["excel", "dict", "pydantic"]
 
 
 @pytest.mark.parametrize("metadata_type, mode", list(itertools.product(metadata_types, modes)))
-def test_outline_metadata(tmpdir, metadata_editor, metadata_type, mode):
+def test_make_metadata_outline(tmpdir, metadata_editor, metadata_type, mode):
     if mode == "excel" and metadata_editor == "geospatial":
         pass
-    metadata_editor.outline_metadata(
-        metadata_type=metadata_type, mode=mode, filename=os.path.join(tmpdir, f"outline_{metadata_type}.xlsx")
+    metadata_editor.make_metadata_outline(
+        metadata_type_or_template_uid=metadata_type,
+        mode=mode,
+        filename=os.path.join(tmpdir, f"outline_{metadata_type}.xlsx"),
     )
 
 
@@ -383,7 +386,6 @@ def test_outline_metadata(tmpdir, metadata_editor, metadata_type, mode):
         ("document", {"document_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}}),
         # ("geospatial", {"description": {"idno": "example_idno"}}),
         ("script", {"doc_desc": {"idno": "example_idno"}}),
-        ("series", {"idno": "example_idno", "name": "example_name"}),
         ("table", {"table_description": {"title_statement": {"idno": "example idno", "title": "example title"}}}),
         (
             "timeseries",
@@ -428,7 +430,7 @@ def test_get_project_metadata_by_id(tmpdir, monkeypatch, metadata_editor, metada
 
     # unknown metadata type can't be returned as an object, only as a dict
     monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         ts = metadata_editor.get_project_metadata_by_id(1, mode="pydantic")
     ts = metadata_editor.get_project_metadata_by_id(1, mode="dict")
 
@@ -729,19 +731,19 @@ def test_get_template_by_uid(monkeypatch, metadata_editor):
 
 
 def test_simplify_metadata(metadata_editor, tmpdir):
-    project_filename = metadata_editor.outline_metadata(
+    project_filename = metadata_editor.make_metadata_outline(
         "document", "excel", filename=os.path.join(tmpdir, "simplify.xlsx")
     )
     assert metadata_editor.simplify_metadata(project_filename) == {}
 
-    project = metadata_editor.outline_metadata("document", "pydantic")
+    project = metadata_editor.make_metadata_outline("document", "pydantic")
     assert metadata_editor.simplify_metadata(project) == {}
     project.metadata_information.producers[0].name = "test"
     simplified_project = metadata_editor.simplify_metadata(project)
     assert len(simplified_project) == 1
     assert simplified_project["metadata_information"]["producers"][0]["name"] == "test"
 
-    project = metadata_editor.outline_metadata("document", "dict")
+    project = metadata_editor.make_metadata_outline("document", "dict")
     assert metadata_editor.simplify_metadata(project) == {}
     project["metadata_information"]["producers"][0]["name"] = "test"
     simplified_project = metadata_editor.simplify_metadata(project)
@@ -857,9 +859,9 @@ def test_create_update_delete_resource(
 
     if should_raise:
         with pytest.raises(ValidationError):
-            metadata_editor.create_resource(project_id=1, dctype=dctype, title=title, author=author, filename=filename)
+            metadata_editor.log_resource(project_id=1, dctype=dctype, title=title, author=author, filename=filename)
     else:
-        resource_id = metadata_editor.create_resource(
+        resource_id = metadata_editor.log_resource(
             project_id=1, dctype=dctype, title=title, author=author, filename=filename
         )
         assert resource_id == 1

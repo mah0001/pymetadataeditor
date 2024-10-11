@@ -453,8 +453,8 @@ class MetadataEditor:
                 appropriately formatted Excel file.
 
             template_uid (Optional str):
-                If you are reading metadata from an excel file *and* if that metadata is from template then you must pass
-                in the UID of that template. Otherwise this can be ignored.
+                If you are reading metadata from an excel file *and* if that metadata is from template then you must
+                pass in the UID of that template. Otherwise this can be ignored.
 
         Returns:
             (dict): a metadata dictionary of set elements.
@@ -726,8 +726,8 @@ class MetadataEditor:
                 If str, it's assumed this is a path to an appropriately formatted Excel file
 
             template_uid (Optional str):
-                If you are reading metadata from an excel file *and* if that metadata is from template then you must pass
-                in the UID of that template. Otherwise this can be ignored.
+                If you are reading metadata from an excel file *and* if that metadata is from template
+                then you must pass in the UID of that template. Otherwise this can be ignored.
         """
         if isinstance(metadata, str):
             if template_uid is not None:
@@ -778,12 +778,12 @@ class MetadataEditor:
         metadata_class.model_validate(metadata, strict=True)
         md = metadata_class(**metadata)
 
-        if metadata_type == 'indicator':
-            metadata_type = 'timeseries'
-        elif metadata_type == 'indicators_db':
-            metadata_type = 'timeseries_id'
-        elif metadata_type == 'microdata':
-            metadata_type = 'survey'
+        if metadata_type == "indicator":
+            metadata_type = "timeseries"
+        elif metadata_type == "indicators_db":
+            metadata_type = "timeseries_id"
+        elif metadata_type == "microdata":
+            metadata_type = "survey"
         post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
         ret = self._apinterface._post_request(
             pth=post_request_pth, json=md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
@@ -824,12 +824,12 @@ class MetadataEditor:
             md = md.model_copy(update=new_metadata)
             md = md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
 
-        if metadata_type == 'indicator':
-            metadata_type = 'timeseries'
-        elif metadata_type == 'indicators_db':
-            metadata_type = 'timeseries_id'
-        elif metadata_type == 'microdata':
-            metadata_type = 'survey'
+        if metadata_type == "indicator":
+            metadata_type = "timeseries"
+        elif metadata_type == "indicators_db":
+            metadata_type = "timeseries_id"
+        elif metadata_type == "microdata":
+            metadata_type = "survey"
         post_request_template_path = f"/editor/update/{metadata_type.replace('_', '-')}/" + "{}"
         self._apinterface._post_request(
             post_request_template_path,

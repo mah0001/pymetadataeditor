@@ -54,7 +54,10 @@ def test_projects_integration(tmpdir, metadata_editor):
         "microdata": {
             "repositoryid": "integration_test_microdata_repository_id",
             "study_desc": {
-                "title_statement": {"idno": "integration_test_microdata_idno", "title": "integration_test_microdata title"},
+                "title_statement": {
+                    "idno": "integration_test_microdata_idno",
+                    "title": "integration_test_microdata title",
+                },
                 "study_info": {"nation": [{"name": "example_nation"}]},
             },
         },

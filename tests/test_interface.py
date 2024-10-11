@@ -3,8 +3,8 @@ import os
 from json import JSONDecodeError
 from typing import Dict, List, Optional, Union
 
-# import pymetadataeditor.schemas.timeseries_schema as tss
-import metadataschemas.timeseries_schema as tss
+# import pymetadataeditor.schemas.indicator_schema as tss
+import metadataschemas.indicator_schema as tss
 import pandas as pd
 import pytest
 import requests
@@ -226,7 +226,7 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
         ("script", None, {"doc_desc": {"idno": "example_idno"}}),
         ("table", None, {"table_description": {"title_statement": {"idno": "example idno", "title": "example title"}}}),
         (
-            "timeseries",
+            "indicator",
             {
                 "idno": "GB123",
                 "series_description": {"doi": "string", "name": "Gordons Test", "display_name": "string"},
@@ -242,16 +242,16 @@ def test_get_project_by_id(monkeypatch, metadata_editor):
             },
         ),
         (
-            "timeseries_db",
+            "indicators_db",
             {},
             {"database_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}},
         ),
         (
-            "survey",
+            "microdata",
             {"study_desc": {}},
             {
                 "study_desc": {
-                    "title_statement": {"idno": "1", "title": "survey1"},
+                    "title_statement": {"idno": "1", "title": "microdata1"},
                     "study_info": {"nation": [{"name": "nation_name"}]},
                 }
             },
@@ -302,7 +302,7 @@ def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
             http_status_code=200,
             json_data={
                 "project": {
-                    "type": "timeseries",
+                    "type": "indicator",
                     "metadata": {"idno": "12", "series_description": {"idno": "12", "name": "oldname"}},
                 }
             },
@@ -314,18 +314,18 @@ def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
     )
 
     # use pydantic
-    model = metadata_editor.make_metadata_outline("timeseries", "pydantic")
+    model = metadata_editor.make_metadata_outline("indicator", "pydantic")
     metadata_editor.update_project_log_by_id(id=1, new_metadata=model)
 
     # use excel
     metadata_editor.make_metadata_outline(
-        "timeseries", "excel", filename=os.path.join(tmpdir, "test_update_project_log_by_id.xlsx")
+        "indicator", "excel", filename=os.path.join(tmpdir, "test_update_project_log_by_id.xlsx")
     )
 
 
 def test_patch_update_project_log_by_id(monkeypatch, metadata_editor):
     def mock_get_project_by_id(*args, **kwargs):
-        return pd.Series({"type": "timeseries"})
+        return pd.Series({"type": "indicator"})
 
     monkeypatch.setattr(MetadataEditor, "get_project_by_id", mock_get_project_by_id)
 
@@ -365,7 +365,7 @@ def test_patch_update_project_log_by_id(monkeypatch, metadata_editor):
         metadata_editor.patch_update_project_log_by_id(1, patches_missing_value)
 
 
-metadata_types = ["document", "script", "table", "timeseries", "timeseries_db", "video"]  # 'geospatial',
+metadata_types = ["document", "script", "table", "indicator", "indicators_db", "video"]  # 'geospatial',
 modes = ["excel", "dict", "pydantic"]
 
 
@@ -388,7 +388,7 @@ def test_make_metadata_outline(tmpdir, metadata_editor, metadata_type, mode):
         ("script", {"doc_desc": {"idno": "example_idno"}}),
         ("table", {"table_description": {"title_statement": {"idno": "example idno", "title": "example title"}}}),
         (
-            "timeseries",
+            "indicator",
             {
                 "idno": "GB123",
                 "series_description": {
@@ -400,14 +400,14 @@ def test_make_metadata_outline(tmpdir, metadata_editor, metadata_type, mode):
             },
         ),
         (
-            "timeseries_db",
+            "indicators_db",
             {"database_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}},
         ),
         (
-            "survey",
+            "microdata",
             {
                 "study_desc": {
-                    "title_statement": {"idno": "1", "title": "survey1"},
+                    "title_statement": {"idno": "1", "title": "microdata1"},
                     "study_info": {"nation": [{"name": "nation_name"}]},
                 }
             },
@@ -779,7 +779,7 @@ def test_set_template_for_collection(monkeypatch, metadata_editor):
 
     # all good
     def get_template_by_uid(*args, **kwargs):
-        return pd.Series({"data_type": "survey"})
+        return pd.Series({"data_type": "microdata"})
 
     monkeypatch.setattr(MetadataEditor, "get_template_by_uid", get_template_by_uid)
 

@@ -23,20 +23,20 @@ def test_projects_integration(tmpdir, metadata_editor):
     num_original_projects = len(projects)
     assert min(10, num_original_projects) == len(metadata_editor.list_projects(limit=10))
     assert num_original_projects - 1 == len(metadata_editor.list_projects(limit="all", offset=1))
-    assert num_original_projects >= len(metadata_editor.list_projects(limit="all", metadata_type="timeseries"))
+    assert num_original_projects >= len(metadata_editor.list_projects(limit="all", metadata_type="indicator"))
     assert num_original_projects == len(metadata_editor.list_projects(limit="all", sort_by="updated_asc"))
 
-    # Good: "document", "survey", "table", "timeseries", "timeseries_db", "video"
+    # Good: "document", "microdata", "table", "indicator", "indicator_db", "video"
     # fail due to not searchable: "geospatial", "script"
 
     metadata_types = [
         "document",
-        "survey",
+        "microdata",
         "table",
-        "timeseries",
-        "timeseries_db",
+        "indicator",
+        "indicator_db",
         "video",
-    ]  # "document", "geospatial", "script", "survey", "table", "timeseries", "timeseries_db", "video"
+    ]  # "document", "geospatial", "script", "microdata", "table", "indicator", "indicator_db", "video"
     creation_data = {
         "document": {
             "document_description": {
@@ -51,10 +51,10 @@ def test_projects_integration(tmpdir, metadata_editor):
             },
         },
         "script": {"doc_desc": {"idno": "integration_test_script"}},
-        "survey": {
-            "repositoryid": "integration_test_survey_repository_id",
+        "microdata": {
+            "repositoryid": "integration_test_microdata_repository_id",
             "study_desc": {
-                "title_statement": {"idno": "integration_test_survey_idno", "title": "integration_test_survey title"},
+                "title_statement": {"idno": "integration_test_microdata_idno", "title": "integration_test_microdata title"},
                 "study_info": {"nation": [{"name": "example_nation"}]},
             },
         },
@@ -63,15 +63,15 @@ def test_projects_integration(tmpdir, metadata_editor):
                 "title_statement": {"idno": "integration_test_table", "title": "integration test table"}
             }
         },
-        "timeseries": {
-            "idno": "integration_test_timeseries",
-            "series_description": {"idno": "integration_test_timeseries", "name": "integration_test_timeseries"},
+        "indicator": {
+            "idno": "integration_test_indicator",
+            "series_description": {"idno": "integration_test_indicator", "name": "integration_test_indicator"},
         },
-        "timeseries_db": {
+        "indicator_db": {
             "database_description": {
                 "title_statement": {
-                    "idno": "integration_test_timeseries_db",
-                    "title": "integration_test_timeseries_db title",
+                    "idno": "integration_test_indicator_db",
+                    "title": "integration_test_indicator_db title",
                 }
             }
         },
@@ -90,11 +90,11 @@ def test_projects_integration(tmpdir, metadata_editor):
             }
         },
         "script": {"doc_desc": {"idno": "integration_test_script", "title": "integration test script updated"}},
-        "survey": {
+        "microdata": {
             "study_desc": {
                 "title_statement": {
-                    "idno": "integration_test_survey_idno",
-                    "title": "integration_test_survey title updated",
+                    "idno": "integration_test_microdata_idno",
+                    "title": "integration_test_microdata title updated",
                 },
                 "study_info": {"nation": [{"name": "example_nation"}]},
             }
@@ -104,14 +104,14 @@ def test_projects_integration(tmpdir, metadata_editor):
                 "title_statement": {"idno": "integration_test_table", "title": "integration test table updated"}
             }
         },
-        "timeseries": {
-            "series_description": {"idno": "integration_test_timeseries", "name": "integration_test_timeseries_updated"}
+        "indicator": {
+            "series_description": {"idno": "integration_test_indicator", "name": "integration_test_indicator_updated"}
         },
-        "timeseries_db": {
+        "indicator_db": {
             "database_description": {
                 "title_statement": {
-                    "idno": "integration_test_timeseries_db",
-                    "title": "integration_test_timeseries_db title updated",
+                    "idno": "integration_test_indicator_db",
+                    "title": "integration_test_indicator_db title updated",
                 }
             }
         },
@@ -125,11 +125,11 @@ def test_projects_integration(tmpdir, metadata_editor):
             "path": "/document_description/title_statement/title",
             "value": "patched integration test document updated",
         },
-        "survey": [
+        "microdata": [
             {
                 "op": "replace",
                 "path": "study_desc/title_statement/title",
-                "value": "integration_test_survey title updated patched",
+                "value": "integration_test_microdata title updated patched",
             }
         ],
         "table": [
@@ -140,13 +140,13 @@ def test_projects_integration(tmpdir, metadata_editor):
                 "value": "patched integration test table updated",
             },
         ],
-        "timeseries": [
-            {"op": "replace", "path": "series_description/name", "value": "patched integration_test_timeseries_updated"}
+        "indicator": [
+            {"op": "replace", "path": "series_description/name", "value": "patched integration_test_indicator_updated"}
         ],
-        "timeseries_db": {
+        "indicator_db": {
             "op": "add",
             "path": "database_description/title_statement/title",
-            "value": "integration_test_timeseries_db title updated patched",
+            "value": "integration_test_indicator_db title updated patched",
         },
         "video": {
             "op": "replace",
@@ -269,7 +269,7 @@ def test_collections_integration(metadata_editor):
         project_idno = "project for collection integration test"
         project_name = "project for collection integration test"
         project_id = metadata_editor.create_project_log(
-            metadata_type_or_template_uid="timeseries",
+            metadata_type_or_template_uid="indicator",
             metadata={"idno": project_idno, "series_description": {"idno": project_idno, "name": project_name}},
         )
         try:
@@ -322,7 +322,7 @@ def test_collections_integration(metadata_editor):
 
 def test_resources_integration(metadata_editor, tmpdir):
     project_id = metadata_editor.create_project_log(
-        "timeseries",
+        "indicator",
         {
             "idno": "resources_integration_test",
             "series_description": {"idno": "resources_integration_test", "name": "integration_test_of_resources"},
@@ -382,7 +382,9 @@ def test_templates(metadata_editor):
         if metadata_type in ["image"]:
             continue
         metadata_type = metadata_type.replace("-", "_")
-        if metadata_type != "geospatial" and metadata_type not in metadata_editor._mm.metadata_type_names:
+        try:
+            metadata_type = metadata_editor._mm.standardize_metadata_name(metadata_type)
+        except (NotImplementedError, ValueError):
             if temp.data_type not in unknown_types:
                 unknown_types[metadata_type] = 1
             else:

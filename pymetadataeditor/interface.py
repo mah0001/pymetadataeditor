@@ -195,9 +195,9 @@ class MetadataEditor:
         Then you can list and create new projects like so:
 
             me.list_projects(limit=100)
-            dict_of_timeseries = me.outline_metadata("timeseries", "dict")
-            <update the timeseries metadata dictionary as needed>
-            me.create_project_log("timeseries", dict_of_timeseries)
+            dict_of_indicator = me.outline_metadata("indicator", "dict")
+            <update the indicator metadata dictionary as needed>
+            me.create_project_log("indicator", dict_of_indicator)
 
         Args:
             api_url (str): the URL typically looks like 'https://<name_of_your_metadata_database>.org/index.php/api'
@@ -662,7 +662,7 @@ class MetadataEditor:
         Args:
             metadata_type_or_template_uid (str):
                 The type of a supported metadata type, currently:
-                    document, resource, script, survey, table, timeseries, timeseries_DB, video
+                    document, indicator, indicators_db, microdata, resource, script, table, video
                 Currently not supported:
                     geospatial, image
                 If passed as a template UID then this template is retreived and an outline created.
@@ -682,13 +682,13 @@ class MetadataEditor:
 
             me = MetadataEditor(api_url=..., api_key=...)
 
-            timeseries_dict = me.outline_metadata("timeseries", "dict")
-            timeseries_dict['metadata_information']['idno'] = "my_idno"
+            indicator_dict = me.outline_metadata("indicator", "dict")
+            indicator_dict['metadata_information']['idno'] = "my_idno"
 
-            timeseries_pydantic = me.outline_metadata("timeseries", "pydantic")
-            timeseries_pydantic.metadata_information.idno = "my_idno"
+            indicator_pydantic = me.outline_metadata("indicator", "pydantic")
+            indicator_pydantic.metadata_information.idno = "my_idno"
 
-            path_to_timeseries_excel_file = me.outline_metadata("timeseries", "excel")
+            path_to_indicator_excel_file = me.outline_metadata("indicator", "excel")
         """
         mode = mode.lower()
         assert mode in [
@@ -747,7 +747,7 @@ class MetadataEditor:
         Args:
             metadata_type_or_template_uid (str):
                 if passing in a simple type then the supported metadata types are currently:
-                    document, resource, script, survey, table, timeseries, timeseries_DB, video
+                    document, indicator, indicators_db, microdata, resource, script, table, video
                 Currently not supported:
                     image
                 Note that geospatial is supported when the metadata is a dict or pydantic model, but not as Excel file.
@@ -778,6 +778,12 @@ class MetadataEditor:
         metadata_class.model_validate(metadata, strict=True)
         md = metadata_class(**metadata)
 
+        if metadata_type == 'indicator':
+            metadata_type = 'timeseries'
+        elif metadata_type == 'indicators_db':
+            metadata_type = 'timeseries_id'
+        elif metadata_type == 'microdata':
+            metadata_type = 'survey'
         post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
         ret = self._apinterface._post_request(
             pth=post_request_pth, json=md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
@@ -818,6 +824,12 @@ class MetadataEditor:
             md = md.model_copy(update=new_metadata)
             md = md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
 
+        if metadata_type == 'indicator':
+            metadata_type = 'timeseries'
+        elif metadata_type == 'indicators_db':
+            metadata_type = 'timeseries_id'
+        elif metadata_type == 'microdata':
+            metadata_type = 'survey'
         post_request_template_path = f"/editor/update/{metadata_type.replace('_', '-')}/" + "{}"
         self._apinterface._post_request(
             post_request_template_path,
@@ -1188,7 +1200,7 @@ class MetadataEditor:
 
     def set_template_for_collection(self, collection_id: int, template_uid: str):
         """
-        Set the specified template to be used for all metadata of its type (for example survey, timeseries, or
+        Set the specified template to be used for all metadata of its type (for example microdata, indicator, or
             document metadata) in the collection.
 
         Args:

@@ -27,8 +27,8 @@ def get_child_field_info_from_dot_annotated_name(name, parent_schema):
         child_field_info = sub_schema.model_fields[name_split[-1]]
     except KeyError as e:
         raise KeyError(name) from e
-    except:
-        raise ValueError(f"name={name}, parent_schema={sub_schema}")
+    # except:
+    #     raise ValueError(f"name={name}, parent_schema={sub_schema}")
     return copy.copy(child_field_info)
 
 
@@ -181,7 +181,10 @@ def dot_to_hierarchy(d):
 
     Example:
 
-    >>>dot_to_hierarchy({"firstkey.secondkey.thirdkey": 1, "firstkey.secondkey.fourthkey": 2, "fifthkey": 3, "firstkey.sixthkey": 4} )
+    >>>dot_to_hierarchy({"firstkey.secondkey.thirdkey": 1,
+                         "firstkey.secondkey.fourthkey": 2,
+                         "fifthkey": 3,
+                         "firstkey.sixthkey": 4} )
     {'firstkey': {'secondkey': {'thirdkey': 1, 'fourthkey': 2}, 'sixthkey': 4}, 'fifthkey': 3}
     """
     result = {}
@@ -266,6 +269,6 @@ def pydantic_from_template(
             name = template["title"]
         else:
             name = "new_model"
-    name = name.replace(" ", "_").rstrip("_").split(".")[-1]
+    name = name.replace(" ", "_").rstrip("_").replace(".", "-")  # .split(".")[-1]
     model_elements = define_group_of_elements(template["items"], parent_schema)
     return create_model_for_template(model_elements, parent_schema, name)

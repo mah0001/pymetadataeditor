@@ -98,7 +98,6 @@ class APInterface(BaseModel):
             assert id is not None, "If passing a url format, an id must be passed"
             pth = pth.format(id)
         url = str(self.api_url).strip("/") + "/" + pth.strip("/")
-        # print(f"accessing {url}")
         try:
             response = None
             response = requests.request(
@@ -776,7 +775,8 @@ class MetadataEditor:
         if isinstance(metadata, str):
             metadata = self._mm.read_metadata_from_excel(metadata, metadata_class)
         metadata_class.model_validate(metadata, strict=True)
-        md = metadata_class(**metadata)
+        if isinstance(metadata, dict):
+            metadata = metadata_class(**metadata)
 
         if metadata_type == "indicator":
             metadata_type = "timeseries"
@@ -786,7 +786,7 @@ class MetadataEditor:
             metadata_type = "survey"
         post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
         ret = self._apinterface._post_request(
-            pth=post_request_pth, json=md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+            pth=post_request_pth, json=metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)
         )
         return ret["id"]
 
@@ -837,22 +837,25 @@ class MetadataEditor:
             json=md,
         )
 
-    def patch_update_project_log_by_id(self, id: int, patches: Union[Dict, List[Dict]]):
+    def patch_update_project_log_by_id(self, id: int, op: str, path: str, value: Optional[str] = None):
         """
-        Add, update, remove parts of a projects metadata using the json patch format.
+        Add, update, or remove parts of a project's metadata using a single JSON Patch operation.
 
         "JSON Patch is a format for describing changes to a JSON document. It can be used to avoid sending a whole
         document when only a part has changed." - https://jsonpatch.com/ accessed 2024-08-20
 
-        This method applies a series of JSON patches to update the metadata of a project specified by its ID.
+        This method applies a single JSON Patch operation to update the metadata of a project specified by its ID.
 
         Args:
             id (int): The unique identifier of the project whose metadata is to be updated.
-            patches (Union[Dict, List[Dict]]): A single JSON patch or a list of JSON patches.
-                                            Each patch is a dictionary that follows the JSON Patch format.
+            op (str): The JSON Patch operation to be applied. Valid operations are "add", "remove",
+                "replace", and "test".
+            path (str): The path in the project's metadata where the operation will be applied, using JSON
+                Pointer notation.
+            value (Optional[str]): The value to be added, replaced, or tested. Not required for "remove" operations.
 
         Raises:
-            ValueError: If any of the provided patches are invalid.
+            ValueError: If the provided operation, path, or value is invalid.
 
         JSON Patch Operations:
             - "add": Adds a value to the specified path. If the path already exists, the value is replaced.
@@ -861,46 +864,23 @@ class MetadataEditor:
             - "test": Tests that the value at the specified path matches a given value.
 
         Path Notation:
-            - The `path` in each patch operation is a string that uses a slash (`/`) notation to specify the location
-            within the JSON document. For example, `/author` refers to the "author" field, and `/metadata/title` refers
-            to the "title" field inside the "metadata" object. If the path does not start with a `/`, the method will
-            automatically prepend it.
-
-        Example JSON Patch:
-            To add an author to a project's metadata:
-            ```json
-            [
-                { "op": "add", "path": "/author", "value": "John Doe" }
-            ]
-            ```
-
-            To replace the title of a project:
-            ```json
-            [
-                { "op": "replace", "path": "/title", "value": "New Project Title" }
-            ]
-            ```
-
-            To remove the description of a project:
-            ```json
-            [
-                { "op": "remove", "path": "/description" }
-            ]
-            ```
+            - The `path` is a string that uses a slash (`/`) notation to specify the location within the JSON document.
+            For example, `/author` refers to the "author" field, and `/metadata/title` refers to the "title" field
+            inside the "metadata" object. If the path does not start with a `/`, the method will automatically
+            prepend it.
 
         Usage:
             ```python
-            patches = [
-                { "op": "add", "path": "/author", "value": "John Doe" },
-                { "op": "replace", "path": "/title", "value": "New Project Title" }
-            ]
-            metadata_editor.patch_update_project_log_by_id(id=123, patches=patches)
+            metadata_editor.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
             ```
         """
-
         project_data = self.get_project_by_id(id)
         metadata_name = project_data["type"]
         pth = f"editor/patch/{metadata_name}/"
+
+        patches = {"op": op, "path": path}
+        if value is not None:
+            patches["value"] = value
         if isinstance(patches, dict):
             patches = [patches]
         patches = validate_json_patches(patches)

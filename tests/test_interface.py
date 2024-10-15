@@ -277,6 +277,12 @@ def test_create_project_log(monkeypatch, metadata_editor, metadata_type, bad_met
     with pytest.raises(ValidationError):
         metadata_editor.create_project_log(metadata_type_or_template_uid=metadata_type, metadata={"bad_key": ""})
 
+    cls = metadata_editor.get_metadata_class(metadata_type)
+    metadata_object = cls(**good_metadata)
+    metadata_id = metadata_editor.create_project_log(
+        metadata_type_or_template_uid=metadata_type, metadata=metadata_object
+    )
+
 
 def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
     series_description = tss.SeriesDescription(idno="17", name="1")
@@ -338,31 +344,33 @@ def test_patch_update_project_log_by_id(monkeypatch, metadata_editor):
 
     # Test case: single patch as a dict
     single_patch = {"op": "remove", "path": "/toc"}
-    metadata_editor.patch_update_project_log_by_id(1, single_patch)
+    metadata_editor.patch_update_project_log_by_id(1, **single_patch)
 
     # List of patches
     patches = [
         {"op": "replace", "path": "/title", "value": "New Title"},
         {"op": "add", "path": "/description", "value": "Updated description."},
     ]
-    metadata_editor.patch_update_project_log_by_id(1, patches)
+    for p in patches:
+        metadata_editor.patch_update_project_log_by_id(1, **p)
 
     # patches with bad ops should raise ValueError
-    bad_patches = [{"op": "bad_op", "path": "/title", "value": "Should raise error"}]
+    bad_patch = {"op": "bad_op", "path": "/title", "value": "Should raise error"}
     with pytest.raises(ValueError, match="Invalid operation"):
-        metadata_editor.patch_update_project_log_by_id(1, bad_patches)
+        metadata_editor.patch_update_project_log_by_id(1, **bad_patch)
 
     # patches where the path doesn't begin with a slash, should be ok
     patches_without_slash = [
         {"op": "replace", "path": "title", "value": "Title without leading slash"},
         {"op": "add", "path": "description", "value": "Description without leading slash"},
     ]
-    metadata_editor.patch_update_project_log_by_id(1, patches_without_slash)
+    for p in patches_without_slash:
+        metadata_editor.patch_update_project_log_by_id(1, **p)
 
     # patches where value is required but not provided should raise ValueError
-    patches_missing_value = [{"op": "replace", "path": "/title"}]
+    patch_missing_value = {"op": "replace", "path": "/title"}
     with pytest.raises(ValueError, match="Operation 'replace' requires a 'value' field."):
-        metadata_editor.patch_update_project_log_by_id(1, patches_missing_value)
+        metadata_editor.patch_update_project_log_by_id(1, **patch_missing_value)
 
 
 metadata_types = ["document", "script", "table", "indicator", "indicators_db", "video"]  # 'geospatial',

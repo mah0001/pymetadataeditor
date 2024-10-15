@@ -123,11 +123,13 @@ def test_projects_integration(tmpdir, metadata_editor):
         },
     }
     patch_update_data = {
-        "document": {
-            "op": "add",
-            "path": "/document_description/title_statement/title",
-            "value": "patched integration test document updated",
-        },
+        "document": [
+            {
+                "op": "add",
+                "path": "/document_description/title_statement/title",
+                "value": "patched integration test document updated",
+            }
+        ],
         "microdata": [
             {
                 "op": "replace",
@@ -146,16 +148,20 @@ def test_projects_integration(tmpdir, metadata_editor):
         "indicator": [
             {"op": "replace", "path": "series_description/name", "value": "patched integration_test_indicator_updated"}
         ],
-        "indicator_db": {
-            "op": "add",
-            "path": "database_description/title_statement/title",
-            "value": "integration_test_indicator_db title updated patched",
-        },
-        "video": {
-            "op": "replace",
-            "path": "/video_description",
-            "value": {"idno": "integration_test_video", "title": "integration_test_video title updated patched"},
-        },
+        "indicator_db": [
+            {
+                "op": "add",
+                "path": "database_description/title_statement/title",
+                "value": "integration_test_indicator_db title updated patched",
+            }
+        ],
+        "video": [
+            {
+                "op": "replace",
+                "path": "/video_description",
+                "value": {"idno": "integration_test_video", "title": "integration_test_video title updated patched"},
+            }
+        ],
     }
 
     for metadata_type in metadata_types:
@@ -203,7 +209,8 @@ def test_projects_integration(tmpdir, metadata_editor):
             assert (
                 project_id not in title_contains_updated.index or str(project_id) in title_contains_updated.index
             ), title_contains_updated
-            metadata_editor.patch_update_project_log_by_id(project_id, patches=patch_update_data[metadata_type])
+            for p in patch_update_data[metadata_type]:
+                metadata_editor.patch_update_project_log_by_id(project_id, **p)
             title_contains_updated = metadata_editor.list_projects(
                 limit="all", keywords="patched", metadata_type=metadata_type
             )

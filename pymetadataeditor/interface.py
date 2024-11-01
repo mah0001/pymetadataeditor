@@ -13,6 +13,7 @@ from metadataschemas.utils.quick_start import make_skeleton
 from metadataschemas.utils.utils import merge_dicts, standardize_keys_in_dict
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, model_validator
 from requests.exceptions import HTTPError, SSLError
+from urllib3.exceptions import InsecureRequestWarning
 
 from pymetadataeditor.templates import pydantic_from_template
 
@@ -21,6 +22,23 @@ from .utils import remove_empty_from_dict, validate_json_patches
 warnings.filterwarnings(
     "ignore", category=UserWarning, module="pydantic"
 )  # suppresses warning when metadata passed as dict instead of a pydantic object
+
+# Create a flag for tracking if the warning was shown
+shown_insecure_warning = False
+
+
+# Define a custom function to display warnings only once
+def custom_showwarning(message, category, filename, lineno, file=None, line=None):
+    global shown_insecure_warning
+    if category is InsecureRequestWarning and not shown_insecure_warning:
+        # Show the warning and set the flag
+        warnings._showwarnmsg_impl(warnings.WarningMessage(message, category, filename, lineno, file, line))
+        shown_insecure_warning = True
+
+
+# Set the warnings to always trigger, but filter them through custom_showwarning
+warnings.simplefilter("always", InsecureRequestWarning)
+warnings.showwarning = custom_showwarning
 
 
 class DeleteNotAppliedError(Exception):
@@ -209,6 +227,7 @@ class MetadataEditor:
         self._apinterface = APInterface(api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl)
         self._mm = MetadataManager()
         self._templates = {}
+        self._default_templates = None
 
     def count_projects(self) -> int:
         """
@@ -298,7 +317,7 @@ class MetadataEditor:
         response = self._apinterface._get_request(get_project_template, id=id)
         return pd.Series(response["project"])
 
-    def list_resources_by_id(self, id: int) -> pd.DataFrame:
+    def get_resources_by_id(self, id: int) -> pd.DataFrame:
         """
         List documentation (Reports, Questionnaires, Tables, etc.) for a project
 
@@ -443,7 +462,7 @@ class MetadataEditor:
 
     def simplify_metadata(self, metadata: Union[Dict, BaseModel, str], template_uid: Optional[str] = None) -> Dict:
         """
-        Returns a dictionary of only the elements that have values, exluding Nones, unsets, defaults, empty strings,
+        Returns a dictionary of only the elements that have values, exluding Nones, empty strings,
           empty lists and empty dictionaries.
 
         Args:
@@ -452,20 +471,20 @@ class MetadataEditor:
                 appropriately formatted Excel file.
 
             template_uid (Optional str):
-                If you are reading metadata from an excel file *and* if that metadata is from template then you must
+                If you are reading metadata from an excel file *and* if that metadata is from a template then you must
                 pass in the UID of that template. Otherwise this can be ignored.
 
         Returns:
             (dict): a metadata dictionary of set elements.
         """
         if isinstance(metadata, str):
-            if template_uid is not None:
+            if template_uid is not None and template_uid != "":
                 metadata_class = self.get_metadata_class(template_uid)
             else:
                 metadata_class = None
             metadata = self._mm.read_metadata_from_excel(metadata, metadata_class)
         if isinstance(metadata, BaseModel):
-            metadata = metadata.model_dump(mode="json", exclude_defaults=True, exclude_none=True, exclude_unset=True)
+            metadata = metadata.model_dump(mode="json", exclude_defaults=False, exclude_none=True, exclude_unset=False)
         return remove_empty_from_dict(metadata)
 
     def get_project_metadata_by_id(
@@ -517,18 +536,7 @@ class MetadataEditor:
                 ) from e
             else:
                 return project["metadata"]
-        if metadata_name == "geospatial":
-            if mode in [
-                "dict",
-                "dictionary",
-            ]:
-                return project["metadata"]
-            else:
-                raise NotImplementedError(
-                    f"this project is listed as a '{metadata_name}' type project but this type"
-                    f" is not supported in {mode} mode. Try using mode='dict' to view the metadata in raw form."
-                )
-        if "template_uid" in project and project.template_uid is not None:
+        if "template_uid" in project and project.template_uid is not None and project.template_uid != "":
             metadata_name = project.template_uid
         skeleton_object = self.make_metadata_outline(metadata_name, mode="dict")
 
@@ -538,7 +546,7 @@ class MetadataEditor:
         )
         combined_dict = standardize_keys_in_dict(combined_dict)
         schema = self.get_metadata_class(metadata_type_or_template_uid=metadata_name)
-        metadata_object = schema(**combined_dict)
+        metadata_object = schema.model_validate(standardize_keys_in_dict(combined_dict))
 
         if mode in ["pydantic", "model", "basemodel", "object"]:
             return metadata_object
@@ -552,11 +560,9 @@ class MetadataEditor:
                 return remove_empty_from_dict(metadata_dict)
         else:
             if metadata_name in self._mm.metadata_type_names:
-                return self._mm.save_metadata_to_excel(
-                    metadata_name, object=metadata_object, filename=filename, title=title
-                )
+                return self._mm.save_metadata_to_excel(object=metadata_object, filename=filename, title=title)
             else:
-                return self._mm.save_metadata_to_excel(schema, object=metadata_object, filename=filename, title=title)
+                return self._mm.save_metadata_to_excel(object=metadata_object, filename=filename, title=title)
 
     def delete_project_by_id(self, id: int):
         """
@@ -597,7 +603,7 @@ class MetadataEditor:
         """
 
         def check_exists(resource_id):
-            resource_ids = self.list_resources_by_id(project_id)["id"].apply(int).values
+            resource_ids = self.get_resources_by_id(project_id)["id"].apply(int).values
             if resource_id not in resource_ids:
                 raise IndexError(f"{resource_id} not in list of resources for project id {project_id}")
 
@@ -623,33 +629,46 @@ class MetadataEditor:
         else:
             raise DeleteNotAppliedError()
 
+    def _get_template_class(self, template_uid: str) -> Type[BaseModel]:
+        if template_uid in self._templates:
+            return self._templates[template_uid]["class"]
+        try:
+            temp = self.get_template_by_uid(template_uid)
+        except (KeyError, PermissionError):
+            # not a template either
+            raise ValueError(f"{template_uid} is not a known metadata type nor a known template uid")
+        else:
+            metadata_type = temp.data_type
+            parent_schema = self._mm.metadata_class_from_name(metadata_type)
+            klass = pydantic_from_template(temp.template, parent_schema=parent_schema, name=temp.name)
+            self._templates[template_uid] = {
+                "template": temp,
+                "metadata_type": metadata_type,
+                "class": klass,
+            }
+            return klass
+
     def get_metadata_class(self, metadata_type_or_template_uid: str) -> Type[BaseModel]:
         try:
             metadata_type = self._mm.standardize_metadata_name(metadata_type_or_template_uid)
         except ValueError:
             # assume must be template
-            if metadata_type_or_template_uid in self._templates:
-                return self._templates[metadata_type_or_template_uid]["class"]
-            try:
-                temp = self.get_template_by_uid(metadata_type_or_template_uid)
-            except (KeyError, PermissionError):
-                # not a template either
-                raise ValueError(
-                    f"{metadata_type_or_template_uid} is not a known metadata type nor a known template uid"
+            return self._get_template_class(metadata_type_or_template_uid)
+        else:
+            # check if there is a default template:
+            if self._default_templates is None:
+                _ = self.list_templates()
+
+            if (
+                self._default_templates is not None
+                and metadata_type in self._default_templates.data_type.values
+                and self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid != ""
+            ):
+                return self._get_template_class(
+                    self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid
                 )
             else:
-                metadata_type = temp.data_type
-                parent_schema = self.get_metadata_class(metadata_type)
-                klass = pydantic_from_template(temp.template, parent_schema=parent_schema, name=temp.name)
-                self._templates[metadata_type_or_template_uid] = {
-                    "template": temp,
-                    "metadata_type": metadata_type,
-                    "class": klass,
-                }
-                return klass
-        else:
-            class_def = self._mm.metadata_class_from_name(metadata_type)
-        return class_def
+                return self._mm.metadata_class_from_name(metadata_type)
 
     def make_metadata_outline(
         self, metadata_type_or_template_uid: str, mode: str, filename: Optional[str] = None, title: Optional[str] = None
@@ -661,9 +680,7 @@ class MetadataEditor:
         Args:
             metadata_type_or_template_uid (str):
                 The type of a supported metadata type, currently:
-                    document, indicator, indicators_db, microdata, resource, script, table, video
-                Currently not supported:
-                    geospatial, image
+                    document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
                 If passed as a template UID then this template is retreived and an outline created.
             mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
             filename (Optional[str]): If mode=='excel', the path to the Excel file.
@@ -699,37 +716,38 @@ class MetadataEditor:
             "basemodel",
             "object",
         ], f"mode should be 'excel', 'dict' or 'pydantic' but found '{mode}'"
+        metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
         if mode == "excel":
-            if metadata_type_or_template_uid in self._mm.metadata_type_names:
-                return self._mm.write_metadata_outline_to_excel(
-                    metadata_type_or_template_uid, filename=filename, title=title
-                )
-            else:
-                metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
-                return self._mm.write_metadata_outline_to_excel(metadata_class, filename=filename, title=title)
+            return self._mm.write_metadata_outline_to_excel(metadata_class, filename=filename, title=title)
         else:
-            metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
-
             metadata_object = make_skeleton(metadata_class, debug=False)
             if mode in ["pydantic", "model", "basemodel", "object"]:
                 return metadata_object
             else:
                 return metadata_object.model_dump(mode="json")
 
-    def print_metadata(self, metadata: Union[Dict, BaseModel, str], template_uid: Optional[str] = None):
+    def print_metadata(
+        self, metadata: Union[Dict, BaseModel, str], template_uid: Optional[str] = None, simplify: bool = False
+    ):
         """
-        Helper function to nicely print the metedata.
+        Helper function to nicely print the metadata.
 
         Args:
             metadata (dictionary or BaseModel or str):
                 If str, it's assumed this is a path to an appropriately formatted Excel file
 
             template_uid (Optional str):
-                If you are reading metadata from an excel file *and* if that metadata is from template
-                then you must pass in the UID of that template. Otherwise this can be ignored.
+                If you are reading metadata from an excel file *and* if that metadata is from a non default template
+                  then you must pass in the UID of that template. Otherwise this can be ignored.
+
+            simplify (bool):
+                If True, the metadata will be simplified to exclude Nones, empty strings, empty lists, and
+                  empty dictionaries.
         """
-        if isinstance(metadata, str):
-            if template_uid is not None:
+        if simplify:
+            metadata = self.simplify_metadata(metadata, template_uid)
+        elif isinstance(metadata, str):
+            if template_uid is not None and template_uid != "":
                 metadata_class = self.get_metadata_class(template_uid)
             else:
                 metadata_class = None
@@ -746,10 +764,7 @@ class MetadataEditor:
         Args:
             metadata_type_or_template_uid (str):
                 if passing in a simple type then the supported metadata types are currently:
-                    document, indicator, indicators_db, microdata, resource, script, table, video
-                Currently not supported:
-                    image
-                Note that geospatial is supported when the metadata is a dict or pydantic model, but not as Excel file.
+                    document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
                 Alternatively you can pass in the UID of a template.
             metadata (dictionary or BaseModel or str):
                 If str, it's assumed this is a path to an appropriately formatted Excel file
@@ -781,7 +796,7 @@ class MetadataEditor:
         if metadata_type == "indicator":
             metadata_type = "timeseries"
         elif metadata_type == "indicators_db":
-            metadata_type = "timeseries_id"
+            metadata_type = "timeseries_db"
         elif metadata_type == "microdata":
             metadata_type = "survey"
         post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
@@ -803,7 +818,11 @@ class MetadataEditor:
         """
         project_data = self.get_project_by_id(id)
         metadata_type = self._mm.standardize_metadata_name(project_data["type"])
-        if "template_uid" in project_data and project_data["template_uid"] is not None:
+        if (
+            "template_uid" in project_data
+            and project_data["template_uid"] is not None
+            and project_data["template_uid"] != ""
+        ):
             metadata_class = self.get_metadata_class(project_data["template_uid"])
         else:
             metadata_class = self.get_metadata_class(metadata_type)
@@ -827,7 +846,7 @@ class MetadataEditor:
         if metadata_type == "indicator":
             metadata_type = "timeseries"
         elif metadata_type == "indicators_db":
-            metadata_type = "timeseries_id"
+            metadata_type = "timeseries_db"
         elif metadata_type == "microdata":
             metadata_type = "survey"
         post_request_template_path = f"/editor/update/{metadata_type.replace('_', '-')}/" + "{}"
@@ -883,7 +902,7 @@ class MetadataEditor:
             patches["value"] = value
         if isinstance(patches, dict):
             patches = [patches]
-        patches = validate_json_patches(patches)
+        patches = validate_json_patches(patches)  # depend on serverside validation
         self._apinterface._post_request(pth=pth + "{}", id=id, json={"patches": patches, "validate": True})
 
     def list_collections(self) -> pd.DataFrame:
@@ -1151,7 +1170,21 @@ class MetadataEditor:
         if "templates" not in response or len(response["templates"]) == 0:
             return pd.DataFrame([], columns=["uid", "template_type", "name", "template"])
         else:
-            return pd.DataFrame([v_item for _, v in response["templates"].items() for v_item in v])
+            templates = pd.DataFrame([v_item for _, v in response["templates"].items() for v_item in v])
+            if "default" in templates and "uid" in templates and "data_type" in templates:
+                self._default_templates = (
+                    templates[templates.default].drop_duplicates("uid").drop_duplicates("data_type")
+                )
+
+                # in place replace each value of data_type with the standardised version
+                def standardize(row):
+                    try:
+                        return self._mm.standardize_metadata_name(row["data_type"])
+                    except ValueError:
+                        return row["data_type"]
+
+                self._default_templates["data_type"] = self._default_templates.apply(standardize, axis=1)
+            return templates
 
     def get_template_by_uid(self, uid: str) -> pd.Series:
         """
@@ -1170,12 +1203,15 @@ class MetadataEditor:
             )
         else:
             temp = pd.Series(response["result"], name=response["result"]["name"])
-            try:
-                metadata_type = temp.data_type
-                parent_schema = self.get_metadata_class(metadata_type)
-                klass = pydantic_from_template(temp.template, parent_schema=parent_schema, name=temp.name)
-                self._templates[uid] = {"template": temp, "metadata_type": metadata_type, "class": klass}
-            finally:
+            if uid in self._templates:
+                try:
+                    metadata_type = temp.data_type
+                    parent_schema = self.get_metadata_class(metadata_type)
+                    klass = pydantic_from_template(temp.template, parent_schema=parent_schema, name=temp.name)
+                    self._templates[uid] = {"template": temp, "metadata_type": metadata_type, "class": klass}
+                finally:
+                    return temp
+            else:
                 return temp
 
     def set_template_for_collection(self, collection_id: int, template_uid: str):

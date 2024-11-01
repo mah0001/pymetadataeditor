@@ -2,6 +2,7 @@ import copy
 import warnings
 from typing import Dict, List, Optional, Tuple, Type
 
+from metadataschemas.utils.schema_base_model import SchemaBaseModel
 from metadataschemas.utils.utils import (
     get_subtype_of_optional_or_list,
     is_list_annotation,
@@ -26,7 +27,7 @@ def get_child_field_info_from_dot_annotated_name(name, parent_schema):
     try:
         child_field_info = sub_schema.model_fields[name_split[-1]]
     except KeyError as e:
-        raise KeyError(name) from e
+        raise KeyError(name_split[-1]) from e
     # except:
     #     raise ValueError(f"name={name}, parent_schema={sub_schema}")
     return copy.copy(child_field_info)
@@ -34,13 +35,41 @@ def get_child_field_info_from_dot_annotated_name(name, parent_schema):
 
 def define_simple_element(item, parent_schema, element_type=str) -> Dict[str : Tuple[Type[BaseModel]], Field]:
     assert (
-        isinstance(item, dict) and "type" in item and item["type"] in ["string", "text", "integer", "number", "boolean"]
+        isinstance(item, dict)
+        and "type" in item
+        and item["type"] in ["string", "text", "integer", "number", "boolean", "date", "textarea"]
     ), f"expected string, integer or boolean item, got {item}"
     try:
         child_field_info = get_child_field_info_from_dot_annotated_name(item["key"], parent_schema)
     except KeyError as e:
-        warnings.warn(f"KeyError: {e}. Proceeding since {item['key']} is a {element_type} type.", UserWarning)
-        child_field_info = Field(..., title=item["title"])
+        if "prop_key" in item:
+            prop_key = item["prop_key"]
+            prop_key_split = prop_key.split(".")
+            # drop elements from prop_key_split if they begin "section-"
+            prop_key_split = [x for x in prop_key_split if not x.startswith("section-")]
+            prop_key = ".".join(prop_key_split)
+            try:
+                child_field_info = get_child_field_info_from_dot_annotated_name(prop_key, parent_schema)
+            except KeyError as e2:
+                warnings.warn(
+                    (
+                        f"KeyError: {e2}. Field likely doesn't exist in base schema. "
+                        f"Proceeding since prop_key = '{prop_key}' is a {element_type} type. "
+                        f"{item}"
+                    ),
+                    UserWarning,
+                )
+                child_field_info = Field(..., title=item["title"])
+        else:
+            warnings.warn(
+                (
+                    f"KeyError: {e}. Field likely doesn't exist in base schema. "
+                    f"Proceeding since key='{item['key']}' is a {element_type} type. "
+                    f"{item}"
+                ),
+                UserWarning,
+            )
+            child_field_info = Field(..., title=item["title"])
     if "title" in item:
         child_field_info.title = item["title"]
     if "description" in item:
@@ -83,7 +112,7 @@ def create_model_for_template(
     )
     # dict_of_elements = stupid_enrich_custom(dict_of_elements, parent_schema)
     dict_of_elements = standardize_keys_in_dict(dict_of_elements, pascal_to_snake=True)
-    return create_model(name, __module__="template", **dict_of_elements)
+    return create_model(name, __module__="template", __base__=SchemaBaseModel, **dict_of_elements)
 
 
 def get_children_of_props(
@@ -135,7 +164,7 @@ def define_array_element(item, parent_schema) -> Dict[str : Tuple[Type[BaseModel
     if "help_text" in item:
         field_info.description = item["help_text"]
     if "props" not in item:
-        warnings.warn(f"array without type found, assuming array of str: {item}")
+        warnings.warn(f"array without a type found, assuming array of str: {item}")
         element_type = List[str]
     else:
         children = get_children_of_props(item["props"], parent_schema)
@@ -163,7 +192,14 @@ def define_simple_array_element(
         if "description" in item:
             child_field_info.description = item["description"]
     except KeyError as e:
-        warnings.warn(f"KeyError: {e}. Proceeding since {item['key']} is a simple_array type.", UserWarning)
+        warnings.warn(
+            (
+                f"KeyError: {e}. Field likely doesn't exist in base schema. "
+                f"Proceeding since key={item['key']} is a simple_array type. "
+                f"{item}"
+            ),
+            UserWarning,
+        )
         child_field_info = Field(..., title=item["title"])
         if "help_test" in item:
             child_field_info.description = item["help_text"]
@@ -239,7 +275,7 @@ def define_group_of_elements(
 
 
 def template_type_handler(item, parent_schema):
-    if item["type"] in ["string", "text"]:
+    if item["type"] in ["string", "text", "date", "textarea"]:
         return define_simple_element(item, parent_schema, str)
     elif item["type"] in ["integer", "number"]:
         return define_simple_element(item, parent_schema, int)

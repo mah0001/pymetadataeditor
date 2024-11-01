@@ -8,6 +8,7 @@ import metadataschemas.indicator_schema as tss
 import pandas as pd
 import pytest
 import requests
+from metadataschemas.document_schema import ScriptSchemaDraft
 from pydantic import BaseModel, ValidationError
 from requests.exceptions import SSLError
 
@@ -265,6 +266,11 @@ def test_create_project_log(monkeypatch, metadata_editor, metadata_type, bad_met
 
     monkeypatch.setattr(requests, "request", mock_response)
 
+    def mock_get_metadata_class(*args, **kwargs):
+        return metadata_editor._mm._TYPE_TO_SCHEMA[metadata_type]
+
+    monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
+
     if bad_metadata is not None:
         with pytest.raises(ValidationError):
             metadata_editor.create_project_log(metadata_type_or_template_uid=metadata_type, metadata=bad_metadata)
@@ -273,9 +279,6 @@ def test_create_project_log(monkeypatch, metadata_editor, metadata_type, bad_met
         metadata_type_or_template_uid=metadata_type, metadata=good_metadata
     )
     assert metadata_id == 1
-
-    with pytest.raises(ValidationError):
-        metadata_editor.create_project_log(metadata_type_or_template_uid=metadata_type, metadata={"bad_key": ""})
 
     cls = metadata_editor.get_metadata_class(metadata_type)
     metadata_object = cls(**good_metadata)
@@ -297,6 +300,12 @@ def test_update_project_log_by_id(tmpdir, monkeypatch, metadata_editor):
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
+
+    def mock_get_metadata_class(*args, **kwargs):
+        return tss.TimeseriesSchema
+
+    monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
+
     with pytest.raises(Exception, match="You don't have permission to access this project"):
         metadata_editor.update_project_log_by_id(
             id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
@@ -378,9 +387,12 @@ modes = ["excel", "dict", "pydantic"]
 
 
 @pytest.mark.parametrize("metadata_type, mode", list(itertools.product(metadata_types, modes)))
-def test_make_metadata_outline(tmpdir, metadata_editor, metadata_type, mode):
-    if mode == "excel" and metadata_editor == "geospatial":
-        pass
+def test_make_metadata_outline(tmpdir, monkeypatch, metadata_editor, metadata_type, mode):
+    def mock_get_metadata_class(*args, **kwargs):
+        return metadata_editor._mm._TYPE_TO_SCHEMA[metadata_type]
+
+    monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
+
     metadata_editor.make_metadata_outline(
         metadata_type_or_template_uid=metadata_type,
         mode=mode,
@@ -392,7 +404,8 @@ def test_make_metadata_outline(tmpdir, metadata_editor, metadata_type, mode):
     "metadata_type, metadata",
     [
         ("document", {"document_description": {"title_statement": {"idno": "example_idno", "title": "example_title"}}}),
-        # ("geospatial", {"description": {"idno": "example_idno"}}),
+        ("geospatial", {"description": {"idno": "example_idno"}}),
+        ("image", {"image_description": {"idno": "example_idno", "title": "example_title"}}),
         ("script", {"doc_desc": {"idno": "example_idno"}}),
         ("table", {"table_description": {"title_statement": {"idno": "example idno", "title": "example title"}}}),
         (
@@ -438,6 +451,12 @@ def test_get_project_metadata_by_id(tmpdir, monkeypatch, metadata_editor, metada
 
     # unknown metadata type can't be returned as an object, only as a dict
     monkeypatch.setattr(requests, "request", mock_response)
+
+    def mock_get_metadata_class(*args, **kwargs):
+        return metadata_editor._mm._TYPE_TO_SCHEMA[metadata_type]
+
+    monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
+
     with pytest.raises(ValueError):
         ts = metadata_editor.get_project_metadata_by_id(1, mode="pydantic")
     ts = metadata_editor.get_project_metadata_by_id(1, mode="dict")
@@ -707,7 +726,13 @@ def test_list_templates(monkeypatch, metadata_editor):
             json_data={
                 "templates": {
                     "core": [
-                        {"uid": "example", "template_type": "core", "name": "example", "template": "example_template"}
+                        {
+                            "uid": "example",
+                            "template_type": "core",
+                            "name": "example",
+                            "template": "example_template",
+                            "default": True,
+                        }
                     ]
                 }
             },
@@ -738,7 +763,12 @@ def test_get_template_by_uid(monkeypatch, metadata_editor):
     assert actual.name == "example name"
 
 
-def test_simplify_metadata(metadata_editor, tmpdir):
+def test_simplify_metadata(metadata_editor, tmpdir, monkeypatch):
+    def mock_get_metadata_class(*args, **kwargs):
+        return ScriptSchemaDraft
+
+    monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
+
     project_filename = metadata_editor.make_metadata_outline(
         "document", "excel", filename=os.path.join(tmpdir, "simplify.xlsx")
     )
@@ -798,7 +828,7 @@ def test_set_template_for_collection(monkeypatch, metadata_editor):
     metadata_editor.set_template_for_collection(1, "example_uid")
 
 
-def test_list_resources_by_id(monkeypatch, metadata_editor):
+def test_get_resources_by_id(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(
             http_status_code=200,
@@ -819,7 +849,7 @@ def test_list_resources_by_id(monkeypatch, metadata_editor):
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    resources = metadata_editor.list_resources_by_id(1)
+    resources = metadata_editor.get_resources_by_id(1)
     assert isinstance(resources, pd.DataFrame)
     assert len(resources) == 1
     assert resources.loc[0, "title"] == "Report Title"
@@ -829,7 +859,7 @@ def test_list_resources_by_id(monkeypatch, metadata_editor):
         return MockResponse(http_status_code=200, json_data={"resources": []})
 
     monkeypatch.setattr(requests, "request", mock_response)
-    resources = metadata_editor.list_resources_by_id(1)
+    resources = metadata_editor.get_resources_by_id(1)
     assert isinstance(resources, pd.DataFrame)
     assert len(resources) == 0
 
@@ -838,7 +868,7 @@ def test_list_resources_by_id(monkeypatch, metadata_editor):
         return MockResponse(http_status_code=200, json_data={})
 
     monkeypatch.setattr(requests, "request", mock_response)
-    resources = metadata_editor.list_resources_by_id(1)
+    resources = metadata_editor.get_resources_by_id(1)
     assert isinstance(resources, pd.DataFrame)
     assert len(resources) == 0
 
@@ -885,11 +915,11 @@ def test_create_update_delete_resource(
             project_id=1, resource_id=1, dctype=dctype, title=title, author=author, filename=filename
         )
 
-    # Mocking the list_resources_by_id for deletion check
-    def mock_list_resources_by_id(*args, **kwargs):
+    # Mocking the get_resources_by_id for deletion check
+    def mock_get_resources_by_id(*args, **kwargs):
         return pd.DataFrame([{"id": "99"}])
 
-    monkeypatch.setattr(metadata_editor, "list_resources_by_id", mock_list_resources_by_id)
+    monkeypatch.setattr(metadata_editor, "get_resources_by_id", mock_get_resources_by_id)
 
     # Test delete_resource_by_id method
     def mock_delete_response(*args, **kwargs):

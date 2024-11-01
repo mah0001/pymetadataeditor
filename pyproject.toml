@@ -21,6 +21,8 @@ isort = "^5.13.2"
 ruff = "^0.4.8"
 black = "^24.4.2"
 detect-secrets = "^1.5.0"
+nbformat = "^5.10.4"
+nbconvert = "^7.16.4"
 
 [tool.ruff]
 line-length = 120

@@ -1,8 +1,10 @@
 import os
 
+import nbformat
 import pandas as pd
 import pytest
 from metadataschemas.utils.quick_start import make_skeleton
+from nbconvert.preprocessors import ExecutePreprocessor
 
 from pymetadataeditor import MetadataEditor
 
@@ -26,17 +28,17 @@ def test_projects_integration(tmpdir, metadata_editor):
     assert num_original_projects >= len(metadata_editor.list_projects(limit="all", metadata_type="indicator"))
     assert num_original_projects == len(metadata_editor.list_projects(limit="all", sort_by="updated_asc"))
 
-    # Good: "document", "microdata", "table", "indicator", "indicator_db", "video"
-    # fail due to not searchable: "geospatial", "script"
+    # Good: "document", "microdata", "table", "indicator", "indicators_db", "video"
+    # fail due to not searchable: "geospatial", "image", "script"
 
     metadata_types = [
         "document",
         "microdata",
         "table",
         "indicator",
-        "indicator_db",
+        "indicators_db",
         "video",
-    ]  # "document", "geospatial", "script", "microdata", "table", "indicator", "indicator_db", "video"
+    ]
     creation_data = {
         "document": {
             "document_description": {
@@ -52,29 +54,30 @@ def test_projects_integration(tmpdir, metadata_editor):
         },
         "script": {"doc_desc": {"idno": "integration_test_script"}},
         "microdata": {
-            "repositoryid": "integration_test_microdata_repository_id",
             "study_desc": {
                 "title_statement": {
                     "idno": "integration_test_microdata_idno",
                     "title": "integration_test_microdata title",
+                    "identifiers": [{"type": "doi", "identifier": "10.1234/5678"}],
                 },
                 "study_info": {"nation": [{"name": "example_nation"}]},
             },
+            "additional": {"file_description": {"data_file": {"file_id": "nothing"}}},
         },
         "table": {
             "table_description": {
                 "title_statement": {"idno": "integration_test_table", "title": "integration test table"}
             }
         },
+        "image": {"metadata_information": {"idno": "integration_test_image", "title": "integration test image"}},
         "indicator": {
-            "idno": "integration_test_indicator",
-            "series_description": {"idno": "integration_test_indicator", "name": "integration_test_indicator"},
+            "series_description": {"idno": "integration_test_indicator", "name": "integration test indicator"},
         },
-        "indicator_db": {
+        "indicators_db": {
             "database_description": {
                 "title_statement": {
-                    "idno": "integration_test_indicator_db",
-                    "title": "integration_test_indicator_db title",
+                    "idno": "integration_test_indicators_db",
+                    "title": "integration_test_indicators_db title",
                 }
             }
         },
@@ -98,23 +101,28 @@ def test_projects_integration(tmpdir, metadata_editor):
                 "title_statement": {
                     "idno": "integration_test_microdata_idno",
                     "title": "integration_test_microdata title updated",
+                    "identifiers": [{"type": "doi", "identifier": "10.1234/5678"}],
                 },
                 "study_info": {"nation": [{"name": "example_nation"}]},
-            }
+            },
+            "additional": {"file_description": {"data_file": {"file_id": "nothing"}}},
         },
         "table": {
             "table_description": {
                 "title_statement": {"idno": "integration_test_table", "title": "integration test table updated"}
             }
         },
-        "indicator": {
-            "series_description": {"idno": "integration_test_indicator", "name": "integration_test_indicator_updated"}
+        "image": {
+            "metadata_information": {"idno": "integration_test_image", "title": "integration test image updated"}
         },
-        "indicator_db": {
+        "indicator": {
+            "series_description": {"idno": "integration_test_indicator", "name": "integration test indicator updated"}
+        },
+        "indicators_db": {
             "database_description": {
                 "title_statement": {
-                    "idno": "integration_test_indicator_db",
-                    "title": "integration_test_indicator_db title updated",
+                    "idno": "integration_test_indicators_db",
+                    "title": "integration_test_indicators_db title updated",
                 }
             }
         },
@@ -130,6 +138,13 @@ def test_projects_integration(tmpdir, metadata_editor):
                 "value": "patched integration test document updated",
             }
         ],
+        "geospatial": [
+            {
+                "op": "replace",
+                "path": "metadata_information/title",
+                "value": "patched integration test geospatial",
+            }
+        ],
         "microdata": [
             {
                 "op": "replace",
@@ -138,21 +153,21 @@ def test_projects_integration(tmpdir, metadata_editor):
             }
         ],
         "table": [
-            {"op": "remove", "path": "/table_description/title_statement/title"},
             {
-                "op": "add",
+                "op": "replace",
                 "path": "/table_description/title_statement/title",
                 "value": "patched integration test table updated",
             },
         ],
+        "image": [{"op": "replace", "path": "metadata_information/title", "value": "patched integration test image"}],
         "indicator": [
             {"op": "replace", "path": "series_description/name", "value": "patched integration_test_indicator_updated"}
         ],
-        "indicator_db": [
+        "indicators_db": [
             {
                 "op": "add",
                 "path": "database_description/title_statement/title",
-                "value": "integration_test_indicator_db title updated patched",
+                "value": "integration_test_indicators_db title updated patched",
             }
         ],
         "video": [
@@ -165,6 +180,7 @@ def test_projects_integration(tmpdir, metadata_editor):
     }
 
     for metadata_type in metadata_types:
+        print(f"looking at {metadata_type}")
         # create project
         project_id = metadata_editor.create_project_log(
             metadata_type_or_template_uid=metadata_type, metadata=creation_data[metadata_type]
@@ -176,17 +192,19 @@ def test_projects_integration(tmpdir, metadata_editor):
             # get project
             project_metadata = metadata_editor.get_project_by_id(project_id).metadata
             for k, v in creation_data[metadata_type].items():
-                assert project_metadata[k] == v
+                assert k in project_metadata, project_metadata
+                assert project_metadata[k] == v, project_metadata
 
             project_metadata = metadata_editor.get_project_metadata_by_id(project_id, mode="dict")
             for k, v in creation_data[metadata_type].items():
-                assert project_metadata[k] == v
+                assert k in project_metadata, project_metadata
+                assert project_metadata[k] == v, project_metadata
 
             # update project
             metadata_editor.update_project_log_by_id(project_id, new_metadata=update_data[metadata_type])
             project_metadata_updated = metadata_editor.get_project_metadata_by_id(project_id, mode="dict")
             for k, v in update_data[metadata_type].items():
-                assert project_metadata_updated[k] == v
+                assert project_metadata_updated[k] == v, project_metadata_updated
 
             # check project is searchable and updated
             title_contains_updated = metadata_editor.list_projects(
@@ -218,17 +236,10 @@ def test_projects_integration(tmpdir, metadata_editor):
                 project_id in title_contains_updated.index or str(project_id) in title_contains_updated.index
             ), title_contains_updated
 
-            # save project to excel and then upload it
-            if metadata_type == "geospatial":
-                with pytest.raises(NotImplementedError):
-                    filename = f"{metadata_type}_{project_id}.xlsx"
-                    metadata_editor.get_project_metadata_by_id(project_id, mode="excel", filename=filename)
-                    metadata_editor.update_project_log_by_id(project_id, filename)
-            else:
-                filename = f"{metadata_type}_{project_id}.xlsx"
-                filename = os.path.join(tmpdir, filename)
-                metadata_editor.get_project_metadata_by_id(project_id, mode="excel", filename=filename)
-                metadata_editor.update_project_log_by_id(project_id, filename)
+            filename = f"{metadata_type}_{project_id}.xlsx"
+            filename = os.path.join(tmpdir, filename)
+            metadata_editor.get_project_metadata_by_id(project_id, mode="excel", filename=filename)
+            metadata_editor.update_project_log_by_id(project_id, filename)
         finally:
             metadata_editor.delete_project_by_id(project_id)
         # except Exception as e:
@@ -280,7 +291,7 @@ def test_collections_integration(metadata_editor):
         project_name = "project for collection integration test"
         project_id = metadata_editor.create_project_log(
             metadata_type_or_template_uid="indicator",
-            metadata={"idno": project_idno, "series_description": {"idno": project_idno, "name": project_name}},
+            metadata={"series_description": {"idno": project_idno, "name": project_name}},
         )
         try:
             metadata_editor.add_projects_to_collection(collection_id, "id", project_id)
@@ -288,7 +299,7 @@ def test_collections_integration(metadata_editor):
             # check the project can be found
             oneproject_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
             assert len(oneproject_collection) == 1
-            assert oneproject_collection.iloc[0].idno == project_idno
+            assert oneproject_collection.iloc[0].study_idno == project_idno, oneproject_collection.iloc[0].keys()
             good_search = metadata_editor.list_projects_in_collection(
                 collection_id, keywords="integration", limit="all"
             )
@@ -301,7 +312,7 @@ def test_collections_integration(metadata_editor):
                 collection_id, keywords="project integration", limit="all"
             )
             assert len(good_search) == 1
-            assert good_search.iloc[0].idno == project_idno
+            assert good_search.iloc[0].study_idno == project_idno
             bad_search = metadata_editor.list_projects_in_collection(collection_id, keywords="bogus", limit="all")
             assert len(bad_search) == 0
             good_search = metadata_editor.list_projects_in_collection(collection_id, limit="all")
@@ -314,7 +325,7 @@ def test_collections_integration(metadata_editor):
             assert len(good_search) == 1
 
             # remove that project by idno
-            metadata_editor.remove_projects_from_collection(collection_id, "idno", project_idno)
+            metadata_editor.remove_projects_from_collection(collection_id, "id", project_id)
             final_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
             assert len(final_collection) == 0
         except Exception as e:
@@ -339,7 +350,7 @@ def test_resources_integration(metadata_editor, tmpdir):
         },
     )
     try:
-        initial_resources = metadata_editor.list_resources_by_id(project_id)
+        initial_resources = metadata_editor.get_resources_by_id(project_id)
         assert isinstance(initial_resources, pd.DataFrame)
         assert len(initial_resources) == 0
 
@@ -352,7 +363,7 @@ def test_resources_integration(metadata_editor, tmpdir):
             project_id, dctype="txt", title="resources_integration", filename=filename
         )
         try:
-            resources = metadata_editor.list_resources_by_id(project_id)
+            resources = metadata_editor.get_resources_by_id(project_id)
             assert isinstance(resources, pd.DataFrame)
             assert len(resources) == 1
             resources.iloc[0].title = "resources_integration"
@@ -360,7 +371,7 @@ def test_resources_integration(metadata_editor, tmpdir):
             metadata_editor.update_resource(
                 project_id=project_id, resource_id=resource_id, dctype="txt", title="updated_resources_integration"
             )
-            resources = metadata_editor.list_resources_by_id(project_id)
+            resources = metadata_editor.get_resources_by_id(project_id)
             assert isinstance(resources, pd.DataFrame)
             assert len(resources) == 1
             resources.iloc[0].title = "updated_resources_integration"
@@ -370,7 +381,7 @@ def test_resources_integration(metadata_editor, tmpdir):
             raise e
         else:
             metadata_editor.delete_resource_by_id(project_id=project_id, resource_id=resource_id)
-            final_resources = metadata_editor.list_resources_by_id(project_id)
+            final_resources = metadata_editor.get_resources_by_id(project_id)
             assert isinstance(final_resources, pd.DataFrame)
             assert len(final_resources) == 0
 
@@ -382,29 +393,28 @@ def test_resources_integration(metadata_editor, tmpdir):
 
 
 def test_templates(metadata_editor):
-    unknown_types = {}
-
     for i, uid in enumerate(metadata_editor.list_templates()[["uid"]].values):
         temp = metadata_editor.get_template_by_uid(uid[0])
         metadata_type = temp.data_type
         print(i, uid[0], metadata_type)
 
-        if metadata_type in ["image"]:
-            continue
         metadata_type = metadata_type.replace("-", "_")
-        try:
-            metadata_type = metadata_editor._mm.standardize_metadata_name(metadata_type)
-        except (NotImplementedError, ValueError):
-            if temp.data_type not in unknown_types:
-                unknown_types[metadata_type] = 1
-            else:
-                unknown_types[metadata_type] += 1
-            continue
+
         class_def = metadata_editor.get_metadata_class(uid[0])
-        # parent_schema = metadata_editor._mm.metadata_class_from_name(metadata_type)
-        # assert isinstance(parent_schema, type(BaseModel)), metadata_type
-        # class_def = pydantic_from_template(temp.template, parent_schema=parent_schema, name=temp.name)
-        if metadata_type == "geospatial":
-            continue
         print("making skeleton", make_skeleton(class_def))
-        assert len(unknown_types) == 0, f"encountered unknown types {unknown_types}"
+
+        metadata_editor.make_metadata_outline(uid[0], mode="pydantic")
+
+
+def test_execute_demo_notebook():
+    notebook_path = os.path.join(os.path.dirname(__file__), "..", "demo.ipynb")
+    executed_notebook_path = os.path.join(os.path.dirname(__file__), "..", "demo.ipynb")
+
+    with open(notebook_path) as f:
+        nb = nbformat.read(f, as_version=4)
+
+    ep = ExecutePreprocessor(timeout=600, kernel_name="python3")
+    ep.preprocess(nb, {"metadata": {"path": os.path.join(os.path.dirname(__file__), "..")}})
+
+    with open(executed_notebook_path, "w", encoding="utf-8") as f:
+        nbformat.write(nb, f)

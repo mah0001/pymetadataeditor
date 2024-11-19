@@ -213,25 +213,44 @@ def define_simple_array_element(
 
 def dot_to_hierarchy(d):
     """
-    Where dictionary keys have '.', seperate the strings either side of the dot into a hierarchy of dictionaries.
+    Where dictionary keys have '.', separate the strings either side of the dot into a hierarchy of dictionaries.
 
     Example:
 
-    >>>dot_to_hierarchy({"firstkey.secondkey.thirdkey": 1,
-                         "firstkey.secondkey.fourthkey": 2,
-                         "fifthkey": 3,
-                         "firstkey.sixthkey": 4} )
+    >>> dot_to_hierarchy({"firstkey.secondkey.thirdkey": 1,
+                          "firstkey.secondkey.fourthkey": 2,
+                          "fifthkey": 3,
+                          "firstkey.sixthkey": 4})
     {'firstkey': {'secondkey': {'thirdkey': 1, 'fourthkey': 2}, 'sixthkey': 4}, 'fifthkey': 3}
     """
+
+    def merge_dicts(target, source):
+        """Recursively merge source dictionary into target dictionary."""
+        for key, value in source.items():
+            if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+                merge_dicts(target[key], value)
+            else:
+                target[key] = value
+
     result = {}
+
     for key, value in d.items():
-        keys = key.split(".")
-        current_dict = result
-        for part in keys[:-1]:
-            if part not in current_dict:
-                current_dict[part] = {}
-            current_dict = current_dict[part]
-        current_dict[keys[-1]] = value
+        if isinstance(value, dict):
+            value = dot_to_hierarchy(value)  # Recursively handle nested dictionaries
+
+        parts = key.split(".")
+        current = result
+        for part in parts[:-1]:
+            if part not in current:
+                current[part] = {}
+            current = current[part]
+
+        # Merge if necessary
+        if isinstance(current.get(parts[-1]), dict) and isinstance(value, dict):
+            merge_dicts(current[parts[-1]], value)
+        else:
+            current[parts[-1]] = value
+
     return result
 
 

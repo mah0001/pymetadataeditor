@@ -856,7 +856,7 @@ description = ""
 optional = false
 python-versions = ">=3.11,<4.0"
 files = [
-    {file = "metadataschemas-0.1.0-py3-none-any.whl", hash = "sha256:73e35c1f4042799371b1943803b4631a4ab08a0f549ea943e32bec94c1805cdd"},
+    {file = "metadataschemas-0.1.0-py3-none-any.whl", hash = "sha256:87b1507ee5d5c0b28bd1ac95ff78ffecf639c01cf2519876c214a33ca6aa029c"},
 ]
 
 [package.dependencies]

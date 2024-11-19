@@ -19,6 +19,8 @@ from pymetadataeditor.templates import pydantic_from_template
 
 from .utils import remove_empty_from_dict, validate_json_patches
 
+__all__ = ["MetadataEditor", "DeleteNotAppliedError"]
+
 warnings.filterwarnings(
     "ignore", category=UserWarning, module="pydantic"
 )  # suppresses warning when metadata passed as dict instead of a pydantic object
@@ -148,7 +150,7 @@ class APInterface(BaseModel):
                     error_message = response.text
                 raise PermissionError(error_message) from e
             else:
-                raise Exception(f"Status Code: {response.status_code}, Response: {response.text}") from e
+                raise HTTPError(f"Status Code: {response.status_code}, Response: {response.text}") from e
         try:
             json_response = response.json()
         except (JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
@@ -199,14 +201,19 @@ class MetadataEditor:
         MetadataEditor allows you to list, create, update and delete projects, manage collections and list templates in
           a metadata database.
 
-        First obtain an API key.
+        First obtain an API key and pase it into a file called '.env' in the root of your project. The contents of the
+            file should look like this:
 
-        Then run
+            METADATA_API_URL=https://<name_of_your_metadata_database>.org/index.php/api
+            METADATA_API_KEY=your_api_key
+
+        Then in python run
 
             from pymetadataeditor import MetadataEditor
+            import os
 
-            api_url = "<url of the API>"
-            api_key = "<the api key you generated for accessing the metadata database>"
+            api_url = os.getenv("METADATA_API_URL")
+            api_key = os.getenv("METADATA_API_KEY")
             me = MetadataEditor(api_url = api_url, api_key = api_key)
 
         Then you can list and create new projects like so:
@@ -228,6 +235,7 @@ class MetadataEditor:
         self._mm = MetadataManager()
         self._templates = {}
         self._default_templates = None
+        self._template_class_to_metadata_type = {}
 
     def count_projects(self) -> int:
         """
@@ -494,6 +502,7 @@ class MetadataEditor:
         exclude_unset: bool = True,
         filename: Optional[str] = None,
         title: Optional[str] = None,
+        debug: bool = False,
     ) -> Union[Dict, BaseModel, str]:
         """
         Args:
@@ -539,30 +548,93 @@ class MetadataEditor:
         if "template_uid" in project and project.template_uid is not None and project.template_uid != "":
             metadata_name = project.template_uid
         skeleton_object = self.make_metadata_outline(metadata_name, mode="dict")
-
+        if debug:
+            print(f"\nproject_metadata = {project['metadata']}\n")
         combined_dict = merge_dicts(
             skeleton_object,
             project["metadata"],
+            skeleton_mode=True,
         )
         combined_dict = standardize_keys_in_dict(combined_dict)
+        if debug:
+            print(f"combined_dict = {combined_dict}\n")
         schema = self.get_metadata_class(metadata_type_or_template_uid=metadata_name)
         metadata_object = schema.model_validate(standardize_keys_in_dict(combined_dict))
 
         if mode in ["pydantic", "model", "basemodel", "object"]:
             return metadata_object
         elif mode in ["dict", "dictionary"]:
-            if not exclude_unset:
-                return metadata_object.model_dump(mode="json")
-            else:
-                metadata_dict = metadata_object.model_dump(
-                    mode="json", exclude_none=exclude_unset, exclude_unset=exclude_unset
-                )
+            metadata_dict = metadata_object.model_dump(
+                mode="json", exclude_none=exclude_unset, exclude_unset=exclude_unset
+            )
+            if exclude_unset:
                 return remove_empty_from_dict(metadata_dict)
-        else:
-            if metadata_name in self._mm.metadata_type_names:
-                return self._mm.save_metadata_to_excel(object=metadata_object, filename=filename, title=title)
             else:
-                return self._mm.save_metadata_to_excel(object=metadata_object, filename=filename, title=title)
+                return metadata_dict
+        else:
+            return self._mm.save_metadata_to_excel(
+                object=metadata_object,
+                filename=filename,
+                title=title,
+                parent_metadata_name=self._template_class_to_metadata_type.get(schema, None),
+            )
+
+    def save_metadata_to_excel(
+        self,
+        object: BaseModel,
+        filename: Optional[str] = None,
+        title: Optional[str] = None,
+        verbose: bool = False,
+    ) -> str:
+        """
+        Save a metadata object to an Excel file.
+
+        Args:
+            object (BaseModel): The pydantic object to save to the Excel file.
+            filename (Optional[str]): The path to the Excel file. Defaults to {name}_metadata.xlsx
+            title (Optional[str]): The title for the Excel sheet. Defaults to '{name} Metadata'
+            verbose (bool): If True, print debug information on the file creation.
+
+        Returns:
+            str: The path to the saved Excel file.
+        """
+        # parent_metadata_name = self._template_class_to_metadata_type.get(object.__class__, None)
+        parent_metadata_name = self._template_class_to_metadata_type.get(type(object), None)
+        return self._mm.save_metadata_to_excel(object, filename, title, parent_metadata_name, verbose)
+
+    def read_metadata_from_excel(
+        self,
+        filename: str,
+        metadata_class: Optional[Type[BaseModel]] = None,
+        mode: str = "pydantic",
+        exclude_unset=True,
+    ) -> Union[BaseModel, Dict]:
+        """
+        Read metadata from an Excel file.
+
+        Args:
+            filename (str): The path to the Excel file.
+            metadata_class (Optional[Type[BaseModel]]): The pydantic class of the metadata. Required if the metadata is
+                of a template type.
+            mode (str): The output mode. Must be 'pydantic' or 'dict'.
+            exclude_unset (bool): If mode=='dict', then if exclude_unset=True, only elements that were explicitly set
+                with non-null, non-empty values are returned in the dictionary.
+
+        Returns:
+            Union[BaseModel, Dict]: The metadata object or dictionary.
+        """
+        parent_name = self._template_class_to_metadata_type.get(
+            metadata_class, self._template_class_to_metadata_type.get(type(metadata_class), None)
+        )
+        assert parent_name is not None, "metadata_class must be a pydantic class or a string"
+        object = self._mm.read_metadata_from_excel(filename, metadata_class, parent_name, verbose=False)
+
+        if mode == "pydantic" or mode == "model" or mode == "basemodel" or mode == "object":
+            return object
+        elif mode == "dict" or mode == "dictionary":
+            return remove_empty_from_dict(
+                object.model_dump(mode="json", exclude_none=exclude_unset, exclude_unset=exclude_unset)
+            )
 
     def delete_project_by_id(self, id: int):
         """
@@ -624,7 +696,7 @@ class MetadataEditor:
         # check that the entity was deleted
         try:
             checker_fn(id)
-        except (PermissionError, JSONDecodeError, IndexError):
+        except (PermissionError, JSONDecodeError, IndexError, HTTPError):
             pass  # evidently the entity was deleted because now it can't be found
         else:
             raise DeleteNotAppliedError()
@@ -646,6 +718,7 @@ class MetadataEditor:
                 "metadata_type": metadata_type,
                 "class": klass,
             }
+            self._template_class_to_metadata_type[klass] = metadata_type
             return klass
 
     def get_metadata_class(self, metadata_type_or_template_uid: str) -> Type[BaseModel]:
@@ -757,7 +830,7 @@ class MetadataEditor:
             metadata = metadata.model_dump(mode="json")
         print(json.dumps(metadata, indent="  "))
 
-    def create_project_log(self, metadata_type_or_template_uid: str, metadata: Union[Dict, BaseModel, str]):
+    def create_project_log(self, metadata_type_or_template_uid: str, metadata: Union[Dict, BaseModel, str]) -> int:
         """
         Validates and logs metadata which can be a dictionary, a pydantic model or a path to an Excel spreadsheet.
 
@@ -800,8 +873,12 @@ class MetadataEditor:
         elif metadata_type == "microdata":
             metadata_type = "survey"
         post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
+        # ret = self._apinterface._post_request(
+        #     pth=post_request_pth, json=metadata.model_dump(mode="json", exclude_none=False, exclude_unset=False)
+        # )
         ret = self._apinterface._post_request(
-            pth=post_request_pth, json=metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+            pth=post_request_pth,
+            json=remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)),
         )
         return ret["id"]
 
@@ -827,21 +904,20 @@ class MetadataEditor:
         else:
             metadata_class = self.get_metadata_class(metadata_type)
 
-        if metadata_type == "geospatial":
-            assert isinstance(new_metadata, dict), "geospatial data not yet supported in pydantic or excel modes"
-            md = new_metadata
-        else:
-            md = self.get_project_metadata_by_id(id, mode="pydantic")
+        md = self.get_project_metadata_by_id(id, mode="pydantic")
 
-            if isinstance(new_metadata, str):
-                new_metadata = self._mm.read_metadata_from_excel(new_metadata, metadata_class)
-                new_metadata = new_metadata.model_dump(mode="json")
-            elif isinstance(new_metadata, BaseModel):
-                new_metadata = new_metadata.model_dump(mode="json")
+        if isinstance(new_metadata, str):
+            new_metadata = self._mm.read_metadata_from_excel(new_metadata, metadata_class)
+            new_metadata = new_metadata.model_dump(mode="json")
+        elif isinstance(new_metadata, BaseModel):
+            new_metadata = new_metadata.model_dump(mode="json")
 
-            new_metadata = standardize_keys_in_dict(new_metadata)
-            md = md.model_copy(update=new_metadata)
-            md = md.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+        new_metadata = standardize_keys_in_dict(new_metadata)
+        md = md.model_copy(update=new_metadata)
+        md = merge_dicts(md.model_dump(mode="json", exclude_none=True, exclude_unset=True), new_metadata)
+
+        md = metadata_class.model_validate(md)
+        md = remove_empty_from_dict(md.model_dump(mode="json", exclude_none=True, exclude_unset=True))
 
         if metadata_type == "indicator":
             metadata_type = "timeseries"

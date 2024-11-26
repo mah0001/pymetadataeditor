@@ -4,10 +4,12 @@ import nbformat
 import pandas as pd
 import pytest
 from metadataschemas.utils.quick_start import make_skeleton
-from metadataschemas.utils.test_utils import compare_pydantic_models, fill_in_pydantic_outline
+from metadataschemas.utils.test_utils import assert_pydantic_models_equal, fill_in_pydantic_outline
 from nbconvert.preprocessors import ExecutePreprocessor
+from pydantic import ValidationError
 
 from pymetadataeditor import MetadataEditor
+from pymetadataeditor.interface import TemplateError
 
 
 @pytest.fixture
@@ -63,7 +65,7 @@ def test_projects_integration(tmpdir, metadata_editor):
                 },
                 "study_info": {"nation": [{"name": "example_nation"}]},
             },
-            "additional": {"file_description": {"data_file": {"file_id": "nothing"}}},
+            "additional": {"file_description": {"data_file": {"file_id": "nothing", "file_name": "nothing"}}},
         },
         "table": {
             "table_description": {
@@ -106,7 +108,7 @@ def test_projects_integration(tmpdir, metadata_editor):
                 },
                 "study_info": {"nation": [{"name": "example_nation"}]},
             },
-            "additional": {"file_description": {"data_file": {"file_id": "nothing"}}},
+            "additional": {"file_description": {"data_file": {"file_id": "nothing", "file_name": "nothing"}}},
         },
         "table": {
             "table_description": {
@@ -184,8 +186,15 @@ def test_projects_integration(tmpdir, metadata_editor):
         print(f"looking at {metadata_type} with creation data {creation_data[metadata_type]}")
         # create project
         project_id = metadata_editor.create_project_log(
-            metadata_type_or_template_uid=metadata_type, metadata=creation_data[metadata_type]
+            metadata=creation_data[metadata_type], metadata_type_or_template_uid=metadata_type
         )
+        metadata_editor.delete_project_by_id(project_id)
+        pydantic_model = metadata_editor.get_metadata_class(metadata_type)(**creation_data[metadata_type])
+        project_id = metadata_editor.create_project_log(metadata=pydantic_model)
+        metadata_editor.delete_project_by_id(project_id)
+        filename = os.path.join(tmpdir, f"{metadata_type}.xlsx")
+        metadata_editor.save_metadata_to_excel(pydantic_model, filename)
+        project_id = metadata_editor.create_project_log(filename, metadata_type_or_template_uid=metadata_type)
 
         try:
             assert len(metadata_editor.list_projects(limit="all")) == num_original_projects + 1
@@ -196,7 +205,7 @@ def test_projects_integration(tmpdir, metadata_editor):
             #     assert k in project_metadata, project_metadata
             #     assert project_metadata[k] == v, project_metadata
 
-            project_metadata = metadata_editor.get_project_metadata_by_id(project_id, mode="dict")
+            project_metadata = metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict")
             for k, v in creation_data[metadata_type].items():
                 assert k in project_metadata, project_metadata
                 assert project_metadata[k] == v, project_metadata
@@ -204,7 +213,7 @@ def test_projects_integration(tmpdir, metadata_editor):
             # update project
             print(f"updating project {project_id} with {update_data[metadata_type]}")
             metadata_editor.update_project_log_by_id(project_id, new_metadata=update_data[metadata_type])
-            project_metadata_updated = metadata_editor.get_project_metadata_by_id(project_id, mode="dict")
+            project_metadata_updated = metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict")
             for k, v in update_data[metadata_type].items():
                 assert project_metadata_updated[k] == v, project_metadata_updated
 
@@ -242,14 +251,99 @@ def test_projects_integration(tmpdir, metadata_editor):
 
             filename = f"{metadata_type}_{project_id}.xlsx"
             filename = os.path.join(tmpdir, filename)
-            metadata_editor.get_project_metadata_by_id(project_id, mode="excel", filename=filename)
+            metadata_editor.get_project_metadata_by_id(project_id, output_mode="excel", filename=filename)
             metadata_editor.update_project_log_by_id(project_id, filename)
         finally:
             metadata_editor.delete_project_by_id(project_id)
-            # assert True
 
-        # final_projects = metadata_editor.list_projects(limit="all")
-        # assert len(final_projects) == num_original_projects
+
+@pytest.mark.parametrize(
+    "metadata_type",
+    ["document", "geospatial", "image", "indicator", "indicators_db", "microdata", "script", "table", "video"],
+)
+def test_get_class(metadata_editor, metadata_type):
+    metadata_editor.get_metadata_class(metadata_type)
+
+    temps = metadata_editor.list_templates()
+    temps = temps[temps["data_type"] == metadata_type]
+    for i, temp in temps.iterrows():
+        metadata_editor.get_metadata_class(temp["uid"])
+
+
+def test_project_download_and_read(metadata_editor, tmpdir):
+    projects = metadata_editor.list_projects(limit="all")
+    i = 0
+    template_errors = set()
+    default_validation_errors = {}
+    dict_validation_errors = {}
+    pydantic_validation_errors = {}
+    excel_validation_errors = {}
+    for project_id, project_info in projects.iterrows():
+        if i >= 40:
+            break
+        i += 1
+        if project_info.type == "geospatial":
+            continue
+        print(f"test_project_download_and_read: project_id = {project_id}")
+        print(project_info)
+        metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict", template_uid="none")
+        if project_info.template_uid is not None:
+            try:
+                metadata_editor.get_metadata_class(project_info.template_uid)
+            except TemplateError as e:
+                template_errors.add(e)
+                continue
+        else:
+            metadata_editor.get_metadata_class(project_info.type)
+
+        try:
+            metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict", template_uid="default")
+        except (ValidationError, TemplateError) as e:
+            default_validation_errors[project_id] = e
+
+        try:
+            metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict")
+        except (ValidationError, TemplateError) as e:
+            dict_validation_errors[project_id] = e
+            continue
+        try:
+            pydantic_obj = metadata_editor.get_project_metadata_by_id(project_id, output_mode="pydantic")
+        except (ValidationError, TemplateError) as e:
+            pydantic_validation_errors[project_id] = e
+            continue
+
+        filename = os.path.join(tmpdir, f"test_project_download_and_read_{project_id}.xlsx")
+        # filename = f"test_project_download_and_read_{project_id}.xlsx"
+        try:
+            filename = metadata_editor.get_project_metadata_by_id(
+                project_id, output_mode="excel", filename=filename, debug=False
+            )
+        except (ValidationError, TemplateError) as e:
+            excel_validation_errors[project_id] = e
+            continue
+
+        metadata_type_or_uid = project_info.template_uid if project_info.template_uid is not None else project_info.type
+        excel_obj = metadata_editor.read_metadata_from_excel(filename, metadata_type_or_uid)
+        assert_pydantic_models_equal(pydantic_obj, excel_obj)
+        print()
+
+    output = ""
+    if len(template_errors) > 0:
+        template_errors = "\n\n\t".join([str(e) for e in template_errors])
+        output += f"\n\n\n\ntemplate errors:\n\t{template_errors}\n"
+    if len(dict_validation_errors) > 0:
+        formatted_errors = "\n\n\t".join([f"{k}: {v}" for k, v in dict_validation_errors.items()])
+        output += f"\n\n\n\ndict validation errors:\n\t{formatted_errors}\n"
+    if len(pydantic_validation_errors) > 0:
+        formatted_errors = "\n\n\t".join([f"{k}: {v}" for k, v in pydantic_validation_errors.items()])
+        output += f"\n\n\n\npydantic validation errors:\n\t{formatted_errors}\n"
+    if len(excel_validation_errors) > 0:
+        formatted_errors = "\n\n\t".join([f"{k}: {v}" for k, v in excel_validation_errors.items()])
+        output += f"\n\n\n\nexcel validation errors:\n\t{formatted_errors}\n"
+    if len(default_validation_errors) > 0:
+        formatted_errors = "\n\n\t".join([f"{k}: {v}" for k, v in default_validation_errors.items()])
+        output += f"\n\n\n\ndefault validation errors:\n\t{formatted_errors}\n"
+    assert output == "", output
 
 
 def test_collections_integration(metadata_editor):
@@ -343,11 +437,11 @@ def test_collections_integration(metadata_editor):
 
 def test_resources_integration(metadata_editor, tmpdir):
     project_id = metadata_editor.create_project_log(
-        "indicator",
         {
             "idno": "resources_integration_test",
             "series_description": {"idno": "resources_integration_test", "name": "integration_test_of_resources"},
         },
+        "indicator",
     )
     try:
         initial_resources = metadata_editor.get_resources_by_id(project_id)
@@ -413,22 +507,22 @@ def test_templates(metadata_editor, tmpdir):
         # log skeleton
         log_id = metadata_editor.create_project_log(metadata_type_or_template_uid=uid[0], metadata=skeleton)
         try:
-            expected = metadata_editor.get_project_metadata_by_id(log_id, mode="pydantic")
-            compare_pydantic_models(skeleton, expected)
+            expected = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic")
+            assert_pydantic_models_equal(skeleton, expected)
 
             filename1 = tmpdir.join(f"test_skeleton_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx")
             # filename1 = f"test_skeleton_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx"
             print(f"logging skeleton to {filename1}")
-            metadata_editor.get_project_metadata_by_id(log_id, mode="excel", filename=filename1)
+            metadata_editor.get_project_metadata_by_id(log_id, output_mode="excel", filename=filename1)
             # actual = metadata_editor._mm.read_metadata_from_excel(filename1, class_def)
-            actual = metadata_editor.read_metadata_from_excel(filename1, class_def)
-            compare_pydantic_models(skeleton, actual)
+            actual = metadata_editor.read_metadata_from_excel(filename1, uid[0])
+            assert_pydantic_models_equal(skeleton, actual)
         finally:
             metadata_editor.delete_project_by_id(log_id)
 
         # fill in metadata then save and read back
         for i in range(3):
-            modl = metadata_editor.make_metadata_outline(uid[0], mode="pydantic")
+            modl = metadata_editor.make_metadata_outline(uid[0], output_mode="pydantic")
             fill_in_pydantic_outline(modl)
 
             # Write filled in metadata
@@ -440,30 +534,92 @@ def test_templates(metadata_editor, tmpdir):
 
             # Read the metadata back
             # actual = metadata_editor._mm.read_metadata_from_excel(filename2, class_def)
-            actual = metadata_editor.read_metadata_from_excel(filename2, class_def)
-            compare_pydantic_models(modl, actual)
+            actual = metadata_editor.read_metadata_from_excel(filename2, uid[0])
+            assert_pydantic_models_equal(modl, actual)
 
         # log filled in metadata
         print("logging filled in metadata")
         print(f"{modl}\n\n")
         log_id = metadata_editor.create_project_log(metadata_type_or_template_uid=uid[0], metadata=modl)
         try:
-            actual = metadata_editor.get_project_metadata_by_id(log_id, mode="pydantic", debug=True)
+            actual = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic", debug=True)
             print("actual from log direct")
             print(f"{actual}\n\n")
-            compare_pydantic_models(modl, actual)
+            assert_pydantic_models_equal(modl, actual)
 
             filename3 = tmpdir.join(f"test_filledin_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx")
             # filename3 = f"test_filledin_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx"
             print(f"logging filled in metadata to {filename3}")
-            metadata_editor.get_project_metadata_by_id(log_id, mode="excel", filename=filename3)
+            metadata_editor.get_project_metadata_by_id(log_id, output_mode="excel", filename=filename3)
             # actual = metadata_editor._mm.read_metadata_from_excel(filename3, class_def)
-            actual = metadata_editor.read_metadata_from_excel(filename3, class_def)
+            actual = metadata_editor.read_metadata_from_excel(filename3, uid[0])
             print("actual from log via excel")
             print(f"{actual}\n\n")
-            compare_pydantic_models(modl, actual)
+            assert_pydantic_models_equal(modl, actual)
         finally:
             metadata_editor.delete_project_by_id(log_id)
+
+
+def test_change_mode_or_template(metadata_editor, tmpdir):
+    template_uid = "timeseries-system-en"
+
+    modl = metadata_editor.make_metadata_outline(template_uid, output_mode="pydantic")
+    fill_in_pydantic_outline(modl)
+
+    # convert to dict
+    dict_modl = metadata_editor.change_mode_or_template(modl, "dict")
+    assert isinstance(dict_modl, dict)
+
+    back_to_pydantic = metadata_editor.change_mode_or_template(dict_modl, "pydantic", input_template_uid=template_uid)
+    assert_pydantic_models_equal(modl, back_to_pydantic)
+
+    filename_from_dict = metadata_editor.change_mode_or_template(
+        dict_modl,
+        "excel",
+        input_template_uid=template_uid,
+        filename=tmpdir.join(f"test_change_mode_or_template_{template_uid}.xlsx"),
+    )
+
+    from_excel_via_dict = metadata_editor.change_mode_or_template(
+        filename_from_dict, "pydantic", input_template_uid=template_uid
+    )
+    assert_pydantic_models_equal(modl, from_excel_via_dict)
+
+    from_dict_via_excel = metadata_editor.change_mode_or_template(
+        filename_from_dict, "dict", input_template_uid=template_uid
+    )
+    pydantic_from_dict_via_excel = metadata_editor.change_mode_or_template(
+        from_dict_via_excel, "pydantic", input_template_uid=template_uid
+    )
+    assert_pydantic_models_equal(modl, pydantic_from_dict_via_excel)
+
+    filename_from_pydantic = metadata_editor.change_mode_or_template(
+        modl, "excel", filename=tmpdir.join(f"test_change_mode_or_template_{template_uid}2.xlsx")
+    )
+    from_excel_via_pydantic = metadata_editor.change_mode_or_template(
+        filename_from_pydantic, "pydantic", input_template_uid=template_uid
+    )
+    assert_pydantic_models_equal(modl, from_excel_via_pydantic)
+
+    dict_from_excel_via_pydantic = metadata_editor.change_mode_or_template(
+        filename_from_pydantic, "dict", input_template_uid=template_uid
+    )
+    pydantic_from_dict_via_pydantic = metadata_editor.change_mode_or_template(
+        dict_from_excel_via_pydantic, "pydantic", input_template_uid=template_uid
+    )
+    assert_pydantic_models_equal(modl, pydantic_from_dict_via_pydantic)
+
+    alternative_template_uid = "8603d94e27bccc2bdad1e00dbbf0fe32en"
+    modl_alt = metadata_editor.change_mode_or_template(modl, "pydantic", output_template_uid=alternative_template_uid)
+    modl_alt_from_dict = metadata_editor.change_mode_or_template(
+        dict_modl, "pydantic", input_template_uid=template_uid, output_template_uid=alternative_template_uid
+    )
+    assert_pydantic_models_equal(modl_alt, modl_alt_from_dict)
+
+    modl_alt_from_excel = metadata_editor.change_mode_or_template(
+        filename_from_dict, "pydantic", input_template_uid=template_uid, output_template_uid=alternative_template_uid
+    )
+    assert_pydantic_models_equal(modl_alt, modl_alt_from_excel)
 
 
 def test_execute_demo_notebook():

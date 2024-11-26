@@ -1,4 +1,5 @@
 import copy
+import logging
 import warnings
 from typing import Dict, List, Optional, Tuple, Type
 
@@ -11,8 +12,50 @@ from metadataschemas.utils.utils import (
     standardize_keys_in_dict,
 )
 from pydantic import BaseModel, Field, create_model
+from pydantic.fields import FieldInfo
+
+
+# Configure logging
+def setup_logging(enable_logging: bool = True):
+    if enable_logging:
+        logging.basicConfig(
+            level=logging.DEBUG,  # Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+            format="%(filename)s:%(lineno)d - %(levelname)s - %(message)s",
+        )
+    else:
+        logging.disable(logging.CRITICAL)  # Disable all logging
+
+
+# Enable or disable logging by setting this variable
+ENABLE_LOGGING = False
+
+# Call the setup function
+setup_logging(ENABLE_LOGGING)
 
 __all__ = ["pydantic_from_template"]
+
+
+def copy_field_set_required_status(field: FieldInfo, required: bool) -> FieldInfo:
+    """
+    Create a copy of an existing field with the 'required' status adjusted.
+
+    We want to take most of the field info from the original field, but the reqruied status from the template.
+
+    Args:
+        field (FieldInfo): The original field to copy.
+        required (bool): Whether the new field should be required.
+
+    Returns:
+        FieldInfo: A new field instance with the updated 'required' status.
+    """
+    return FieldInfo(
+        default=(... if required else None),  # Adjust required status
+        alias=field.alias if hasattr(field, "alias") else None,
+        title=field.title if hasattr(field, "title") else None,
+        description=field.description if hasattr(field, "description") else None,
+        example=field.example if hasattr(field, "example") else None,
+        json_schema_extra=field.json_schema_extra if hasattr(field, "json_schema_extra") else None,
+    )
 
 
 def get_child_field_info_from_dot_annotated_name(name, parent_schema):
@@ -76,10 +119,13 @@ def define_simple_element(item, parent_schema, element_type=str) -> Dict[str : T
         child_field_info.description = item["description"]
     if "help_text" in item:
         child_field_info.description = item["help_text"]
-    if "required" in item and item["required"]:
+    if ("required" in item and item["required"]) or ("is_required" in item and item["is_required"]):
+        logging.info("REQUIRED, item: %s", item)
+        child_field_info = copy_field_set_required_status(child_field_info, True)
         field_type = element_type, child_field_info
     else:
         child_field_info.default = None
+        child_field_info = copy_field_set_required_status(child_field_info, False)
         field_type = Optional[element_type], child_field_info
     return {item["key"]: field_type}
 
@@ -92,11 +138,23 @@ def fill_skipped_field_info(d_old, parent_schema, parent_name=""):
             # v_new = fill_skipped_field_info(v, parent_schema, parent_name=childname)
             try:
                 field_info = get_child_field_info_from_dot_annotated_name(childname, parent_schema)
+                field_info_found = True
             except KeyError:
                 field_info = Field(..., title=k)
+                field_info_found = False
             mdl = create_model_for_template(v, parent_schema, k, childname)
-            if not field_info.is_required():
+            if ("required" in v and v["required"]) or ("is_required" in v and v["is_required"]):
+                field_info = copy_field_set_required_status(field_info, True)
+                logging.info(
+                    f"REQUIRED, k: {k}, field_info_found: {field_info_found}, field_info: {field_info}, d_old: {d_old}"
+                )
+            else:
                 mdl = Optional[mdl]
+                field_info = copy_field_set_required_status(field_info, False)
+                logging.info(
+                    f"OPTIONAL, k: {k}, field_info_found: {field_info_found}, field_info: {field_info}, d_old: {d_old}"
+                )
+                # field_info.is_required
             new_vals[k] = (mdl, field_info)
     d_new = d_old
     for k, v in new_vals.items():
@@ -105,14 +163,23 @@ def fill_skipped_field_info(d_old, parent_schema, parent_name=""):
 
 
 def create_model_for_template(
-    dict_of_elements: dict, parent_schema: Type[BaseModel], name: str, parent_name: Optional[str] = None
+    dict_of_elements: dict,
+    parent_schema: Type[BaseModel],
+    name: str,
+    parent_name: Optional[str] = None,
+    uid: Optional[str] = None,
 ) -> Type[BaseModel]:
     dict_of_elements = fill_skipped_field_info(
         dict_of_elements, parent_schema, parent_name if parent_name is not None else ""
     )
     # dict_of_elements = stupid_enrich_custom(dict_of_elements, parent_schema)
     dict_of_elements = standardize_keys_in_dict(dict_of_elements, pascal_to_snake=True)
-    return create_model(name, __module__="template", __base__=SchemaBaseModel, **dict_of_elements)
+
+    if uid is not None:
+        doc = f"template_uid:{uid}"
+    else:
+        doc = None
+    return create_model(name, __module__="template", __base__=SchemaBaseModel, __doc__=doc, **dict_of_elements)
 
 
 def get_children_of_props(
@@ -170,10 +237,13 @@ def define_array_element(item, parent_schema) -> Dict[str : Tuple[Type[BaseModel
         children = get_children_of_props(item["props"], parent_schema)
         child_model = create_model_for_template(children, parent_schema, make_array_element_name(item["key"]))
         element_type = List[child_model]
-    if "required" in item and item["required"]:
+    if ("required" in item and item["required"]) or ("is_required" in item and item["is_required"]):
         field_type = element_type, field_info
+        field_info = copy_field_set_required_status(field_info, True)
+        logging.info("REQUIRED, item: %s", item)
     else:
         field_info.default = None
+        field_info = copy_field_set_required_status(field_info, False)
         field_type = Optional[element_type], field_info
 
     return {item["key"]: field_type}
@@ -203,10 +273,13 @@ def define_simple_array_element(
         child_field_info = Field(..., title=item["title"])
         if "help_test" in item:
             child_field_info.description = item["help_text"]
-    if "required" in item and item["required"]:
+    if ("required" in item and item["required"]) or ("is_required" in item and item["is_required"]):
         field_type = List[str], child_field_info
+        child_field_info = copy_field_set_required_status(child_field_info, True)
+        logging.info("REQUIRED, item: %s", item)
     else:
         child_field_info.default = None
+        child_field_info = copy_field_set_required_status(child_field_info, False)
         field_type = Optional[List[str]], child_field_info
     return {item["key"]: field_type}
 
@@ -273,11 +346,14 @@ def define_group_of_elements(
                 field_info.description = item["description"]
             if "help_test" in item:
                 field_info.description = item["help_text"]
-            if "required" in item and item["required"]:
+            if ("required" in item and item["required"]) or ("is_required" in item and item["is_required"]):
                 field_type = m, field_info
+                field_info = copy_field_set_required_status(field_info, True)
+                logging.info("REQUIRED, item: %s", item)
             else:
                 field_info.default = None
                 field_type = Optional[m], field_info
+                field_info = copy_field_set_required_status(field_info, False)
             elements["additional"][item["key"]] = field_type
         else:
             new_dict = template_type_handler(item, parent_schema)
@@ -316,7 +392,7 @@ def template_type_handler(item, parent_schema):
 
 
 def pydantic_from_template(
-    template: Dict, parent_schema: Type[BaseModel], name: Optional[str] = None
+    template: Dict, parent_schema: Type[BaseModel], uid: str, name: Optional[str] = None
 ) -> Type[BaseModel]:
     assert "items" in template, f"expected 'items' in template but got {list(template.keys())}"
     if name is None:
@@ -326,4 +402,4 @@ def pydantic_from_template(
             name = "new_model"
     name = name.replace(" ", "_").rstrip("_").replace(".", "-")  # .split(".")[-1]
     model_elements = define_group_of_elements(template["items"], parent_schema)
-    return create_model_for_template(model_elements, parent_schema, name)
+    return create_model_for_template(model_elements, parent_schema, name, uid=uid)

@@ -8,12 +8,11 @@ import metadataschemas.indicator_schema as tss
 import pandas as pd
 import pytest
 import requests
-from metadataschemas.document_schema import ScriptSchemaDraft
 from pydantic import BaseModel, ValidationError
 from requests.exceptions import SSLError
 
 from pymetadataeditor import MetadataEditor
-from pymetadataeditor.interface import APInterface, DeleteNotAppliedError
+from pymetadataeditor.interface import DeleteNotAppliedError, RequestsWithSpecificErrors, TemplateError
 
 
 class MockResponse:
@@ -134,12 +133,12 @@ def test_given_request(monkeypatch, metadata_editor, method: str):
     if method == "get":
 
         def func(*args, **kwargs):
-            return metadata_editor._apinterface._get_request(*args, **kwargs)
+            return metadata_editor._apinterface.get_request(*args, **kwargs)
 
     elif method == "post":
 
         def func(*args, **kwargs):
-            return metadata_editor._apinterface._post_request(*args, **kwargs, json={})
+            return metadata_editor._apinterface.post_request(*args, **kwargs, json={})
 
     # api raises some http error
     def mock_response(*args, **kwargs):
@@ -273,17 +272,17 @@ def test_create_project_log(monkeypatch, metadata_editor, metadata_type, bad_met
 
     if bad_metadata is not None:
         with pytest.raises(ValidationError):
-            metadata_editor.create_project_log(metadata_type_or_template_uid=metadata_type, metadata=bad_metadata)
+            metadata_editor.create_project_log(metadata=bad_metadata, metadata_type_or_template_uid=metadata_type)
 
     metadata_id = metadata_editor.create_project_log(
-        metadata_type_or_template_uid=metadata_type, metadata=good_metadata
+        metadata=good_metadata, metadata_type_or_template_uid=metadata_type
     )
     assert metadata_id == 1
 
     cls = metadata_editor.get_metadata_class(metadata_type)
-    metadata_object = cls(**good_metadata)
+    metadata_object = cls.model_validate(good_metadata)
     metadata_id = metadata_editor.create_project_log(
-        metadata_type_or_template_uid=metadata_type, metadata=metadata_object
+        metadata=metadata_object, metadata_type_or_template_uid=metadata_type
     )
 
 
@@ -382,7 +381,17 @@ def test_patch_update_project_log_by_id(monkeypatch, metadata_editor):
         metadata_editor.patch_update_project_log_by_id(1, **patch_missing_value)
 
 
-metadata_types = ["document", "script", "table", "indicator", "indicators_db", "video"]  # 'geospatial',
+metadata_types = [
+    "document",
+    "image",
+    "geospatial",
+    "microdata",
+    "script",
+    "table",
+    "indicator",
+    "indicators_db",
+    "video",
+]
 modes = ["excel", "dict", "pydantic"]
 
 
@@ -395,7 +404,7 @@ def test_make_metadata_outline(tmpdir, monkeypatch, metadata_editor, metadata_ty
 
     metadata_editor.make_metadata_outline(
         metadata_type_or_template_uid=metadata_type,
-        mode=mode,
+        output_mode=mode,
         filename=os.path.join(tmpdir, f"outline_{metadata_type}.xlsx"),
     )
 
@@ -457,9 +466,13 @@ def test_get_project_metadata_by_id(tmpdir, monkeypatch, metadata_editor, metada
 
     monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
 
-    with pytest.raises(ValueError):
-        ts = metadata_editor.get_project_metadata_by_id(1, mode="pydantic")
-    ts = metadata_editor.get_project_metadata_by_id(1, mode="dict")
+    with pytest.raises(TemplateError):
+        ts = metadata_editor.get_project_metadata_by_id(1, output_mode="pydantic")
+    with pytest.raises(TemplateError):
+        ts = metadata_editor.get_project_metadata_by_id(1, output_mode="dict")
+    with pytest.raises(TemplateError):
+        ts = metadata_editor.get_project_metadata_by_id(1, output_mode="excel")
+    ts = metadata_editor.get_project_metadata_by_id(1, output_mode="dict", template_uid="none")
 
     def mock_response(*args, **kwargs):
         return MockResponse(
@@ -475,18 +488,18 @@ def test_get_project_metadata_by_id(tmpdir, monkeypatch, metadata_editor, metada
     monkeypatch.setattr(requests, "request", mock_response)
 
     # as object
-    ts = metadata_editor.get_project_metadata_by_id(1, mode="pydantic")
+    ts = metadata_editor.get_project_metadata_by_id(1, output_mode="pydantic")
     assert isinstance(ts, BaseModel), type(ts)
 
     # as basic dictionary
-    ts = metadata_editor.get_project_metadata_by_id(1, mode="dict")
+    ts = metadata_editor.get_project_metadata_by_id(1, output_mode="dict")
     assert isinstance(ts, dict)
 
-    if metadata_type != "geospatial":
-        filename = os.path.join(tmpdir, f"get_project_metadata_by_id_test_{metadata_type}.xlsx")
-        metadata_editor.get_project_metadata_by_id(
-            1, mode="excel", filename=filename, title="get_project_metadata_by_id"
-        )
+    # if metadata_type != "geospatial":
+    filename = os.path.join(tmpdir, f"get_project_metadata_by_id_test_{metadata_type}.xlsx")
+    metadata_editor.get_project_metadata_by_id(
+        1, output_mode="excel", filename=filename, title="get_project_metadata_by_id"
+    )
 
 
 class MockGetProjectById:
@@ -537,7 +550,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=True)
 
-    monkeypatch.setattr(APInterface, "_post_request", mock_response)
+    monkeypatch.setattr(RequestsWithSpecificErrors, "post_request", mock_response)
     with pytest.raises(DeleteNotAppliedError):
         metadata_editor.delete_project_by_id(1)
 
@@ -547,7 +560,7 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=True)
 
-    monkeypatch.setattr(APInterface, "_post_request", mock_response)
+    monkeypatch.setattr(RequestsWithSpecificErrors, "post_request", mock_response)
     metadata_editor.delete_project_by_id(1)
 
     # the project was deleted
@@ -556,8 +569,8 @@ def test_delete_project_by_id(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(http_status_code=200, raise_json_decode_error=False)
 
-    monkeypatch.setattr(APInterface, "_post_request", mock_response)
-    # monkeypatch.setattr(APInterface, "_post_request", mock_response)
+    monkeypatch.setattr(RequestsWithSpecificErrors, "post_request", mock_response)
+    # monkeypatch.setattr(APInterface, "post_request", mock_response)
     metadata_editor.delete_project_by_id(1)
 
 
@@ -756,37 +769,14 @@ def test_get_template_by_uid(monkeypatch, metadata_editor):
 
     # template exists
     def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={"result": {"uid": "example", "name": "example name"}})
+        return MockResponse(
+            http_status_code=200,
+            json_data={"result": {"uid": "example", "name": "example name", "data_type": "microdata"}},
+        )
 
     monkeypatch.setattr(requests, "request", mock_response)
     actual = metadata_editor.get_template_by_uid("example")
     assert actual.name == "example name"
-
-
-def test_simplify_metadata(metadata_editor, tmpdir, monkeypatch):
-    def mock_get_metadata_class(*args, **kwargs):
-        return ScriptSchemaDraft
-
-    monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
-
-    project_filename = metadata_editor.make_metadata_outline(
-        "document", "excel", filename=os.path.join(tmpdir, "simplify.xlsx")
-    )
-    assert metadata_editor.simplify_metadata(project_filename) == {}
-
-    project = metadata_editor.make_metadata_outline("document", "pydantic")
-    assert metadata_editor.simplify_metadata(project) == {}
-    project.metadata_information.producers[0].name = "test"
-    simplified_project = metadata_editor.simplify_metadata(project)
-    assert len(simplified_project) == 1
-    assert simplified_project["metadata_information"]["producers"][0]["name"] == "test"
-
-    project = metadata_editor.make_metadata_outline("document", "dict")
-    assert metadata_editor.simplify_metadata(project) == {}
-    project["metadata_information"]["producers"][0]["name"] = "test"
-    simplified_project = metadata_editor.simplify_metadata(project)
-    assert len(simplified_project) == 1
-    assert simplified_project["metadata_information"]["producers"][0]["name"] == "test"
 
 
 def test_set_template_for_collection(monkeypatch, metadata_editor):
@@ -925,6 +915,6 @@ def test_create_update_delete_resource(
     def mock_delete_response(*args, **kwargs):
         return MockResponse(http_status_code=200)
 
-    monkeypatch.setattr(APInterface, "_post_request", mock_delete_response)
+    monkeypatch.setattr(RequestsWithSpecificErrors, "post_request", mock_delete_response)
 
     metadata_editor.delete_resource_by_id(project_id=1, resource_id=1)

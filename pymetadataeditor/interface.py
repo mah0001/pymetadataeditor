@@ -1,25 +1,26 @@
-import json
 import warnings
-from io import BufferedReader
 from json import JSONDecodeError
 from pathlib import Path
-from ssl import SSLError as ssl_SSLError
-from typing import Any, Callable, Dict, Iterable, List, Optional, Type, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import pandas as pd
-import requests
 from metadataschemas.metadata_manager import MetadataManager
 from metadataschemas.utils.quick_start import make_skeleton
 from metadataschemas.utils.utils import merge_dicts, standardize_keys_in_dict
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, model_validator
-from requests.exceptions import HTTPError, SSLError
+from pydantic import BaseModel, ValidationError
+from requests.exceptions import HTTPError
 from urllib3.exceptions import InsecureRequestWarning
 
+from pymetadataeditor.requester import RequestsWithSpecificErrors
 from pymetadataeditor.templates import pydantic_from_template
 
 from .utils import remove_empty_from_dict, validate_json_patches
 
 __all__ = ["MetadataEditor", "DeleteNotAppliedError"]
+
+DICT_MODES = ["dict", "dictionary"]
+PYDANTIC_MODES = ["pydantic", "model", "basemodel", "object"]
+EXCEL_MODES = ["excel"]
 
 warnings.filterwarnings(
     "ignore", category=UserWarning, module="pydantic"
@@ -49,150 +50,18 @@ class DeleteNotAppliedError(Exception):
         self.response = response
 
 
-class APInterface(BaseModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+class TemplateError(Exception):
+    def __init__(self, message="Error with template", response=None):
+        super().__init__(message)
+        self.message = message
+        self.response = response
 
-    api_url: AnyHttpUrl
-    api_key: SecretStr = Field(repr=False)
-    allow_http: bool = Field(
-        default=False,
-        description="API urls that begin HTTPS are favoured. Set allow_http=True to use of the less secure HTTP",
-    )
-    verify_ssl: bool = Field(
-        default=True,
-        description="Calls to the API are authenticated with an SSL certificate. "
-        "Set verify_ssl=False to remove this requirement",
-    )
-
-    @model_validator(mode="after")
-    def check_https(self) -> Any:
-        if str(self.api_url).startswith("https") or self.allow_http:
-            return self
+    def __str__(self):
+        # Customize the error message to include the response if available
+        if self.response:
+            return f"{self.response}\n\n{self.message}"
         else:
-            raise ValueError(
-                f"URL scheme should be 'https' but got {self.api_url}"
-                "To allow the less secure use of 'http', set allow_unsecure=True"
-            )
-
-    def _request(
-        self,
-        method: str,
-        pth: str,
-        json: Optional[Dict] = None,
-        params: Optional[Dict[str, Union[str, List[str]]]] = None,
-        id: Optional[Union[int, str]] = None,
-        data: Optional[Dict[str, str]] = None,
-        files: Optional[Dict[str, BufferedReader]] = None,
-    ) -> Dict:
-        """
-        Sends a GET or POST request to the specified URL with the API key in the headers and returns the JSON response.
-
-        Args:
-            method (str): Either post or get
-            pth (str): The path appended to the API_URL to which the GET or POST request is sent.
-
-        Returns:
-            Dict[str, str]: The JSON response from the server, parsed into a dictionary.
-
-        Raises:
-            ValueError: If the URL does not start with 'https'.
-            PermissionError: If the response status code is 403, indicating that access is denied.
-            Exception: If the request fails due to other HTTP errors, with details of the status code and response text.
-            Exception: If any other unexpected error occurs during the request.
-        """
-        method = method.lower()
-        assert method in ["get", "post"], f"unknown method {method}"
-        request_kwargs = {}
-        if method == "post":
-            assert params is None, "when using post, pass json not params"
-            request_kwargs["json"] = json
-            if data is not None:
-                request_kwargs["data"] = data
-            if files is not None:
-                request_kwargs["files"] = files
-        if method == "get" and params is not None:
-            assert json is None, "when using get, pass params not json"
-            request_kwargs["params"] = params
-
-        if "{" in pth:
-            assert id is not None, "If passing a url format, an id must be passed"
-            pth = pth.format(id)
-        url = str(self.api_url).strip("/") + "/" + pth.strip("/")
-        try:
-            response = None
-            response = requests.request(
-                method,
-                url,
-                verify=self.verify_ssl,
-                headers={"x-api-key": self.api_key.get_secret_value()},
-                **request_kwargs,
-            )
-            response.raise_for_status()
-        except (SSLError, ssl_SSLError) as e:
-            raise SSLError(
-                f"Usually this means the admin of {self.api_url} has not verified an SSL certificate.\n"
-                f"You can bypass the requirement by setting MetadataEditor.verify_ssl=False.\n{e}"
-            ) from None
-        except HTTPError as e:
-            if response is None or response.status_code == 404:
-                error_msg = (
-                    f"Page not found. Try checking the URL.\nGenerally the required URL looks like "
-                    f"'https://<name_of_your_metadata_database>.org/index.php/api', but the URL that was passed "
-                    f"was '{self.api_url}'"
-                )
-                raise HTTPError(error_msg) from None
-            elif response.status_code == 403:
-                raise PermissionError("Access to that URL is denied. " "Check that the API key is correct") from None
-            elif response.status_code == 400 and "message" in response.text:
-                if isinstance(response.text, dict):
-                    error_message = response.text["message"]
-                else:
-                    error_message = response.text
-                raise PermissionError(error_message) from e
-            else:
-                raise HTTPError(f"Status Code: {response.status_code}, Response: {response.text}") from e
-        try:
-            json_response = response.json()
-        except (JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
-            raise JSONDecodeError(
-                f"Error decoding JSON response: {e.msg}\n{response.text}\nFull Response: {response}", e.doc, e.pos
-            ) from e
-        # if self.verify_ssl == False:
-        # we must have shown this warning the first time, ok to silence thereafter
-        return json_response
-
-    def _get_request(
-        self, pth: str, id: Optional[Union[int, str]] = None, params: Optional[Dict[str, Union[str, List[str]]]] = None
-    ) -> Dict:
-        """
-        Args:
-            pth (str): The path appended to the API_URL to which the GET request is sent.
-            id (optional int or str): The id of a specific collection or project.
-                                      If not none, then pth should contain '{}' where the id ought to go.
-            params (optional dict): additional parameters to send with the get request such as 'keywords'
-
-        Returns:
-            Dict[str, str]: The JSON response from the server, parsed into a dictionary.
-        """
-        return self._request("get", pth=pth, id=id, params=params)
-
-    def _post_request(
-        self,
-        pth: str,
-        json: Optional[Dict] = None,
-        id: Optional[Union[int, str]] = None,
-        data: Optional[Dict[str, str]] = None,
-        files: Optional[Dict[str, BufferedReader]] = None,
-    ):
-        """
-        Args:
-            pth (str): The path appended to the API_URL to which the POST request is sent.
-            metadata (dict): The metadata to be sent with the POST request.
-
-        Returns:
-            Dict[str, str]: The JSON response from the server, parsed into a dictionary.
-        """
-        return self._request("post", pth=pth, id=id, json=json, data=data, files=files)
+            return self.message
 
 
 class MetadataEditor:
@@ -231,11 +100,16 @@ class MetadataEditor:
             verify_ssl (bool): Although it is good practice for API requests to verify SSL, some systems do not allow
                 this so setting verify_ssl=False may be required. Defaults to True.
         """
-        self._apinterface = APInterface(api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl)
+        self._apinterface = RequestsWithSpecificErrors(
+            api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl
+        )
         self._mm = MetadataManager()
         self._templates = {}
         self._default_templates = None
-        self._template_class_to_metadata_type = {}
+
+    ####################################################################################################################
+    # PROJECTS
+    ####################################################################################################################
 
     def count_projects(self) -> int:
         """
@@ -246,7 +120,7 @@ class MetadataEditor:
         """
         list_projects_get_path = "/editor"
         params = {"offset": 0, "limit": 1}
-        response = self._apinterface._get_request(pth=list_projects_get_path, params=params)
+        response = self._apinterface.get_request(pth=list_projects_get_path, params=params)
         return response["total"]
 
     def list_projects(
@@ -301,7 +175,7 @@ class MetadataEditor:
             valid_sort_by = ["title_asc", "title_desc", "updated_asc", "updated_desc"]
             assert sort_by in valid_sort_by, f"{sort_by} not valid, must be one of {valid_sort_by}"
             params["sort_by"] = sort_by
-        response = self._apinterface._get_request(pth=list_projects_get_path, params=params)
+        response = self._apinterface.get_request(pth=list_projects_get_path, params=params)
         try:
             projects = response["projects"]
             projects = pd.DataFrame.from_dict(projects).set_index("id")
@@ -315,15 +189,952 @@ class MetadataEditor:
             id (int): the id of the project, not to be confused with the idno.
 
         Returns:
-            pd.Series: project information
+            (pd.Series): project information
 
         Raises:
             Exception: You don't have permission to access this project - often this means the id is incorrect
         """
         #  todo(gblackadder) we could implement a get project by **idno** by using list projects and then filtering
         get_project_template = "/editor/{}"
-        response = self._apinterface._get_request(get_project_template, id=id)
+        response = self._apinterface.get_request(get_project_template, id=id)
         return pd.Series(response["project"])
+
+    ####################################################################################################################
+    # METADATA Input and Output
+    ####################################################################################################################
+
+    def _process_metadata_input(
+        self, metadata: Union[BaseModel, Dict, str], metadata_type_or_template_uid: Optional[str] = None
+    ) -> Tuple[BaseModel, str, None | str]:
+        """
+        Args:
+            metadata (Union[BaseModel, Dict, str]): The metadata to process.
+            metadata_type_or_template_uid (Optional[str]): The metadata type or template UID. Required if metadata is a
+                dictionary or a path.
+
+        Returns:
+            BaseModel: The metadata object.
+            str: The metadata type.
+            None | str: The template UID if the metadata is from a template, otherwise None.
+        """
+        if isinstance(metadata, BaseModel):
+            metadata_type, uid = self._lookup_metadata_type_and_uid(metadata)
+        else:
+            if metadata_type_or_template_uid is None:
+                raise ValueError("metadata_type_or_template_uid must be passed when metadata is a dictionary or a path")
+
+            if isinstance(metadata, dict):
+                klass, metadata_type, uid = self._get_metadata_class_and_type_and_UID(metadata_type_or_template_uid)
+                metadata = klass.model_validate(metadata, strict=False)
+            else:
+                klass, metadata_type, uid = self._get_metadata_class_and_type_and_UID(metadata_type_or_template_uid)
+                metadata = self._mm.read_metadata_from_excel(metadata, klass, metadata_type, verbose=False)
+        return metadata, metadata_type, uid
+
+    def _process_metadata_output(
+        self,
+        metadata_object: BaseModel,
+        output_mode: str,
+        filename: Optional[str] = None,
+        title: Optional[str] = None,
+        simplify: Optional[bool] = None,
+    ) -> Union[BaseModel, Dict, str]:
+        """
+        Args:
+            metadata_object (BaseModel): The metadata object to output.
+            output_mode (str): The output mode. Must be 'dict', 'pydantic' or 'excel'.
+            filename (Optional[str]): If output_mode=='excel', the path to the Excel file.
+                If None, defaults to {name of metadata type}_metadata.xlsx
+            title (Optional[str]): If output_mode=='excel', the title for the Excel sheet.
+                If None, defaults to '{name of metadata type} Metadata'
+            simplify (Optional[bool]): If output_mode=='dict', then if simplify=True, only elements that were explicitly
+                set with non-null, non-empty values are returned in the dictionary. Default behaviour is False
+
+        Returns:
+            Union[BaseModel, Dict, str]: The output metadata.
+        """
+        assert (
+            output_mode in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES
+        ), f"mode should be 'pydantic', 'dict' or 'excel' but found '{output_mode}'"
+        if output_mode in PYDANTIC_MODES:
+            return metadata_object
+        elif output_mode in DICT_MODES:
+            if simplify is None:
+                simplify = False
+            metadata_dict = metadata_object.model_dump(mode="json", exclude_none=simplify, exclude_unset=simplify)
+            if simplify:
+                return remove_empty_from_dict(metadata_dict)
+            else:
+                return metadata_dict
+        else:
+            metadata_type, _ = self._lookup_metadata_type_and_uid(metadata_object)
+            return self._mm.save_metadata_to_excel(
+                object=metadata_object,
+                filename=filename,
+                title=title,
+                metadata_type=metadata_type,
+            )
+
+    ####################################################################################################################
+    # Metadata Classes
+    ####################################################################################################################
+
+    def _get_template_class_and_type_and_UID(self, template_uid: str) -> Tuple[Type[BaseModel], str, str]:
+        """
+        Args:
+            template_uid (str): The UID of the template.
+
+        Returns:
+            Type[BaseModel]: The Pydantic class of the template.
+            str: The metadata type, such as 'document', 'geospatial', or 'image'.
+            str: The template UID.
+        """
+        if template_uid in self._templates and "class" in self._templates[template_uid]:
+            return self._templates[template_uid]["class"], self._templates[template_uid]["metadata_type"], template_uid
+        try:
+            temp = self.get_template_by_uid(template_uid)
+        except (KeyError, PermissionError) as e:
+            # not a template either
+            raise TemplateError(
+                f"{template_uid} is not a known template uid - consider using an alternative template "
+                f"from MetadataEditor.list_templates(limit='all')",
+                response=e,
+            )
+
+        else:
+            metadata_type = self._templates[template_uid]["metadata_type"]
+            if "class" not in self._templates[template_uid]:
+                parent_schema = self._mm.metadata_class_from_name(metadata_type)
+                klass = pydantic_from_template(
+                    temp.template, parent_schema=parent_schema, uid=template_uid, name=temp.name
+                )
+                self._templates[template_uid]["class"] = klass
+            else:
+                klass = self._templates[template_uid]["class"]
+            return klass, metadata_type, template_uid
+
+    def _get_metadata_class_and_type_and_UID(
+        self, metadata_type_or_template_uid: str
+    ) -> Tuple[Type[BaseModel], str, None | str]:
+        """
+        Args:
+            metadata_type_or_template_uid (str): The metadata type or template UID.
+
+        Returns:
+            Type[BaseModel]: The pydantic class of the metadata.
+            str: The metadata type such as 'document', 'geospatial', 'image' etc.
+            None | str: The template UID if the metadata is from a template, otherwise None.
+        """
+        try:
+            metadata_type = self._mm.standardize_metadata_name(metadata_type_or_template_uid)
+        except ValueError:
+            # assume must be template
+            return self._get_template_class_and_type_and_UID(metadata_type_or_template_uid)
+        else:
+            if self._default_templates is None:
+                _ = self.list_templates()
+
+            if (
+                self._default_templates is not None
+                and metadata_type in self._default_templates.data_type.values
+                and self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid != ""
+            ):
+                return self._get_template_class_and_type_and_UID(
+                    self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid
+                )
+            else:
+                klass = self._mm.metadata_class_from_name(metadata_type)
+                return klass, metadata_type, None
+
+    def _lookup_metadata_type_and_uid(self, metadata: BaseModel) -> Tuple[str, None | str]:
+        """
+        Args:
+            metadata (BaseModel): The metadata object to lookup the template for.
+
+        Returns:
+            str: The metadata type
+            None | str: The template UID if the metadata is from a template, otherwise None
+        """
+        for k, v in self._templates.items():
+            if isinstance(metadata, v["class"]):
+                return v["metadata_type"], k
+        else:
+            for k, v in self._mm._TYPE_TO_SCHEMA.items():
+                if isinstance(metadata, v):
+                    return k, None
+            else:
+                raise ValueError(f"Could not find metadata type for {metadata}")
+
+    def get_metadata_class(self, metadata_type_or_template_uid: str) -> Type[BaseModel]:
+        return self._get_metadata_class_and_type_and_UID(metadata_type_or_template_uid)[0]
+
+    def make_metadata_outline(
+        self,
+        metadata_type_or_template_uid: str,
+        output_mode: str,
+        filename: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> Union[Dict, BaseModel, Path]:
+        """
+        Creates a skeleton outline of a given metadata type. Since the metadata can be quite complex, this function
+        creates all the possible fields and their subfields.
+
+        Args:
+            metadata_type_or_template_uid (str):
+                The type of a supported metadata type, currently:
+                    document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
+                If passed as a template UID then this template is retreived and an outline created.
+            output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
+            filename (Optional[str]): If output_mode=='excel', the path to the Excel file.
+                If None, defaults to {name of metadata type}_metadata.xlsx
+            title (Optional[str]): If output_mode=='excel', the title for the Excel sheet.
+                If None, defaults to '{name of metadata type} Metadata'
+
+        Returns:
+            `BaseModel` | `Dict` | `str`:
+                - If `output_mode == 'dict'`, a dictionary is returned.
+                - If `output_mode == 'pydantic'`, a pydantic model object is returned.
+                - If `output_mode == 'excel'`, the metadata was saved to a file and the filename is returned.
+
+        Examples:
+
+            me = MetadataEditor(api_url=..., api_key=...)
+
+            indicator_dict = me.outline_metadata("indicator", "dict")
+            indicator_dict['metadata_information']['idno'] = "my_idno"
+
+            indicator_pydantic = me.outline_metadata("indicator", "pydantic")
+            indicator_pydantic.metadata_information.idno = "my_idno"
+
+            path_to_indicator_excel_file = me.outline_metadata("indicator", "excel")
+        """
+        metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
+        metadata_object = make_skeleton(metadata_class, debug=False)
+        return self._process_metadata_output(
+            metadata_object=metadata_object,
+            output_mode=output_mode,
+            filename=filename,
+            title=title,
+        )
+
+    ####################################################################################################################
+    # Retrieve Metadata
+    ####################################################################################################################
+
+    def get_project_metadata_by_id(
+        self,
+        id: int,
+        output_mode: str,
+        template_uid: Optional[str] = None,
+        simplify: bool = True,
+        filename: Optional[str] = None,
+        title: Optional[str] = None,
+        debug: bool = False,
+    ) -> Union[BaseModel, Dict, str]:
+        """
+        Args:
+            id (int): the id of the project, not to be confused with the idno.
+            output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
+            template_uid (Optional[str]): The UID of the template to be applied to the logged metadata if different from
+                    the template already associated with the project.
+                If None then the template listed in the logs will be used. And if the logs don't list a template then
+                    the default template for that metadata type will be used.
+                The special value 'default' can be used to apply the default template for the metadata type.
+                When the output mode is 'dict' the special value 'none' can be used to remove the template from the
+                    metadata and return whatever metadata was logged.
+            simplify (bool): If output_mode=='dict', then if simplify=True, only elements that were explicitly set with
+                non-null, non-empty values are returned in the dictionary. Default behaviour is True
+            filename (Optional[str]): If output_mode=='excel' then this is the path to the Excel file.
+                If None and output_mode=='excel', defaults to {name of metadata type}_metadata.xlsx
+            title (Optional[str]): If output_mode=='excel' then the title for the Excel sheet.
+                If None and mode=='excel', defaults to '{name of metadata type} Metadata'
+
+        Returns:
+            (Union[BaseModel, Dict, str]):
+                If mode == 'dict', a dictionary is returned.
+                If mode == 'pydantic', a pydantic model object is returned.
+                If mode == 'excel' then the metadata was saved to a file and the filename is returned.
+        """
+        output_mode = output_mode.lower().strip()
+        assert (
+            output_mode in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES
+        ), f"mode should be 'pydantic', 'dict' or 'excel' but found '{output_mode}'"
+
+        template_uid = template_uid.lower().strip() if template_uid is not None else None
+        if template_uid == "none" and output_mode not in DICT_MODES:
+            raise ValueError("When template_uid='none' then output_mode must be 'dict'")
+
+        project = self.get_project_by_id(id=id)
+
+        if template_uid == "none":
+            return project.metadata
+
+        if template_uid == "default":
+            _, _, template_uid = self._get_metadata_class_and_type_and_UID(project.type)
+            if template_uid is None:
+                raise ValueError(
+                    f"Cannot apply default template to metadata type '{project.type}' as "
+                    f"no default template is set for this type"
+                )
+
+            if template_uid == project.template_uid:
+                template_uid = None
+
+        if template_uid is not None:
+            klass, _, uid = self._get_template_class_and_type_and_UID(template_uid)
+            skeleton_object = self.make_metadata_outline(uid, output_mode="dict")
+            validation_error_msg = (
+                f"The stored metadata conflicts with the specified {project.type} template with UID '{uid}'"
+            )
+        elif "template_uid" in project and project.template_uid is not None and project.template_uid != "":
+            assert (
+                project.template_uid.lower() != "none"
+            ), f"template_uid is 'none' but this should have been caught earlier, {project}"
+            klass, _, uid = self._get_template_class_and_type_and_UID(project.template_uid)
+            skeleton_object = self.make_metadata_outline(uid, output_mode="dict")
+            validation_error_msg = (
+                f"The stored metadata conflicts with the assigned {project.type} template "
+                f"with UID '{project.template_uid}'"
+            )
+        else:
+            klass, metadata_type, uid = self._get_metadata_class_and_type_and_UID(project.type)
+            skeleton_object = self.make_metadata_outline(metadata_type, output_mode="dict")
+            validation_error_msg = f"The stored metadata conflicts with the default {project.type} template"
+            if uid is not None:
+                validation_error_msg += f" with UID '{uid}'"
+
+            #### if unknown metadata type we should raise a warning and fall back to default template?
+            ####   No - put the user in control - raise the error and tell them how to choose a new template.
+
+        if debug:
+            print(f"\nskeleton_object = {skeleton_object}\n")
+            print(f"\nproject_metadata = {project['metadata']}\n")
+        combined_dict = merge_dicts(
+            skeleton_object,
+            project["metadata"],
+            skeleton_mode=True,
+        )
+        combined_dict = standardize_keys_in_dict(combined_dict)
+        if debug:
+            print(f"combined_dict = {combined_dict}\n")
+        try:
+            metadata_object = klass.model_validate(standardize_keys_in_dict(combined_dict))
+        except ValidationError as e:
+            raise TemplateError(
+                f"{validation_error_msg}, consider rerunning get_project_metadata_by_id with "
+                f"output_mode='dict' and template_uid='none' or changing the assigned template",
+                response=e,
+            )
+
+        return self._process_metadata_output(
+            metadata_object=metadata_object,
+            output_mode=output_mode,
+            filename=filename,
+            title=title,
+            simplify=simplify,
+        )
+
+    ####################################################################################################################
+    # Log and Update Metadata
+    ####################################################################################################################
+
+    def create_project_log(
+        self, metadata: Union[BaseModel, Dict, str], metadata_type_or_template_uid: Optional[str] = None
+    ) -> int:
+        """
+        Validates and logs metadata which can be a dictionary, a pydantic model or a path to an Excel spreadsheet.
+
+        Args:
+            metadata_type_or_template_uid (str):
+                if passing in a simple type then the supported metadata types are currently:
+                    document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
+                Alternatively you can pass in the UID of a template.
+            metadata (dictionary or BaseModel or str):
+                If str, it's assumed this is a path to an appropriately formatted Excel file
+
+        Returns:
+            int: The ID of the newly created document metadata
+
+        Raises:
+            NotImplementedError:
+                geospatial and image metadata types are currently not supported in Excel mode, use dictionaries or
+                    pydantic models instead.
+
+        """
+        metadata, metadata_type, uid = self._process_metadata_input(metadata, metadata_type_or_template_uid)
+
+        if metadata_type == "indicator":
+            metadata_type = "timeseries"
+        elif metadata_type == "indicators_db":
+            metadata_type = "timeseries_db"
+        elif metadata_type == "microdata":
+            metadata_type = "survey"
+        post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
+        ret = self._apinterface.post_request(
+            pth=post_request_pth,
+            json=remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)),
+        )
+        return ret["id"]
+
+    def update_project_log_by_id(self, id: int, new_metadata: Union[BaseModel, Dict, str]):
+        """
+        Updates the record of the metadata. If a dictionary is passed that only contains a subset of the possible keys
+            then the remaining values not mentioned are left as is.
+
+        Args:
+            id (int):
+                The ID of the metadata to update.
+            new_metadata (dictionary, BaseModel or str):
+                If str, it's assumed this is a path to an appropriately formatted Excel file
+        """
+        project_data = self.get_project_by_id(id)
+        try:
+            project_type = self._mm.standardize_metadata_name(project_data["type"])
+        except ValueError as e:
+            raise ValueError(
+                f"Unknown metadata type {project_data['type']}. The metadata type is required to "
+                f"set the metadata API endpoint path, therefore we cannot update the metadata."
+            ) from e
+
+        if (
+            "template_uid" in project_data
+            and project_data["template_uid"] is not None
+            and project_data["template_uid"] != ""
+        ):
+            project_uid = project_data["template_uid"]
+            metadata_type_or_template_uid = project_uid
+        else:
+            project_uid = None
+            metadata_type_or_template_uid = project_type
+
+        metadata, metadata_type, uid = self._process_metadata_input(new_metadata, metadata_type_or_template_uid)
+
+        if project_type != metadata_type:
+            raise ValueError(
+                f"The metadata type of the existing project is {project_type} but the metadata type "
+                f"of the new metadata is {metadata_type}."
+            )
+
+        if uid is not None and project_uid is not None and project_uid != uid:
+            raise ValueError(
+                f"The template UID of the existing project is {project_uid} but the template UID "
+                f"of the new metadata is {uid}.\n"
+                "This could cause issues if the templates are incompatible.\n"
+                f"You should change the template of the new metadata to match the existing project "
+                f"uid='{project_uid}' or change the template of the existing project to match the new metadata "
+                f"uid='{uid}'."
+            )
+
+        metadata = remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True))
+
+        if metadata_type == "indicator":
+            metadata_type = "timeseries"
+        elif metadata_type == "indicators_db":
+            metadata_type = "timeseries_db"
+        elif metadata_type == "microdata":
+            metadata_type = "survey"
+        post_request_template_path = f"/editor/update/{metadata_type.replace('_', '-')}/" + "{}"
+        self._apinterface.post_request(
+            post_request_template_path,
+            id=id,
+            json=metadata,
+        )
+
+    def patch_update_project_log_by_id(self, id: int, op: str, path: str, value: Optional[str] = None):
+        """
+        Add, update, or remove parts of a project's metadata using a single JSON Patch operation.
+
+        "JSON Patch is a format for describing changes to a JSON document. It can be used to avoid sending a whole
+        document when only a part has changed." - https://jsonpatch.com/ accessed 2024-08-20
+
+        This method applies a single JSON Patch operation to update the metadata of a project specified by its ID.
+
+        Args:
+            id (int): The unique identifier of the project whose metadata is to be updated.
+            op (str): The JSON Patch operation to be applied. Valid operations are "add", "remove",
+                "replace", and "test".
+            path (str): The path in the project's metadata where the operation will be applied, using JSON
+                Pointer notation.
+            value (Optional[str]): The value to be added, replaced, or tested. Not required for "remove" operations.
+
+        Raises:
+            ValueError: If the provided operation, path, or value is invalid.
+
+        JSON Patch Operations:
+            - "add": Adds a value to the specified path. If the path already exists, the value is replaced.
+            - "remove": Removes the value at the specified path.
+            - "replace": Replaces the value at the specified path with a new value.
+            - "test": Tests that the value at the specified path matches a given value.
+
+        Path Notation:
+            - The `path` is a string that uses a slash (`/`) notation to specify the location within the JSON document.
+            For example, `/author` refers to the "author" field, and `/metadata/title` refers to the "title" field
+            inside the "metadata" object. If the path does not start with a `/`, the method will automatically
+            prepend it.
+
+        Usage:
+            ```python
+            metadata_editor.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
+            ```
+        """
+        project_data = self.get_project_by_id(id)
+        metadata_name = project_data["type"]
+        pth = f"editor/patch/{metadata_name}/"
+
+        patches = {"op": op, "path": path}
+        if value is not None:
+            patches["value"] = value
+        if isinstance(patches, dict):
+            patches = [patches]
+        patches = validate_json_patches(patches)  # depend on serverside validation
+        self._apinterface.post_request(pth=pth + "{}", id=id, json={"patches": patches, "validate": False})
+
+    ####################################################################################################################
+    # TEMPLATES
+    ####################################################################################################################
+
+    def list_templates(self) -> pd.DataFrame:
+        """
+        Retrieves templates, both standard and any custom templates
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the templates. If none are found, an empty DataFrame is returned.
+        """
+        response = self._apinterface.get_request("templates")
+        if "templates" not in response or len(response["templates"]) == 0:
+            return pd.DataFrame([], columns=["uid", "template_type", "name", "template"])
+        else:
+            templates = pd.DataFrame([v_item for _, v in response["templates"].items() for v_item in v])
+            if "default" in templates and "uid" in templates and "data_type" in templates:
+                self._default_templates = (
+                    templates[templates.default].drop_duplicates("uid").drop_duplicates("data_type")
+                )
+
+                # in place replace each value of data_type with the standardised version
+                def standardize(row):
+                    try:
+                        return self._mm.standardize_metadata_name(row["data_type"])
+                    except ValueError:
+                        return row["data_type"]
+
+                self._default_templates["data_type"] = self._default_templates.apply(standardize, axis=1)
+            return templates
+
+    def get_template_by_uid(self, uid: str) -> pd.Series:
+        """
+        Retrieves given template by *UID*, not id.
+
+        Args:
+            uid (str): The Unique Identifier of the template to retrieve.
+
+        Returns:
+            pd.Series: A pandas Series containing the template details.
+        """
+        if uid in self._templates:
+            return self._templates[uid]["template"]
+        response = self._apinterface.get_request("templates/{}", uid)
+        if "result" not in response:
+            raise KeyError(f"No result returned.\nResponse: {response}")
+
+        temp = pd.Series(response["result"], name=response["result"]["name"])
+        self._templates[uid] = {"template": temp, "metadata_type": self._mm.standardize_metadata_name(temp.data_type)}
+        try:
+            parent_schema = self._mm.metadata_class_from_name(temp.data_type)
+            klass = pydantic_from_template(temp.template, parent_schema=parent_schema, uid=uid, name=temp.name)
+            self._templates[uid]["class"] = klass
+        finally:
+            return temp
+
+    def change_mode_or_template(
+        self,
+        metadata: Union[BaseModel, Dict, str],
+        output_mode: str,
+        output_template_uid: Optional[str] = None,
+        input_template_uid: Optional[str] = None,
+        filename: Optional[str] = None,
+        title: Optional[str] = None,
+        simplify: Optional[bool] = None,
+    ) -> Union[BaseModel, Dict, str]:
+        """
+        Change the mode or template of a metadata object. In terms of modes, you can convert
+            - a dict to a pydantic model, or vice versa,
+            - a dict to an Excel file, or vice versa,
+            - a pydantic model to an Excel file, or vice versa
+
+        And in terms of templates, you can convert a metadata object from one template to another.
+
+        Args:
+            metadata (Union[BaseModel, Dict, str]): The metadata to process.
+            output_mode (str): The output mode. Must be 'dict', 'pydantic' or 'excel'.
+            output_template_uid (Optional[str]): The UID of the new template. If None then the existing template is
+                used.
+            input_template_uid (Optional[str]): The UID of the input template. Required if the metadata is a dictionary
+                or a path to Excel.
+            filename (Optional[str]): If output_mode=='excel', the path to the Excel file.
+                If None, defaults to {name of metadata type}_metadata.xlsx
+            title (Optional[str]): If output_mode=='excel', the title for the Excel sheet.
+                If None, defaults to '{name of metadata type} Metadata'
+            simplify (Optional[bool]): If output_mode=='dict', then if simplify=True, only elements that were explicitly
+                set with non-null, non-empty values are returned in the dictionary. Default behaviour is False
+
+        Returns:
+            Union[BaseModel, Dict, str]: The updated metadata object.
+        """
+        metadata, metadata_type, uid = self._process_metadata_input(metadata, input_template_uid)
+
+        if not (output_template_uid is None or output_template_uid == uid):
+            new_klass, new_type, _ = self._get_metadata_class_and_type_and_UID(output_template_uid)
+            try:
+                metadata = new_klass.model_validate(
+                    remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True))
+                )
+            except ValidationError as e:
+                raise TemplateError(
+                    f"Could not coerce metadata from the {metadata_type} template with UID "
+                    f"'{input_template_uid}' to {new_type} template with UID '{output_template_uid}'",
+                    e,
+                )
+            if metadata_type != new_type:
+                warnings.warn(
+                    f"The metadata type of the logged project is {metadata_type} but the metadata type "
+                    f"of the new template is {new_type}, which could lead to data loss."
+                )
+
+        return self._process_metadata_output(
+            metadata_object=metadata,
+            output_mode=output_mode,
+            filename=filename,
+            title=title,
+            simplify=simplify,
+        )
+
+    ####################################################################################################################
+    # EXCEL INTERFACE
+    ####################################################################################################################
+
+    def save_metadata_to_excel(
+        self, object: BaseModel, filename: Optional[str] = None, title: Optional[str] = None
+    ) -> str:
+        """
+        Save a metadata object to an Excel file.
+
+        Args:
+            object (BaseModel): The pydantic object to save to the Excel file.
+            filename (Optional[str]): The path to the Excel file. Defaults to {name}_metadata.xlsx
+            title (Optional[str]): The title for the Excel sheet. Defaults to '{name} Metadata'
+
+        Returns:
+            str: The path to the saved Excel file.
+        """
+        return self._process_metadata_output(
+            metadata_object=object, output_mode="excel", filename=filename, title=title
+        )
+
+    def read_metadata_from_excel(
+        self,
+        filename: str,
+        metadata_type_or_template_uid: Optional[str] = None,
+        output_mode: str = "pydantic",
+        exclude_unset=True,
+    ) -> Union[BaseModel, Dict]:
+        """
+        Read metadata from an Excel file.
+
+        Args:
+            filename (str): The path to the Excel file.
+            metadata_type_or_template_uid (Optional[str]): The metadata type or template UID.
+            mode (str): The output mode. Must be 'pydantic' or 'dict'.
+            exclude_unset (bool): If mode=='dict', then if exclude_unset=True, only elements that were explicitly set
+                with non-null, non-empty values are returned in the dictionary.
+
+        Returns:
+            Union[BaseModel, Dict]: The metadata object or dictionary.
+        """
+        assert (
+            output_mode not in EXCEL_MODES
+        ), f"read_metadata_from_excel output_mode should be 'pydantic' or 'dict' but found '{output_mode}'"
+        object = self._process_metadata_input(filename, metadata_type_or_template_uid)[0]
+        return self._process_metadata_output(object, output_mode, simplify=exclude_unset)
+
+    ####################################################################################################################
+    # COLLECTION METHODS
+    ####################################################################################################################
+
+    def list_collections(self) -> pd.DataFrame:
+        """
+        Lists all the collections associated with your API key.
+
+        Returns:
+            pd.DataFrame: Collection information
+        """
+        response = self._apinterface.get_request("collections")
+        if "collections" not in response or len(response["collections"]) == 0:
+            return pd.DataFrame([], columns=["id", "title", "created"]).set_index("id")
+        return pd.DataFrame(response["collections"]).set_index("id")
+
+    def get_collection_by_id(self, id: int) -> pd.Series:
+        """
+        Args:
+            id (int): the id of the collection.
+
+        Returns:
+            (pd.Series): a pandas series of the collection information
+
+        Raises:
+            Exception: You don't have permission to access this project - often this means the id is incorrect
+        """
+        collection_data = self._apinterface.get_request("collections/{}", id=id)
+        if "collection" not in collection_data:
+            raise ValueError(f"API call was good but collection data missing from: {collection_data}")
+        return pd.Series(collection_data["collection"])
+
+    def create_collection(self, title: str, description: str):
+        """
+        Creates a new collection with the specified title and description.
+
+        Args:
+            title (str): The title of the collection.
+            description (str): The description of the collection.
+
+        Returns:
+            (int): The id of the newly created collection
+        """
+        assert title != "", "The collection must have a title but an empty string was passed"
+        ret = self._apinterface.post_request("collections", json={"title": title, "description": description})
+        return ret["collection"]
+
+    def update_collection(self, id: int, title: Optional[str] = None, description: Optional[str] = None):
+        """
+            Updates the specified collection with a new title and/or description.
+
+        Args:
+            id (int): The unique identifier of the collection to update.
+            title (Optional[str]): The new title of the collection. Defaults to None.
+            description (Optional[str]): The new description of the collection. Defaults to None.
+
+        Raises:
+            Assertion error if both title and description are None, since we must update one or the other.
+        """
+        # Is it clear this updates title/description of the collection and not the data in the collection?
+        assert title is not None or description is not None, "can update title or description or both, but not neither"
+        metadata = {}
+        if title is not None:
+            metadata["title"] = title
+        if description is not None:
+            metadata["description"] = description
+        self._apinterface.post_request("collections/update/{}", id=id, json=metadata)
+
+    def count_projects_in_collection(self, collection: int) -> int:
+        """
+        Count the number of projects you have access to
+
+        Args:
+            collection (int):
+                The id of the collection.
+
+        Returns:
+            int: The number of projects
+        """
+        params = {"offset": 0, "limit": 1}
+        response = self._apinterface.get_request("editor?collection={}", id=collection, params=params)
+        return response["total"]
+
+    def list_projects_in_collection(
+        self,
+        collection: int,
+        limit: Union[int, str],
+        keywords: Optional[Union[str, List[str]]] = None,
+        offset: int = 0,
+        sort_by: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """
+        Retrieve projects that have been added to the given collection.
+
+        Args:
+
+            collection (int):
+                The id of the collection.
+            limit (int):
+                The maximum number of projects to return. If limit='All' then all records are retrieved.
+            keyword (optional str):
+                filter projects based on whether the project title or idno contains this keyword
+            offset (int):
+                Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
+            sort_by (optional str):
+                valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
+
+        Returns:
+
+            pd.DataFrame:
+                Information on the projects in the collection, such as id, idno, title and type.
+        """
+
+        if isinstance(limit, str):
+            assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
+            new_offset = offset
+            new_limit = 500
+            dfs = []
+            while True:
+                df = self.list_projects_in_collection(
+                    collection=collection, keywords=keywords, offset=new_offset, limit=new_limit, sort_by=sort_by
+                )
+                dfs.append(df)
+                if len(df) < new_limit:
+                    break
+                new_offset += new_limit
+            return pd.concat(dfs)
+
+        params = {"limit": limit, "offset": offset}
+        if keywords is not None:
+            if not isinstance(keywords, str) and isinstance(keywords, Iterable):
+                keywords = "%".join(keywords)
+            keywords = keywords.replace(" ", "%")
+            params["keywords"] = keywords
+        if sort_by is not None:
+            sort_by = sort_by.lower()
+            valid_sort_by = ["title_asc", "title_desc", "updated_asc", "updated_desc"]
+            assert sort_by in valid_sort_by, f"{sort_by} not valid, must be one of {valid_sort_by}"
+            params["sort_by"] = sort_by
+        ret = self._apinterface.get_request("editor?collection={}", id=collection, params=params)
+        if len(ret["projects"]) == 0:
+            return pd.DataFrame([], columns=["id", "type", "idno", "title"]).set_index("id")
+        return pd.DataFrame(ret["projects"]).set_index("id")
+
+    def add_projects_to_collection(
+        self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
+    ):
+        """
+        Adds project or projects to specified collection or collections.
+
+        This method associates one or more projects with one or more collections. The `collection`
+        parameter can be a single collection ID or a list of collection IDs. The `projects` parameter
+        can be a single project ID, a single project ID number (idno), a list of project IDs, or a list
+        of project idnos. The `id_format` parameter specifies whether the project identifiers
+        are in the form of IDs (integer) or idno (string).
+
+        Args:
+
+            collection : Union[int, List[int]]
+                A single collection ID or a list of collection IDs to which projects should be added.
+            id_format : str
+                Specifies the format of the project identifiers. Must be either 'id' or 'idno'.
+            projects : Union[int, List[int], str, List[str]]
+                A single project ID, a single project idno, a list of project IDs, or a list of
+                project idnos to be added to the specified collection(s).
+
+        Raises:
+
+            AssertionError
+                If `id_format` is not 'id' or 'idno'.
+
+            AssertionError
+                If a project ID is not an integer when `id_format` is 'id'.
+
+            AssertionError
+                If a project ID number is not a string when `id_format` is 'idno'.
+
+        Example:
+            >>> client.add_projects_to_collection(collection=1, id_format='id', projects=[101, 102])
+            >>> client.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+        """
+        assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
+        if not isinstance(collection, Iterable) or isinstance(collection, str):
+            collection = [collection]
+
+        if not isinstance(projects, Iterable) or isinstance(projects, str):
+            projects = [projects]
+        if id_format.lower() == "id":
+            for proj in projects:
+                assert isinstance(proj, int), f"When passing ids the projects must be ints, but found: {proj}"
+        else:
+            for proj in projects:
+                assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
+        self._apinterface.post_request(
+            "collections/add_projects",
+            json={"collections": collection, "id_format": id_format, "projects": projects},
+        )
+
+    def remove_projects_from_collection(
+        self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
+    ):
+        """
+        Removes project or projects from specified collection or collections.
+
+        This method dissociates one or more projects from one or more collections. The `collection`
+        parameter can be a single collection ID or a list of collection IDs. The `projects` parameter
+        can be a single project ID, a single project ID number (idno), a list of project IDs, or a list
+        of project idnos. The `id_format` parameter specifies whether the project identifiers
+        are in the form of IDs or idnos.
+
+        Note that if the project(s) are not in the collection there is no error raised since either way the project
+            will not be in the collection after this function executes
+
+        Args
+
+            collection : Union[int, List[int]]
+                A single collection ID or a list of collection IDs to which projects should be removed.
+
+            id_format : str
+                Specifies the format of the project identifiers. Must be either 'id' or 'idno'.
+
+            projects : Union[int, List[int], str, List[str]]
+                A single project ID, a single project idno, a list of project IDs, or a list of
+                project idnos to be removed from the specified collection(s).
+
+        Raises:
+
+            AssertionError
+                If `id_format` is not 'id' or 'idno'.
+
+            AssertionError
+                If a project ID is not an integer when `id_format` is 'id'.
+
+            AssertionError
+                If a project ID number is not a string when `id_format` is 'idno'.
+
+
+        Example:
+
+            >>> client.remove_projects_from_collection(collection=1, id_format='id', projects=[101, 102])
+            >>> client.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+
+        """
+        assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
+        if not isinstance(projects, Iterable) or isinstance(projects, str):
+            projects = [projects]
+        if id_format.lower() == "id":
+            for proj in projects:
+                assert isinstance(proj, int), f"When passing ids the projects must be ints, but found: {proj}"
+        else:
+            for proj in projects:
+                assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
+
+        self._apinterface.post_request(
+            "collections/remove_projects",
+            json={"collections": collection, "id_format": id_format, "projects": projects},
+        )
+
+    def set_template_for_collection(self, collection_id: int, template_uid: str):
+        """
+        Set the specified template to be used for all metadata of its type (for example microdata, indicator, or
+            document metadata) in the collection.
+
+        Args:
+            collection_id (int): the id of the collection.
+            template_uid (str): The Unique Identifier of the template to apply to the collection.
+        """
+        # check collection exists
+        self.get_collection_by_id(collection_id)
+        template = self.get_template_by_uid(uid=template_uid)
+        template_type = template["data_type"]
+        self._apinterface.post_request(
+            "collections/template",
+            json={"collection_id": collection_id, "template_uid": template_uid, "project_type": template_type},
+        )
+
+    ####################################################################################################################
+    # RESOURCE METHODS
+    ####################################################################################################################
 
     def get_resources_by_id(self, id: int) -> pd.DataFrame:
         """
@@ -335,7 +1146,7 @@ class MetadataEditor:
         Returns:
             (pd.DataFrame): resource information including titles, subtitles, authors and file formats
         """
-        response = self._apinterface._get_request("resources/{}", id=id)
+        response = self._apinterface.get_request("resources/{}", id=id)
         if "resources" in response and len(response["resources"]) > 0:
             return pd.DataFrame(response["resources"])
         else:
@@ -402,7 +1213,7 @@ class MetadataEditor:
         else:
             files = None
 
-        response = self._apinterface._post_request(pth="resources/{}", id=project_id, data=data, files=files)
+        response = self._apinterface.post_request(pth="resources/{}", id=project_id, data=data, files=files)
         return int(response["resource"]["id"])
 
     def update_resource(
@@ -466,175 +1277,11 @@ class MetadataEditor:
         else:
             files = None
 
-        self._apinterface._post_request(pth="resources/{}/" + f"{resource_id}", id=project_id, data=data, files=files)
+        self._apinterface.post_request(pth="resources/{}/" + f"{resource_id}", id=project_id, data=data, files=files)
 
-    def simplify_metadata(self, metadata: Union[Dict, BaseModel, str], template_uid: Optional[str] = None) -> Dict:
-        """
-        Returns a dictionary of only the elements that have values, exluding Nones, empty strings,
-          empty lists and empty dictionaries.
-
-        Args:
-            metadata (dictionary or BaseModel or str):
-                Can be a dictionary, a pydantic object or a string. If string, it's assumed this is a path to an
-                appropriately formatted Excel file.
-
-            template_uid (Optional str):
-                If you are reading metadata from an excel file *and* if that metadata is from a template then you must
-                pass in the UID of that template. Otherwise this can be ignored.
-
-        Returns:
-            (dict): a metadata dictionary of set elements.
-        """
-        if isinstance(metadata, str):
-            if template_uid is not None and template_uid != "":
-                metadata_class = self.get_metadata_class(template_uid)
-            else:
-                metadata_class = None
-            metadata = self._mm.read_metadata_from_excel(metadata, metadata_class)
-        if isinstance(metadata, BaseModel):
-            metadata = metadata.model_dump(mode="json", exclude_defaults=False, exclude_none=True, exclude_unset=False)
-        return remove_empty_from_dict(metadata)
-
-    def get_project_metadata_by_id(
-        self,
-        id: int,
-        mode: str,
-        exclude_unset: bool = True,
-        filename: Optional[str] = None,
-        title: Optional[str] = None,
-        debug: bool = False,
-    ) -> Union[Dict, BaseModel, str]:
-        """
-        Args:
-            id (int): the id of the project, not to be confused with the idno.
-            mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
-            exclude_unset (bool): If mode=='dict', then if exclude_unset=True, only elements that were explicitly set
-                with non-null, non-empty values are returned in the dictionary.
-            filename (Optional[str]): If mode=='excel' then this is the path to the Excel file.
-                If None and mode=='excel', defaults to {name of metadata type}_metadata.xlsx
-            title (Optional[str]): If mode=='excel' then the title for the Excel sheet.
-                If None and mode=='excel', defaults to '{name of metadata type} Metadata'
-
-        Returns:
-            Union[Dict, BaseModel, str]:
-                If mode == 'dict', a dictionary is returned.
-                If mode == 'pydantic', a pydantic model object is returned.
-                If mode == 'excel' then the metadata was saved to a file and the filename is returned.
-        """
-        mode = mode.lower()
-        assert mode in [
-            "excel",
-            "dict",
-            "dictionary",
-            "pydantic",
-            "model",
-            "basemodel",
-            "object",
-        ], f"mode should be 'excel', 'dict' or 'pydantic' but found '{mode}'"
-        project = self.get_project_by_id(id=id)
-        try:
-            metadata_name = self._mm.standardize_metadata_name(project["type"])
-        except ValueError as e:
-            # unknown metadata type can still be returned as a dict
-            if mode not in [
-                "dict",
-                "dictionary",
-            ]:
-                raise ValueError(
-                    f"Unknown metadata type {project['type']}. Use mode='dict' to view the metadata in raw form."
-                ) from e
-            else:
-                return project["metadata"]
-        if "template_uid" in project and project.template_uid is not None and project.template_uid != "":
-            metadata_name = project.template_uid
-        skeleton_object = self.make_metadata_outline(metadata_name, mode="dict")
-        if debug:
-            print(f"\nproject_metadata = {project['metadata']}\n")
-        combined_dict = merge_dicts(
-            skeleton_object,
-            project["metadata"],
-            skeleton_mode=True,
-        )
-        combined_dict = standardize_keys_in_dict(combined_dict)
-        if debug:
-            print(f"combined_dict = {combined_dict}\n")
-        schema = self.get_metadata_class(metadata_type_or_template_uid=metadata_name)
-        metadata_object = schema.model_validate(standardize_keys_in_dict(combined_dict))
-
-        if mode in ["pydantic", "model", "basemodel", "object"]:
-            return metadata_object
-        elif mode in ["dict", "dictionary"]:
-            metadata_dict = metadata_object.model_dump(
-                mode="json", exclude_none=exclude_unset, exclude_unset=exclude_unset
-            )
-            if exclude_unset:
-                return remove_empty_from_dict(metadata_dict)
-            else:
-                return metadata_dict
-        else:
-            return self._mm.save_metadata_to_excel(
-                object=metadata_object,
-                filename=filename,
-                title=title,
-                parent_metadata_name=self._template_class_to_metadata_type.get(schema, None),
-            )
-
-    def save_metadata_to_excel(
-        self,
-        object: BaseModel,
-        filename: Optional[str] = None,
-        title: Optional[str] = None,
-        verbose: bool = False,
-    ) -> str:
-        """
-        Save a metadata object to an Excel file.
-
-        Args:
-            object (BaseModel): The pydantic object to save to the Excel file.
-            filename (Optional[str]): The path to the Excel file. Defaults to {name}_metadata.xlsx
-            title (Optional[str]): The title for the Excel sheet. Defaults to '{name} Metadata'
-            verbose (bool): If True, print debug information on the file creation.
-
-        Returns:
-            str: The path to the saved Excel file.
-        """
-        # parent_metadata_name = self._template_class_to_metadata_type.get(object.__class__, None)
-        parent_metadata_name = self._template_class_to_metadata_type.get(type(object), None)
-        return self._mm.save_metadata_to_excel(object, filename, title, parent_metadata_name, verbose)
-
-    def read_metadata_from_excel(
-        self,
-        filename: str,
-        metadata_class: Optional[Type[BaseModel]] = None,
-        mode: str = "pydantic",
-        exclude_unset=True,
-    ) -> Union[BaseModel, Dict]:
-        """
-        Read metadata from an Excel file.
-
-        Args:
-            filename (str): The path to the Excel file.
-            metadata_class (Optional[Type[BaseModel]]): The pydantic class of the metadata. Required if the metadata is
-                of a template type.
-            mode (str): The output mode. Must be 'pydantic' or 'dict'.
-            exclude_unset (bool): If mode=='dict', then if exclude_unset=True, only elements that were explicitly set
-                with non-null, non-empty values are returned in the dictionary.
-
-        Returns:
-            Union[BaseModel, Dict]: The metadata object or dictionary.
-        """
-        parent_name = self._template_class_to_metadata_type.get(
-            metadata_class, self._template_class_to_metadata_type.get(type(metadata_class), None)
-        )
-        assert parent_name is not None, "metadata_class must be a pydantic class or a string"
-        object = self._mm.read_metadata_from_excel(filename, metadata_class, parent_name, verbose=False)
-
-        if mode == "pydantic" or mode == "model" or mode == "basemodel" or mode == "object":
-            return object
-        elif mode == "dict" or mode == "dictionary":
-            return remove_empty_from_dict(
-                object.model_dump(mode="json", exclude_none=exclude_unset, exclude_unset=exclude_unset)
-            )
+    ####################################################################################################################
+    # DELETE METHODS
+    ####################################################################################################################
 
     def delete_project_by_id(self, id: int):
         """
@@ -682,632 +1329,6 @@ class MetadataEditor:
         pth = f"resources/delete/{project_id}/" + "{}"
         self._delete_by_id(pth, resource_id, checker_fn=check_exists)
 
-    def _delete_by_id(self, pth: str, id: Union[int, str], checker_fn: Callable[[int], pd.Series]):
-        """
-        Internal, generic method for deleting either collections or projects or similar.
-        """
-        # # first check that the project/collection is there to be deleted
-        # checker_fn(id)
-        try:
-            self._apinterface._post_request(pth=pth, id=id)
-        except JSONDecodeError:
-            pass
-
-        # check that the entity was deleted
-        try:
-            checker_fn(id)
-        except (PermissionError, JSONDecodeError, IndexError, HTTPError):
-            pass  # evidently the entity was deleted because now it can't be found
-        else:
-            raise DeleteNotAppliedError()
-
-    def _get_template_class(self, template_uid: str) -> Type[BaseModel]:
-        if template_uid in self._templates:
-            return self._templates[template_uid]["class"]
-        try:
-            temp = self.get_template_by_uid(template_uid)
-        except (KeyError, PermissionError):
-            # not a template either
-            raise ValueError(f"{template_uid} is not a known metadata type nor a known template uid")
-        else:
-            metadata_type = temp.data_type
-            parent_schema = self._mm.metadata_class_from_name(metadata_type)
-            klass = pydantic_from_template(temp.template, parent_schema=parent_schema, name=temp.name)
-            self._templates[template_uid] = {
-                "template": temp,
-                "metadata_type": metadata_type,
-                "class": klass,
-            }
-            self._template_class_to_metadata_type[klass] = metadata_type
-            return klass
-
-    def get_metadata_class(self, metadata_type_or_template_uid: str) -> Type[BaseModel]:
-        try:
-            metadata_type = self._mm.standardize_metadata_name(metadata_type_or_template_uid)
-        except ValueError:
-            # assume must be template
-            return self._get_template_class(metadata_type_or_template_uid)
-        else:
-            # check if there is a default template:
-            if self._default_templates is None:
-                _ = self.list_templates()
-
-            if (
-                self._default_templates is not None
-                and metadata_type in self._default_templates.data_type.values
-                and self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid != ""
-            ):
-                return self._get_template_class(
-                    self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid
-                )
-            else:
-                return self._mm.metadata_class_from_name(metadata_type)
-
-    def make_metadata_outline(
-        self, metadata_type_or_template_uid: str, mode: str, filename: Optional[str] = None, title: Optional[str] = None
-    ) -> Union[Dict, BaseModel, Path]:
-        """
-        Creates a skeleton outline of a given metadata type. Since the metadata can be quite complex, this function
-        creates all the possible fields and their subfields.
-
-        Args:
-            metadata_type_or_template_uid (str):
-                The type of a supported metadata type, currently:
-                    document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
-                If passed as a template UID then this template is retreived and an outline created.
-            mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
-            filename (Optional[str]): If mode=='excel', the path to the Excel file.
-                If None, defaults to {name of metadata type}_metadata.xlsx
-            title (Optional[str]): If mode=='excel', the title for the Excel sheet.
-                If None, defaults to '{name of metadata type} Metadata'
-
-        Returns:
-            Union[Dict, BaseModel, str]:
-                If mode == 'dict', a dictionary is returned.
-                If mode == 'pydantic', a pydantic model object is returned.
-                If mode=='excel' then the metadata was saved to a file and the filename is returned.
-
-        Examples:
-
-            me = MetadataEditor(api_url=..., api_key=...)
-
-            indicator_dict = me.outline_metadata("indicator", "dict")
-            indicator_dict['metadata_information']['idno'] = "my_idno"
-
-            indicator_pydantic = me.outline_metadata("indicator", "pydantic")
-            indicator_pydantic.metadata_information.idno = "my_idno"
-
-            path_to_indicator_excel_file = me.outline_metadata("indicator", "excel")
-        """
-        mode = mode.lower()
-        assert mode in [
-            "excel",
-            "dict",
-            "dictionary",
-            "pydantic",
-            "model",
-            "basemodel",
-            "object",
-        ], f"mode should be 'excel', 'dict' or 'pydantic' but found '{mode}'"
-        metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
-        if mode == "excel":
-            return self._mm.write_metadata_outline_to_excel(metadata_class, filename=filename, title=title)
-        else:
-            metadata_object = make_skeleton(metadata_class, debug=False)
-            if mode in ["pydantic", "model", "basemodel", "object"]:
-                return metadata_object
-            else:
-                return metadata_object.model_dump(mode="json")
-
-    def print_metadata(
-        self, metadata: Union[Dict, BaseModel, str], template_uid: Optional[str] = None, simplify: bool = False
-    ):
-        """
-        Helper function to nicely print the metadata.
-
-        Args:
-            metadata (dictionary or BaseModel or str):
-                If str, it's assumed this is a path to an appropriately formatted Excel file
-
-            template_uid (Optional str):
-                If you are reading metadata from an excel file *and* if that metadata is from a non default template
-                  then you must pass in the UID of that template. Otherwise this can be ignored.
-
-            simplify (bool):
-                If True, the metadata will be simplified to exclude Nones, empty strings, empty lists, and
-                  empty dictionaries.
-        """
-        if simplify:
-            metadata = self.simplify_metadata(metadata, template_uid)
-        elif isinstance(metadata, str):
-            if template_uid is not None and template_uid != "":
-                metadata_class = self.get_metadata_class(template_uid)
-            else:
-                metadata_class = None
-            metadata = self._mm.read_metadata_from_excel(metadata, metadata_class)
-            metadata = metadata.model_dump(mode="json")
-        elif isinstance(metadata, BaseModel):
-            metadata = metadata.model_dump(mode="json")
-        print(json.dumps(metadata, indent="  "))
-
-    def create_project_log(self, metadata_type_or_template_uid: str, metadata: Union[Dict, BaseModel, str]) -> int:
-        """
-        Validates and logs metadata which can be a dictionary, a pydantic model or a path to an Excel spreadsheet.
-
-        Args:
-            metadata_type_or_template_uid (str):
-                if passing in a simple type then the supported metadata types are currently:
-                    document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
-                Alternatively you can pass in the UID of a template.
-            metadata (dictionary or BaseModel or str):
-                If str, it's assumed this is a path to an appropriately formatted Excel file
-
-        Returns:
-            int: The ID of the newly created document metadata
-
-        Raises:
-            NotImplementedError:
-                geospatial and image metadata types are currently not supported in Excel mode, use dictionaries or
-                    pydantic models instead.
-
-        """
-        metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
-        try:
-            metadata_type = self._mm.standardize_metadata_name(metadata_type_or_template_uid)
-        except ValueError:
-            if metadata_type_or_template_uid in self._templates:
-                metadata_type = self._templates[metadata_type_or_template_uid]["metadata_type"]
-            else:
-                raise ValueError(f"Retreived metadata class but it was not in cache = {self._templates}")
-
-        if isinstance(metadata, str):
-            metadata = self._mm.read_metadata_from_excel(metadata, metadata_class)
-        metadata_class.model_validate(metadata, strict=True)
-        if isinstance(metadata, dict):
-            metadata = metadata_class(**metadata)
-
-        if metadata_type == "indicator":
-            metadata_type = "timeseries"
-        elif metadata_type == "indicators_db":
-            metadata_type = "timeseries_db"
-        elif metadata_type == "microdata":
-            metadata_type = "survey"
-        post_request_pth = f"/editor/create/{metadata_type.replace('_', '-')}"
-        # ret = self._apinterface._post_request(
-        #     pth=post_request_pth, json=metadata.model_dump(mode="json", exclude_none=False, exclude_unset=False)
-        # )
-        ret = self._apinterface._post_request(
-            pth=post_request_pth,
-            json=remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)),
-        )
-        return ret["id"]
-
-    def update_project_log_by_id(self, id: int, new_metadata: Union[Dict, BaseModel, str]):
-        """
-        Updates the record of the metadata. If a dictionary is passed that only contains a subset of the possible keys
-            then the remaining values not mentioned are left as is.
-
-        Args:
-            id (int):
-                The ID of the metadata to update.
-            new_metadata (dictionary, BaseModel or str):
-                If str, it's assumed this is a path to an appropriately formatted Excel file
-        """
-        project_data = self.get_project_by_id(id)
-        metadata_type = self._mm.standardize_metadata_name(project_data["type"])
-        if (
-            "template_uid" in project_data
-            and project_data["template_uid"] is not None
-            and project_data["template_uid"] != ""
-        ):
-            metadata_class = self.get_metadata_class(project_data["template_uid"])
-        else:
-            metadata_class = self.get_metadata_class(metadata_type)
-
-        md = self.get_project_metadata_by_id(id, mode="pydantic")
-
-        if isinstance(new_metadata, str):
-            new_metadata = self._mm.read_metadata_from_excel(new_metadata, metadata_class)
-            new_metadata = new_metadata.model_dump(mode="json")
-        elif isinstance(new_metadata, BaseModel):
-            new_metadata = new_metadata.model_dump(mode="json")
-
-        new_metadata = standardize_keys_in_dict(new_metadata)
-        md = md.model_copy(update=new_metadata)
-        md = merge_dicts(md.model_dump(mode="json", exclude_none=True, exclude_unset=True), new_metadata)
-
-        md = metadata_class.model_validate(md)
-        md = remove_empty_from_dict(md.model_dump(mode="json", exclude_none=True, exclude_unset=True))
-
-        if metadata_type == "indicator":
-            metadata_type = "timeseries"
-        elif metadata_type == "indicators_db":
-            metadata_type = "timeseries_db"
-        elif metadata_type == "microdata":
-            metadata_type = "survey"
-        post_request_template_path = f"/editor/update/{metadata_type.replace('_', '-')}/" + "{}"
-        self._apinterface._post_request(
-            post_request_template_path,
-            id=id,
-            json=md,
-        )
-
-    def patch_update_project_log_by_id(self, id: int, op: str, path: str, value: Optional[str] = None):
-        """
-        Add, update, or remove parts of a project's metadata using a single JSON Patch operation.
-
-        "JSON Patch is a format for describing changes to a JSON document. It can be used to avoid sending a whole
-        document when only a part has changed." - https://jsonpatch.com/ accessed 2024-08-20
-
-        This method applies a single JSON Patch operation to update the metadata of a project specified by its ID.
-
-        Args:
-            id (int): The unique identifier of the project whose metadata is to be updated.
-            op (str): The JSON Patch operation to be applied. Valid operations are "add", "remove",
-                "replace", and "test".
-            path (str): The path in the project's metadata where the operation will be applied, using JSON
-                Pointer notation.
-            value (Optional[str]): The value to be added, replaced, or tested. Not required for "remove" operations.
-
-        Raises:
-            ValueError: If the provided operation, path, or value is invalid.
-
-        JSON Patch Operations:
-            - "add": Adds a value to the specified path. If the path already exists, the value is replaced.
-            - "remove": Removes the value at the specified path.
-            - "replace": Replaces the value at the specified path with a new value.
-            - "test": Tests that the value at the specified path matches a given value.
-
-        Path Notation:
-            - The `path` is a string that uses a slash (`/`) notation to specify the location within the JSON document.
-            For example, `/author` refers to the "author" field, and `/metadata/title` refers to the "title" field
-            inside the "metadata" object. If the path does not start with a `/`, the method will automatically
-            prepend it.
-
-        Usage:
-            ```python
-            metadata_editor.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
-            ```
-        """
-        project_data = self.get_project_by_id(id)
-        metadata_name = project_data["type"]
-        pth = f"editor/patch/{metadata_name}/"
-
-        patches = {"op": op, "path": path}
-        if value is not None:
-            patches["value"] = value
-        if isinstance(patches, dict):
-            patches = [patches]
-        patches = validate_json_patches(patches)  # depend on serverside validation
-        self._apinterface._post_request(pth=pth + "{}", id=id, json={"patches": patches, "validate": True})
-
-    def list_collections(self) -> pd.DataFrame:
-        """
-        Lists all the collections associated with your API key.
-
-        Returns:
-            pd.DataFrame: Collection information
-        """
-        response = self._apinterface._get_request("collections")
-        if "collections" not in response or len(response["collections"]) == 0:
-            return pd.DataFrame([], columns=["id", "title", "created"]).set_index("id")
-        return pd.DataFrame(response["collections"]).set_index("id")
-
-    def get_collection_by_id(self, id: int) -> pd.Series:
-        """
-        Args:
-            id (int): the id of the collection.
-
-        Returns:
-            (pd.Series): a pandas series of the collection information
-
-        Raises:
-            Exception: You don't have permission to access this project - often this means the id is incorrect
-        """
-        collection_data = self._apinterface._get_request("collections/{}", id=id)
-        if "collection" not in collection_data:
-            raise ValueError(f"API call was good but collection data missing from: {collection_data}")
-        return pd.Series(collection_data["collection"])
-
-    def create_collection(self, title: str, description: str):
-        """
-        Creates a new collection with the specified title and description.
-
-        Args:
-            title (str): The title of the collection.
-            description (str): The description of the collection.
-
-        Returns:
-            (int): The id of the newly created collection
-        """
-        assert title != "", "The collection must have a title but an empty string was passed"
-        ret = self._apinterface._post_request("collections", json={"title": title, "description": description})
-        return ret["collection"]
-
-    def update_collection(self, id: int, title: Optional[str] = None, description: Optional[str] = None):
-        """
-            Updates the specified collection with a new title and/or description.
-
-        Args:
-            id (int): The unique identifier of the collection to update.
-            title (Optional[str]): The new title of the collection. Defaults to None.
-            description (Optional[str]): The new description of the collection. Defaults to None.
-
-        Raises:
-            Assertion error if both title and description are None, since we must update one or the other.
-        """
-        # Is it clear this updates title/description of the collection and not the data in the collection?
-        assert title is not None or description is not None, "can update title or description or both, but not neither"
-        metadata = {}
-        if title is not None:
-            metadata["title"] = title
-        if description is not None:
-            metadata["description"] = description
-        self._apinterface._post_request("collections/update/{}", id=id, json=metadata)
-
-    def count_projects_in_collection(self, collection: int) -> int:
-        """
-        Count the number of projects you have access to
-
-        Args:
-            collection (int):
-                The id of the collection.
-
-        Returns:
-            int: The number of projects
-        """
-        params = {"offset": 0, "limit": 1}
-        response = self._apinterface._get_request("editor?collection={}", id=collection, params=params)
-        return response["total"]
-
-    def list_projects_in_collection(
-        self,
-        collection: int,
-        limit: Union[int, str],
-        keywords: Optional[Union[str, List[str]]] = None,
-        offset: int = 0,
-        sort_by: Optional[str] = None,
-    ) -> pd.DataFrame:
-        """
-        Retrieve projects that have been added to the given collection.
-
-        Args:
-
-            collection (int):
-                The id of the collection.
-            limit (int):
-                The maximum number of projects to return. If limit='All' then all records are retrieved.
-            keyword (optional str):
-                filter projects based on whether the project title or idno contains this keyword
-            offset (int):
-                Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
-            sort_by (optional str):
-                valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
-
-        Returns:
-
-            pd.DataFrame:
-                Information on the projects in the collection, such as id, idno, title and type.
-        """
-
-        if isinstance(limit, str):
-            assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
-            new_offset = offset
-            new_limit = 500
-            dfs = []
-            while True:
-                df = self.list_projects_in_collection(
-                    collection=collection, keywords=keywords, offset=new_offset, limit=new_limit, sort_by=sort_by
-                )
-                dfs.append(df)
-                if len(df) < new_limit:
-                    break
-                new_offset += new_limit
-            return pd.concat(dfs)
-
-        params = {"limit": limit, "offset": offset}
-        if keywords is not None:
-            if not isinstance(keywords, str) and isinstance(keywords, Iterable):
-                keywords = "%".join(keywords)
-            keywords = keywords.replace(" ", "%")
-            params["keywords"] = keywords
-        if sort_by is not None:
-            sort_by = sort_by.lower()
-            valid_sort_by = ["title_asc", "title_desc", "updated_asc", "updated_desc"]
-            assert sort_by in valid_sort_by, f"{sort_by} not valid, must be one of {valid_sort_by}"
-            params["sort_by"] = sort_by
-        ret = self._apinterface._get_request("editor?collection={}", id=collection, params=params)
-        if len(ret["projects"]) == 0:
-            return pd.DataFrame([], columns=["id", "type", "idno", "title"]).set_index("id")
-        return pd.DataFrame(ret["projects"]).set_index("id")
-
-    def add_projects_to_collection(
-        self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
-    ):
-        """
-        Adds project or projects to specified collection or collections.
-
-        This method associates one or more projects with one or more collections. The `collection`
-        parameter can be a single collection ID or a list of collection IDs. The `projects` parameter
-        can be a single project ID, a single project ID number (idno), a list of project IDs, or a list
-        of project idnos. The `id_format` parameter specifies whether the project identifiers
-        are in the form of IDs (integer) or idno (string).
-
-        Args:
-
-            collection : Union[int, List[int]]
-                A single collection ID or a list of collection IDs to which projects should be added.
-            id_format : str
-                Specifies the format of the project identifiers. Must be either 'id' or 'idno'.
-            projects : Union[int, List[int], str, List[str]]
-                A single project ID, a single project idno, a list of project IDs, or a list of
-                project idnos to be added to the specified collection(s).
-
-        Raises:
-
-            AssertionError
-                If `id_format` is not 'id' or 'idno'.
-
-            AssertionError
-                If a project ID is not an integer when `id_format` is 'id'.
-
-            AssertionError
-                If a project ID number is not a string when `id_format` is 'idno'.
-
-        Example:
-            >>> client.add_projects_to_collection(collection=1, id_format='id', projects=[101, 102])
-            >>> client.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
-        """
-        assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
-        if not isinstance(collection, Iterable) or isinstance(collection, str):
-            collection = [collection]
-
-        if not isinstance(projects, Iterable) or isinstance(projects, str):
-            projects = [projects]
-        if id_format.lower() == "id":
-            for proj in projects:
-                assert isinstance(proj, int), f"When passing ids the projects must be ints, but found: {proj}"
-        else:
-            for proj in projects:
-                assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
-        self._apinterface._post_request(
-            "collections/add_projects",
-            json={"collections": collection, "id_format": id_format, "projects": projects},
-        )
-
-    def remove_projects_from_collection(
-        self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
-    ):
-        """
-        Removes project or projects from specified collection or collections.
-
-        This method dissociates one or more projects from one or more collections. The `collection`
-        parameter can be a single collection ID or a list of collection IDs. The `projects` parameter
-        can be a single project ID, a single project ID number (idno), a list of project IDs, or a list
-        of project idnos. The `id_format` parameter specifies whether the project identifiers
-        are in the form of IDs or idnos.
-
-        Note that if the project(s) are not in the collection there is no error raised since either way the project
-            will not be in the collection after this function executes
-
-        Args
-
-            collection : Union[int, List[int]]
-                A single collection ID or a list of collection IDs to which projects should be removed.
-
-            id_format : str
-                Specifies the format of the project identifiers. Must be either 'id' or 'idno'.
-
-            projects : Union[int, List[int], str, List[str]]
-                A single project ID, a single project idno, a list of project IDs, or a list of
-                project idnos to be removed from the specified collection(s).
-
-        Raises:
-
-            AssertionError
-                If `id_format` is not 'id' or 'idno'.
-
-            AssertionError
-                If a project ID is not an integer when `id_format` is 'id'.
-
-            AssertionError
-                If a project ID number is not a string when `id_format` is 'idno'.
-
-
-        Example:
-
-            >>> client.remove_projects_from_collection(collection=1, id_format='id', projects=[101, 102])
-            >>> client.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
-
-        """
-        assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
-        if not isinstance(projects, Iterable) or isinstance(projects, str):
-            projects = [projects]
-        if id_format.lower() == "id":
-            for proj in projects:
-                assert isinstance(proj, int), f"When passing ids the projects must be ints, but found: {proj}"
-        else:
-            for proj in projects:
-                assert isinstance(proj, str), f"While passing idnos the projects must be strs but found: {proj}"
-
-        self._apinterface._post_request(
-            "collections/remove_projects",
-            json={"collections": collection, "id_format": id_format, "projects": projects},
-        )
-
-    def list_templates(self) -> pd.DataFrame:
-        """
-        Retrieves templates, both standard and any custom templates
-
-        Returns:
-            pd.DataFrame: A DataFrame containing the templates. If none are found, an empty DataFrame is returned.
-        """
-        response = self._apinterface._get_request("templates")
-        if "templates" not in response or len(response["templates"]) == 0:
-            return pd.DataFrame([], columns=["uid", "template_type", "name", "template"])
-        else:
-            templates = pd.DataFrame([v_item for _, v in response["templates"].items() for v_item in v])
-            if "default" in templates and "uid" in templates and "data_type" in templates:
-                self._default_templates = (
-                    templates[templates.default].drop_duplicates("uid").drop_duplicates("data_type")
-                )
-
-                # in place replace each value of data_type with the standardised version
-                def standardize(row):
-                    try:
-                        return self._mm.standardize_metadata_name(row["data_type"])
-                    except ValueError:
-                        return row["data_type"]
-
-                self._default_templates["data_type"] = self._default_templates.apply(standardize, axis=1)
-            return templates
-
-    def get_template_by_uid(self, uid: str) -> pd.Series:
-        """
-        Retrieves given template by *UID*, not id.
-
-        Args:
-            uid (str): The Unique Identifier of the template to retrieve.
-
-        Returns:
-            pd.Series: A pandas Series containing the template details.
-        """
-        response = self._apinterface._get_request("templates/{}", uid)
-        if "result" not in response:
-            raise KeyError(
-                f"No template found although API call appeared successful for that UPI.\nResponse: {response}"
-            )
-        else:
-            temp = pd.Series(response["result"], name=response["result"]["name"])
-            if uid in self._templates:
-                try:
-                    metadata_type = temp.data_type
-                    parent_schema = self.get_metadata_class(metadata_type)
-                    klass = pydantic_from_template(temp.template, parent_schema=parent_schema, name=temp.name)
-                    self._templates[uid] = {"template": temp, "metadata_type": metadata_type, "class": klass}
-                finally:
-                    return temp
-            else:
-                return temp
-
-    def set_template_for_collection(self, collection_id: int, template_uid: str):
-        """
-        Set the specified template to be used for all metadata of its type (for example microdata, indicator, or
-            document metadata) in the collection.
-
-        Args:
-            collection_id (int): the id of the collection.
-            template_uid (str): The Unique Identifier of the template to apply to the collection.
-        """
-        # check collection exists
-        self.get_collection_by_id(collection_id)
-        template = self.get_template_by_uid(uid=template_uid)
-        template_type = template["data_type"]
-        self._apinterface._post_request(
-            "collections/template",
-            json={"collection_id": collection_id, "template_uid": template_uid, "project_type": template_type},
-        )
-
     def delete_template(self, uid: str):
         """
         Deletes the given template.
@@ -1319,3 +1340,22 @@ class MetadataEditor:
         if uid in self._templates:
             self._templates.pop(uid, None)
         self._delete_by_id("templates/delete/{}", id=uid, checker_fn=self.get_template_by_uid)
+
+    def _delete_by_id(self, pth: str, id: Union[int, str], checker_fn: Callable[[int], pd.Series]):
+        """
+        Internal, generic method for deleting either collections or projects or similar.
+        """
+        # # first check that the project/collection is there to be deleted
+        # checker_fn(id)
+        try:
+            self._apinterface.post_request(pth=pth, id=id)
+        except JSONDecodeError:
+            pass
+
+        # check that the entity was deleted
+        try:
+            checker_fn(id)
+        except (PermissionError, JSONDecodeError, IndexError, HTTPError):
+            pass  # evidently the entity was deleted because now it can't be found
+        else:
+            raise DeleteNotAppliedError()

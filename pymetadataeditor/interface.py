@@ -16,7 +16,7 @@ from pymetadataeditor.templates import pydantic_from_template
 
 from .utils import remove_empty_from_dict, validate_json_patches
 
-__all__ = ["MetadataEditor", "DeleteNotAppliedError"]
+__all__ = ["MetadataEditor", "DeleteNotAppliedError", "TemplateError"]
 
 DICT_MODES = ["dict", "dictionary"]
 PYDANTIC_MODES = ["pydantic", "model", "basemodel", "object"]

@@ -68,7 +68,7 @@ def get_child_field_info_from_dot_annotated_name(name, parent_schema):
         if not isinstance(sub_schema, type(BaseModel)):
             raise KeyError(name)
     try:
-        child_field_info = sub_schema.model_fields[name_split[-1]]
+        child_field_info = standardize_keys_in_dict(sub_schema.model_fields)[name_split[-1]]
     except KeyError as e:
         raise KeyError(name_split[-1]) from e
     # except:

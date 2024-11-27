@@ -22,9 +22,9 @@ DICT_MODES = ["dict", "dictionary"]
 PYDANTIC_MODES = ["pydantic", "model", "basemodel", "object"]
 EXCEL_MODES = ["excel"]
 
-warnings.filterwarnings(
-    "ignore", category=UserWarning, module="pydantic"
-)  # suppresses warning when metadata passed as dict instead of a pydantic object
+# warnings.filterwarnings(
+#     "ignore", category=UserWarning, module="pydantic"
+# )  # suppresses warning when metadata passed as dict instead of a pydantic object
 
 # Create a flag for tracking if the warning was shown
 shown_insecure_warning = False

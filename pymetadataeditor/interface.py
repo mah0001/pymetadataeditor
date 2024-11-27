@@ -88,9 +88,14 @@ class MetadataEditor:
         Then you can list and create new projects like so:
 
             me.list_projects(limit=100)
-            dict_of_indicator = me.outline_metadata("indicator", "dict")
-            <update the indicator metadata dictionary as needed>
-            me.create_project_log("indicator", dict_of_indicator)
+            indicator_metadata = me.make_metadata_outline("indicator", "pydantic")
+            # update the indicator metadata as needed.
+
+            # View nicely formatted metadata
+            indicator_metadata.pretty_print()
+
+            # Then log the metadata to the database
+            me.create_project_log(dict_of_indicator, "indicator")
 
         Args:
             api_url (str): the URL typically looks like 'https://<name_of_your_metadata_database>.org/index.php/api'
@@ -400,13 +405,16 @@ class MetadataEditor:
 
             me = MetadataEditor(api_url=..., api_key=...)
 
-            indicator_dict = me.outline_metadata("indicator", "dict")
+            # using a metadata type will create an outline using the default template
+            indicator_dict = me.make_metadata_outline("indicator", "dict")
             indicator_dict['metadata_information']['idno'] = "my_idno"
 
-            indicator_pydantic = me.outline_metadata("indicator", "pydantic")
+            # using a template uid
+            indicator_pydantic = me.outline_metadata("timeseries-system-en", "pydantic")
             indicator_pydantic.metadata_information.idno = "my_idno"
 
-            path_to_indicator_excel_file = me.outline_metadata("indicator", "excel")
+            # an outline can also be written to an Excel file
+            path_to_indicator_excel_file = me.outline_metadata("indicator", "excel", "indicator_outline_metadata.xlsx")
         """
         metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
         metadata_object = make_skeleton(metadata_class, debug=False)

@@ -812,7 +812,13 @@ def test_set_template_for_collection(monkeypatch, metadata_editor):
     monkeypatch.setattr(MetadataEditor, "get_template_by_uid", get_template_by_uid)
 
     def mock_response(*args, **kwargs):
-        return MockResponse(http_status_code=200, json_data={})
+        return MockResponse(
+            http_status_code=200,
+            json_data={
+                "status": "success",
+                "result": {"updated": [{"id": "1607", "type": "survey"}, {"id": "1502", "type": "survey"}]},
+            },
+        )
 
     monkeypatch.setattr(requests, "request", mock_response)
     metadata_editor.set_template_for_collection(1, "example_uid")

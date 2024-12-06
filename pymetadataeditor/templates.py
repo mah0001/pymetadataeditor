@@ -164,7 +164,7 @@ def fill_skipped_field_info(d_old, parent_schema, parent_name=""):
 
 def create_model_for_template(
     dict_of_elements: dict,
-    parent_schema: Type[BaseModel],
+    parent_schema: Type[SchemaBaseModel],
     name: str,
     parent_name: Optional[str] = None,
     uid: Optional[str] = None,
@@ -172,14 +172,19 @@ def create_model_for_template(
     dict_of_elements = fill_skipped_field_info(
         dict_of_elements, parent_schema, parent_name if parent_name is not None else ""
     )
-    # dict_of_elements = stupid_enrich_custom(dict_of_elements, parent_schema)
     dict_of_elements = standardize_keys_in_dict(dict_of_elements, pascal_to_snake=True)
 
-    if uid is not None:
-        doc = f"template_uid:{uid}"
-    else:
-        doc = None
-    return create_model(name, __module__="template", __base__=SchemaBaseModel, __doc__=doc, **dict_of_elements)
+    model_name = name.replace(" ", "_").rstrip("_").replace(".", "-")
+    return create_model(
+        model_name,
+        __module__="template",
+        __base__=SchemaBaseModel,
+        __metadata_type__=parent_schema.__metadata_type__,
+        __metadata_type_version__=parent_schema.__metadata_type_version__,
+        __template_name__=name if uid is not None else None,
+        __template_uid__=uid,
+        **dict_of_elements,
+    )
 
 
 def get_children_of_props(
@@ -392,7 +397,7 @@ def template_type_handler(item, parent_schema):
 
 
 def pydantic_from_template(
-    template: Dict, parent_schema: Type[BaseModel], uid: str, name: Optional[str] = None
+    template: Dict, parent_schema: Type[SchemaBaseModel], uid: str, name: Optional[str] = None
 ) -> Type[BaseModel]:
     assert "items" in template, f"expected 'items' in template but got {list(template.keys())}"
     if name is None:
@@ -400,6 +405,5 @@ def pydantic_from_template(
             name = template["title"]
         else:
             name = "new_model"
-    name = name.replace(" ", "_").rstrip("_").replace(".", "-")  # .split(".")[-1]
     model_elements = define_group_of_elements(template["items"], parent_schema)
     return create_model_for_template(model_elements, parent_schema, name, uid=uid)

@@ -267,7 +267,11 @@ def test_get_class(metadata_editor, metadata_type):
     temps = metadata_editor.list_templates()
     temps = temps[temps["data_type"] == metadata_type]
     for i, temp in temps.iterrows():
-        metadata_editor.get_metadata_class(temp["uid"])
+        klass = metadata_editor.get_metadata_class(temp["uid"])
+        assert klass.__metadata_type__ == metadata_type
+        assert klass.__metadata_type_version__ is not None
+        assert klass.__template_uid__ == temp["uid"]
+        assert klass.__template_name__ is not None
 
 
 def test_project_download_and_read(metadata_editor, tmpdir):
@@ -322,8 +326,7 @@ def test_project_download_and_read(metadata_editor, tmpdir):
             excel_validation_errors[project_id] = e
             continue
 
-        metadata_type_or_uid = project_info.template_uid if project_info.template_uid is not None else project_info.type
-        excel_obj = metadata_editor.read_metadata_from_excel(filename, metadata_type_or_uid)
+        excel_obj = metadata_editor.read_metadata_from_excel(filename)
         assert_pydantic_models_equal(pydantic_obj, excel_obj)
         print()
 
@@ -491,7 +494,7 @@ def test_templates(metadata_editor, tmpdir):
     default_templates = templates[templates["default"]]
     for i, uid in enumerate(default_templates[["uid"]].values):
         temp = metadata_editor.get_template_by_uid(uid[0])
-        metadata_type = temp.data_type
+        metadata_type = metadata_editor._mm.standardize_metadata_name(temp.data_type)
         if metadata_type == "resource" or metadata_type == "geospatial":
             continue
         print(i, uid[0], metadata_type)
@@ -499,11 +502,20 @@ def test_templates(metadata_editor, tmpdir):
         metadata_type = metadata_type.replace("-", "_")
 
         class_def = metadata_editor.get_metadata_class(uid[0])
+        assert class_def.__metadata_type__ == metadata_type
+        assert class_def.__metadata_type_version__ is not None
+        assert class_def.__template_uid__ == uid[0]
+        assert class_def.__template_name__ is not None
+
         print(f"\n\n\n\n\n\n\ntemplate {uid[0]} of {metadata_type}")
         print("making skeleton")
         skeleton = make_skeleton(class_def)
         print(f"{skeleton}")
         print("skeleton made\n\n")
+        assert skeleton.__metadata_type__ == metadata_type
+        assert skeleton.__metadata_type_version__ is not None
+        assert skeleton.__template_uid__ == uid[0]
+        assert skeleton.__template_name__ is not None
         # log skeleton
         log_id = metadata_editor.create_project_log(metadata_type_or_template_uid=uid[0], metadata=skeleton)
         try:
@@ -515,7 +527,11 @@ def test_templates(metadata_editor, tmpdir):
             print(f"logging skeleton to {filename1}")
             metadata_editor.get_project_metadata_by_id(log_id, output_mode="excel", filename=filename1)
             # actual = metadata_editor._mm.read_metadata_from_excel(filename1, class_def)
-            actual = metadata_editor.read_metadata_from_excel(filename1, uid[0])
+            actual = metadata_editor.read_metadata_from_excel(filename1)
+            assert actual.__metadata_type__ == metadata_type
+            assert actual.__metadata_type_version__ is not None
+            assert actual.__template_uid__ == uid[0]
+            assert actual.__template_name__ is not None
             assert_pydantic_models_equal(skeleton, actual)
         finally:
             metadata_editor.delete_project_by_id(log_id)
@@ -534,7 +550,11 @@ def test_templates(metadata_editor, tmpdir):
 
             # Read the metadata back
             # actual = metadata_editor._mm.read_metadata_from_excel(filename2, class_def)
-            actual = metadata_editor.read_metadata_from_excel(filename2, uid[0])
+            actual = metadata_editor.read_metadata_from_excel(filename2)
+            assert actual.__metadata_type__ == metadata_type
+            assert actual.__metadata_type_version__ is not None
+            assert actual.__template_uid__ == uid[0]
+            assert actual.__template_name__ is not None
             assert_pydantic_models_equal(modl, actual)
 
         # log filled in metadata
@@ -545,6 +565,10 @@ def test_templates(metadata_editor, tmpdir):
             actual = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic", debug=True)
             print("actual from log direct")
             print(f"{actual}\n\n")
+            assert actual.__metadata_type__ == metadata_type
+            assert actual.__metadata_type_version__ is not None
+            assert actual.__template_uid__ == uid[0]
+            assert actual.__template_name__ is not None
             assert_pydantic_models_equal(modl, actual)
 
             filename3 = tmpdir.join(f"test_filledin_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx")
@@ -552,9 +576,13 @@ def test_templates(metadata_editor, tmpdir):
             print(f"logging filled in metadata to {filename3}")
             metadata_editor.get_project_metadata_by_id(log_id, output_mode="excel", filename=filename3)
             # actual = metadata_editor._mm.read_metadata_from_excel(filename3, class_def)
-            actual = metadata_editor.read_metadata_from_excel(filename3, uid[0])
+            actual = metadata_editor.read_metadata_from_excel(filename3)
             print("actual from log via excel")
             print(f"{actual}\n\n")
+            assert actual.__metadata_type__ == metadata_type
+            assert actual.__metadata_type_version__ is not None
+            assert actual.__template_uid__ == uid[0]
+            assert actual.__template_name__ is not None
             assert_pydantic_models_equal(modl, actual)
         finally:
             metadata_editor.delete_project_by_id(log_id)

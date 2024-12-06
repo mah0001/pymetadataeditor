@@ -5,7 +5,9 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import pandas as pd
 from metadataschemas.metadata_manager import MetadataManager
-from metadataschemas.utils.quick_start import make_skeleton
+from metadataschemas.utils.schema_base_model import SchemaBaseModel
+
+# from metadataschemas.utils.quick_start import make_skeleton
 from metadataschemas.utils.utils import merge_dicts, standardize_keys_in_dict
 from pydantic import BaseModel, ValidationError
 from requests.exceptions import HTTPError
@@ -209,13 +211,13 @@ class MetadataEditor:
     ####################################################################################################################
 
     def _process_metadata_input(
-        self, metadata: Union[BaseModel, Dict, str], metadata_type_or_template_uid: Optional[str] = None
+        self, metadata: Union[SchemaBaseModel, Dict, str], metadata_type_or_template_uid: Optional[str] = None
     ) -> Tuple[BaseModel, str, None | str]:
         """
         Args:
             metadata (Union[BaseModel, Dict, str]): The metadata to process.
             metadata_type_or_template_uid (Optional[str]): The metadata type or template UID. Required if metadata is a
-                dictionary or a path.
+                dictionary otherwise ignored.
 
         Returns:
             BaseModel: The metadata object.
@@ -223,17 +225,25 @@ class MetadataEditor:
             None | str: The template UID if the metadata is from a template, otherwise None.
         """
         if isinstance(metadata, BaseModel):
-            metadata_type, uid = self._lookup_metadata_type_and_uid(metadata)
-        else:
+            metadata_type, uid = (
+                metadata.__metadata_type__,
+                metadata.__template_uid__,
+            )  # self._lookup_metadata_type_and_uid(metadata)
+        elif isinstance(metadata, dict):
             if metadata_type_or_template_uid is None:
-                raise ValueError("metadata_type_or_template_uid must be passed when metadata is a dictionary or a path")
-
-            if isinstance(metadata, dict):
-                klass, metadata_type, uid = self._get_metadata_class_and_type_and_UID(metadata_type_or_template_uid)
-                metadata = klass.model_validate(metadata, strict=False)
+                raise ValueError("metadata_type_or_template_uid must be passed when metadata is a dictionary")
+            klass, metadata_type, uid = self._get_metadata_class_and_type_and_UID(metadata_type_or_template_uid)
+            metadata = klass.model_validate(metadata, strict=False)
+        else:
+            # if metadata_type_or_template_uid is None:
+            metadata_info = self._mm.get_metadata_type_info_from_excel_file(metadata)
+            metadata_type = metadata_info["metadata_type"]
+            uid = metadata_info.get("template_uid", None)
+            if uid is not None:
+                klass = self._get_template_class_and_type_and_UID(uid)[0]
             else:
-                klass, metadata_type, uid = self._get_metadata_class_and_type_and_UID(metadata_type_or_template_uid)
-                metadata = self._mm.read_metadata_from_excel(metadata, klass, metadata_type, verbose=False)
+                klass = self._get_metadata_class_and_type_and_UID(metadata_type)[0]
+            metadata = self._mm.read_metadata_from_excel(metadata, klass, verbose=False)
         return metadata, metadata_type, uid
 
     def _process_metadata_output(
@@ -272,7 +282,8 @@ class MetadataEditor:
             else:
                 return metadata_dict
         else:
-            metadata_type, _ = self._lookup_metadata_type_and_uid(metadata_object)
+            metadata_type = metadata_object.__metadata_type__
+            # metadata_type, _ = self._lookup_metadata_type_and_uid(metadata_object)
             return self._mm.save_metadata_to_excel(
                 object=metadata_object,
                 filename=filename,
@@ -351,24 +362,24 @@ class MetadataEditor:
                 klass = self._mm.metadata_class_from_name(metadata_type)
                 return klass, metadata_type, None
 
-    def _lookup_metadata_type_and_uid(self, metadata: BaseModel) -> Tuple[str, None | str]:
-        """
-        Args:
-            metadata (BaseModel): The metadata object to lookup the template for.
+    # def _lookup_metadata_type_and_uid(self, metadata: BaseModel) -> Tuple[str, None | str]:
+    #     """
+    #     Args:
+    #         metadata (BaseModel): The metadata object to lookup the template for.
 
-        Returns:
-            str: The metadata type
-            None | str: The template UID if the metadata is from a template, otherwise None
-        """
-        for k, v in self._templates.items():
-            if isinstance(metadata, v["class"]):
-                return v["metadata_type"], k
-        else:
-            for k, v in self._mm._TYPE_TO_SCHEMA.items():
-                if isinstance(metadata, v):
-                    return k, None
-            else:
-                raise ValueError(f"Could not find metadata type for {metadata}")
+    #     Returns:
+    #         str: The metadata type
+    #         None | str: The template UID if the metadata is from a template, otherwise None
+    #     """
+    #     for k, v in self._templates.items():
+    #         if isinstance(metadata, v["class"]):
+    #             return v["metadata_type"], k
+    #     else:
+    #         for k, v in self._mm._TYPE_TO_SCHEMA.items():
+    #             if isinstance(metadata, v):
+    #                 return k, None
+    #         else:
+    #             raise ValueError(f"Could not find metadata type for {metadata}")
 
     def get_metadata_class(self, metadata_type_or_template_uid: str) -> Type[BaseModel]:
         return self._get_metadata_class_and_type_and_UID(metadata_type_or_template_uid)[0]
@@ -417,7 +428,8 @@ class MetadataEditor:
             path_to_indicator_excel_file = me.outline_metadata("indicator", "excel", "indicator_outline_metadata.xlsx")
         """
         metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
-        metadata_object = make_skeleton(metadata_class, debug=False)
+        # metadata_object = make_skeleton(metadata_class, debug=False)
+        metadata_object = self._mm.create_metadata_outline(metadata_class)
         return self._process_metadata_output(
             metadata_object=metadata_object,
             output_mode=output_mode,
@@ -553,21 +565,17 @@ class MetadataEditor:
         Validates and logs metadata which can be a dictionary, a pydantic model or a path to an Excel spreadsheet.
 
         Args:
-            metadata_type_or_template_uid (str):
-                if passing in a simple type then the supported metadata types are currently:
-                    document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
-                Alternatively you can pass in the UID of a template.
             metadata (dictionary or BaseModel or str):
                 If str, it's assumed this is a path to an appropriately formatted Excel file
+            metadata_type_or_template_uid (str):
+                If passing in a simple type then the supported metadata types are currently:
+                    document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
+                In this case we will use the default template for that metadata type.
+                Alternatively you can pass in the UID of a template. This is required if the metadata is a dictionary
+                    otherwise ignored.
 
         Returns:
             int: The ID of the newly created document metadata
-
-        Raises:
-            NotImplementedError:
-                geospatial and image metadata types are currently not supported in Excel mode, use dictionaries or
-                    pydantic models instead.
-
         """
         metadata, metadata_type, uid = self._process_metadata_input(metadata, metadata_type_or_template_uid)
 
@@ -614,6 +622,28 @@ class MetadataEditor:
         else:
             project_uid = None
             metadata_type_or_template_uid = project_type
+
+        if not isinstance(new_metadata, dict):
+            if isinstance(new_metadata, BaseModel):
+                metadata_type = new_metadata.__metadata_type__
+                uid = new_metadata.__template_uid__
+            else:
+                metadata_info = self._mm.get_metadata_type_info_from_excel_file(new_metadata)
+                metadata_type = metadata_info["metadata_type"]
+                uid = metadata_info.get("template_uid", None)
+            if uid is not None and project_uid != uid:
+                raise ValueError(
+                    f"The template UID of the existing project is {project_uid} but the template UID "
+                    f"of the new metadata is {uid}.\n"
+                    f"The template of the new metadata should be changed to match the existing project "
+                    f"uid='{project_uid}' or change the template of the existing project to match the new metadata "
+                    f"uid='{uid}'."
+                )
+            elif uid is None and metadata_type != project_type:
+                raise ValueError(
+                    f"The metadata type of the existing project is {project_type} but the metadata type "
+                    f"of the new metadata is {metadata_type}."
+                )
 
         metadata, metadata_type, uid = self._process_metadata_input(new_metadata, metadata_type_or_template_uid)
 
@@ -776,8 +806,8 @@ class MetadataEditor:
             output_mode (str): The output mode. Must be 'dict', 'pydantic' or 'excel'.
             output_template_uid (Optional[str]): The UID of the new template. If None then the existing template is
                 used.
-            input_template_uid (Optional[str]): The UID of the input template. Required if the metadata is a dictionary
-                or a path to Excel.
+            input_template_uid (Optional[str]): The UID of the input template. Required if the metadata is a dictionary.
+                Ignored if metadata is a pydantic model or a path to an Excel file.
             filename (Optional[str]): If output_mode=='excel', the path to the Excel file.
                 If None, defaults to {name of metadata type}_metadata.xlsx
             title (Optional[str]): If output_mode=='excel', the title for the Excel sheet.
@@ -841,7 +871,6 @@ class MetadataEditor:
     def read_metadata_from_excel(
         self,
         filename: str,
-        metadata_type_or_template_uid: Optional[str] = None,
         output_mode: str = "pydantic",
         exclude_unset=True,
     ) -> Union[BaseModel, Dict]:
@@ -850,7 +879,6 @@ class MetadataEditor:
 
         Args:
             filename (str): The path to the Excel file.
-            metadata_type_or_template_uid (Optional[str]): The metadata type or template UID.
             mode (str): The output mode. Must be 'pydantic' or 'dict'.
             exclude_unset (bool): If mode=='dict', then if exclude_unset=True, only elements that were explicitly set
                 with non-null, non-empty values are returned in the dictionary.
@@ -861,7 +889,7 @@ class MetadataEditor:
         assert (
             output_mode not in EXCEL_MODES
         ), f"read_metadata_from_excel output_mode should be 'pydantic' or 'dict' but found '{output_mode}'"
-        object = self._process_metadata_input(filename, metadata_type_or_template_uid)[0]
+        object = self._process_metadata_input(filename)[0]
         return self._process_metadata_output(object, output_mode, simplify=exclude_unset)
 
     ####################################################################################################################

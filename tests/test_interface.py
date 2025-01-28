@@ -115,7 +115,10 @@ def test_MetadataEditor_instantiation(monkeypatch):
     with pytest.raises(PermissionError) as e:
         me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
         me.list_projects(limit=100)
-    assert str(e.value).split(".")[0] == "Access to that URL is denied"
+    # assert str(e.value).split(".")[0] == "Access to that URL is denied for https://example.com"
+    assert (
+        str(e.value) == "Access to that URL is denied for https://example.com/editor Check that the API key is correct"
+    )
 
     # good instantiation
     def mock_response(*args, **kwargs):

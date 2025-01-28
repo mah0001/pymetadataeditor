@@ -101,7 +101,9 @@ class RequestsWithSpecificErrors(BaseModel):
                 )
                 raise HTTPError(error_msg) from None
             elif response.status_code == 403:
-                raise PermissionError("Access to that URL is denied. " "Check that the API key is correct") from None
+                raise PermissionError(
+                    f"Access to that URL is denied for {url} " "Check that the API key is correct"
+                ) from e
             elif response.status_code == 400 and "message" in response.text:
                 if isinstance(response.text, dict):
                     error_message = response.text["message"]

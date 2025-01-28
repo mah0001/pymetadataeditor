@@ -61,21 +61,30 @@ def remove_empty_from_dict(old_dict: Dict) -> Dict:
             if len(new_sub_dict) > 0:
                 new_dict[k] = new_sub_dict
         elif isinstance(v, list):
-            new_list = []
-            for elem in v:
-                if elem is None:
-                    continue
-                if isinstance(elem, dict):
-                    new_elem = remove_empty_from_dict(elem)
-                    if len(new_elem) > 0:
-                        new_list.append(new_elem)
-                elif isinstance(elem, str):
-                    if elem != "":
-                        new_list.append(elem)
-                else:
-                    new_list.append(elem)
+            new_list = remove_empty_from_list(v)
             if len(new_list) > 0:
                 new_dict[k] = new_list
         else:
             new_dict[k] = v
     return new_dict
+
+
+def remove_empty_from_list(v):
+    new_list = []
+    for elem in v:
+        if elem is None:
+            continue
+        elif isinstance(elem, dict):
+            new_elem = remove_empty_from_dict(elem)
+            if len(new_elem) > 0:
+                new_list.append(new_elem)
+        elif isinstance(elem, str):
+            if elem != "":
+                new_list.append(elem)
+        elif isinstance(elem, list):
+            new_elem = remove_empty_from_list(elem)
+            if len(new_elem) > 0:
+                new_list.append(new_elem)
+        else:
+            new_list.append(elem)
+    return new_list

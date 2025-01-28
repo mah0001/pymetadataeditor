@@ -1,8 +1,11 @@
 import copy
-import logging
+
+# import logging
 import warnings
+from enum import Enum
 from typing import Dict, List, Optional, Tuple, Type
 
+from annotated_types import Ge, Le, MaxLen, MinLen
 from metadataschemas.utils.schema_base_model import SchemaBaseModel
 from metadataschemas.utils.utils import (
     get_subtype_of_optional_or_list,
@@ -12,25 +15,27 @@ from metadataschemas.utils.utils import (
     standardize_keys_in_dict,
 )
 from pydantic import BaseModel, Field, create_model
+from pydantic._internal._fields import pydantic_general_metadata
 from pydantic.fields import FieldInfo
 
+# # Configure logging
+# def setup_logging(enable_logging: bool = True):
+#     if enable_logging:
+#         logging.basicConfig(
+#             level=logging.DEBUG,  # Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+#             format="%(filename)s:%(lineno)d - %(levelname)s - %(message)s",
+#         )
+#         logging.captureWarnings(True)  # Redirect warnings to the logging system
+#     else:
+#         logging.disable(logging.CRITICAL)  # Disable all logging
 
-# Configure logging
-def setup_logging(enable_logging: bool = True):
-    if enable_logging:
-        logging.basicConfig(
-            level=logging.DEBUG,  # Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-            format="%(filename)s:%(lineno)d - %(levelname)s - %(message)s",
-        )
-    else:
-        logging.disable(logging.CRITICAL)  # Disable all logging
 
+# # Enable or disable logging by setting this variable
+# ENABLE_LOGGING = False
 
-# Enable or disable logging by setting this variable
-ENABLE_LOGGING = False
+# # Call the setup function
+# setup_logging(ENABLE_LOGGING)
 
-# Call the setup function
-setup_logging(ENABLE_LOGGING)
 
 __all__ = ["pydantic_from_template"]
 
@@ -53,8 +58,9 @@ def copy_field_set_required_status(field: FieldInfo, required: bool) -> FieldInf
         alias=field.alias if hasattr(field, "alias") else None,
         title=field.title if hasattr(field, "title") else None,
         description=field.description if hasattr(field, "description") else None,
-        example=field.example if hasattr(field, "example") else None,
+        examples=field.examples if hasattr(field, "examples") else None,
         json_schema_extra=field.json_schema_extra if hasattr(field, "json_schema_extra") else None,
+        metadata=field.metadata if hasattr(field, "metadata") else None,
     )
 
 
@@ -76,7 +82,9 @@ def get_child_field_info_from_dot_annotated_name(name, parent_schema):
     return copy.copy(child_field_info)
 
 
-def define_simple_element(item, parent_schema, element_type=str) -> Dict[str : Tuple[Type[BaseModel]], Field]:
+def define_simple_element(
+    item, parent_schema, element_type=str, apply_rules: bool = True
+) -> Dict[str : Tuple[Type[BaseModel]], Field]:
     assert (
         isinstance(item, dict)
         and "type" in item
@@ -98,7 +106,7 @@ def define_simple_element(item, parent_schema, element_type=str) -> Dict[str : T
                     (
                         f"KeyError: {e2}. Field likely doesn't exist in base schema. "
                         f"Proceeding since prop_key = '{prop_key}' is a {element_type} type. "
-                        f"{item}"
+                        f"Full item defition = {item}"
                     ),
                     UserWarning,
                 )
@@ -108,26 +116,207 @@ def define_simple_element(item, parent_schema, element_type=str) -> Dict[str : T
                 (
                     f"KeyError: {e}. Field likely doesn't exist in base schema. "
                     f"Proceeding since key='{item['key']}' is a {element_type} type. "
-                    f"{item}"
+                    f"Full item defition = {item}"
                 ),
                 UserWarning,
             )
             child_field_info = Field(..., title=item["title"])
-    if "title" in item:
-        child_field_info.title = item["title"]
-    if "description" in item:
-        child_field_info.description = item["description"]
-    if "help_text" in item:
-        child_field_info.description = item["help_text"]
-    if ("required" in item and item["required"]) or ("is_required" in item and item["is_required"]):
-        logging.info("REQUIRED, item: %s", item)
+    field_type = update_field_info(item, child_field_info, element_type, apply_rules=apply_rules)
+    return {item["key"]: field_type}
+
+
+def get_constraints_from_string(s: str) -> List:
+    """
+    Parses a string of constraints separated by '|' and returns a list of corresponding constraint objects.
+
+    Supported constraints:
+    - "required": This constraint is ignored in the current implementation as it is applied elsewhere
+    - "alpha_dash": Adds a pattern constraint that allows only alphabetic characters and dashes.
+    - "min:<value>": Adds a minimum length constraint.
+    - "max:<value>": Adds a maximum length constraint.
+
+    Args:
+        s (str): A string containing constraints separated by '|'.
+
+    Returns:
+        List: A list of constraint objects based on the input string.
+
+    Example:
+        >>> get_constraints_from_string("required|alpha_dash|min:5|max:80")
+        [pydantic_general_metadata(pattern='^[a-zA-Z\\-]+$'), MinLen(5), MaxLen(80)]
+    """
+    annotations = []
+    for annotation in s.split("|"):
+        annotation = annotation.strip()
+        if annotation == "":
+            continue
+        elif annotation in ["required", "idno", "numeric"]:
+            continue
+        elif annotation == "alpha_dash":
+            annotations.append(pydantic_general_metadata(pattern="^[a-zA-Z\\-]+$"))
+        elif annotation.startswith("min:"):
+            annotations.append(MinLen(int(annotation.split(":")[1])))
+        elif annotation.startswith("max:"):
+            annotations.append(MaxLen(int(annotation.split(":")[1])))
+        elif annotation.startswith("min_value"):
+            annotations.append(Ge(int(annotation.strip("min_value").strip(":"))))
+        elif annotation.startswith("max_value"):
+            annotations.append(Le(int(annotation.strip("max_value").strip(":"))))
+        else:
+            # logging.warning(f"Unknown constraint: '{annotation}' from string: '{s}'")
+            warnings.warn(f"UnknownConstraint: '{annotation}' from the list of constraints: '{s}'")
+    return annotations
+
+
+def create_enum(enum_name, values: list | dict) -> Enum:
+    """
+    Create an enum from a list of values.
+
+    Args:
+        enum_name (str): The name of the enum.
+        values (list|dict): Can be a list of strings or a list of dicts with 'label' and 'code' keys.
+
+    Returns:
+        Enum: The created enum.
+    """
+    # Create the enum
+    e = {}
+    for value in values:
+        if isinstance(value, str):
+            e[value.strip().replace(" ", "_")] = value.strip()
+        elif isinstance(value, dict) and "label" in value and "code" in value:
+            e[value["label"].strip().replace(" ", "_")] = value["code"].strip()
+        else:
+            raise ValueError(
+                f"Invalid value for enum: {value} from {values},"
+                " must be a list of strings or dicts with 'label' and 'code' keys."
+            )
+    return Enum(enum_name, e)
+
+
+def update_field_info(
+    template_info, child_field_info, overriding_element_type: Optional[str] = None, apply_rules: bool = True
+) -> Tuple[Type, FieldInfo]:
+    """
+    Updates the attributes of `child_field_info` based on the `template_info` dictionary.
+
+    Args:
+        template_info (dict): A dictionary containing template information with keys and values to update.
+        child_field_info (object): The object whose attributes are to be updated.
+        overriding_element_type (Optional[str], optional): An optional string to override the element type.
+
+    Returns:
+        tuple: A tuple containing the field type and the updated `child_field_info`.
+
+    Raises:
+        AttributeError: If an attribute in `template_info` cannot be set on `child_field_info`.
+
+    Logs:
+        Logs warnings if an attribute cannot be set on `child_field_info`.
+        Logs information if the field is required or if the key contains "abbreviation".
+    """
+    child_field_info.title = template_info.get("title") or template_info.get("name") or child_field_info.title
+    child_field_info.description = (
+        template_info.get("description") or template_info.get("help_text") or child_field_info.description
+    )
+    # child_field_info.metadata = get_constraints_from_string(template_info.get('constraints', ''))
+    rules = (
+        template_info.get("constraints")
+        or template_info.get("rules_")
+        or template_info.get("_rules")
+        or template_info.get("__rules", "")
+    )
+    if apply_rules and rules:
+        child_field_info.metadata = get_constraints_from_string(rules)
+    # if 'min' in rules and apply_rules:
+    #     logging.info(f"MIN: template_info = {template_info}; child_field_info = {child_field_info}")
+
+    for k, v in template_info.items():
+        if k in [
+            "required",
+            "is_required",
+            "key",
+            "prop_key",
+            "description",
+            "help_text",
+            "type",
+            "display_type",
+            "title",
+            "name",
+            "rules",
+            "rules_",
+            "_rules",
+            "__rules",
+            "is_recommended",
+            "class",
+            "enum",
+            "props",
+            "_ddi_xpath",
+            "is_custom",
+            "items",
+            "type_options",
+        ]:
+            continue
+        try:
+            setattr(child_field_info, k, v)
+        except AttributeError:
+            # logging.warning(f"UnknownFieldInfoKey: {k}={v} not set on {child_field_info}")
+            warnings.warn(f"UnknownFieldInfoKey: {k}='{v}' in template info {template_info}")
+            continue
+
+    if overriding_element_type is None:
+        type_to_type = {
+            "string": str,
+            "text": str,
+            "integer": int,
+            "number": int,
+            "boolean": bool,
+            "date": str,
+            "textarea": str,
+        }
+
+        element_type = template_info.get("type") or template_info.get("display_type")
+        element_type = type_to_type.get(element_type, str)
+        if apply_rules and "rules" in template_info:
+            if isinstance(template_info["rules"], dict) and "is_uri" in template_info["rules"]:
+                element_type = str  # AnyUrl - for required fields the default is example.com which is confusing
+            elif isinstance(template_info["rules"], list) and len(template_info["rules"]) == 0:
+                pass
+            else:
+                # logging.warning(f"Unknown rule: {template_info['rules']}")
+                warnings.warn(f"UnknownRule: {template_info['rules']} - expected dict")
+        if "enum" in template_info:
+            if isinstance(template_info["enum"], list) and len(template_info["enum"]) > 0:
+                enum_info = template_info["enum"]
+                name = child_field_info.title
+                try:
+                    element_type = create_enum(name, enum_info)
+                except ValueError:
+                    warnings.warn(f"UnknownEnum: '{template_info['enum']}' found in template_info: {template_info}")
+                    element_type = str
+            else:
+                # logging.warning(f"Unknown enum: '{template_info['enum']}' found in template_info: {template_info}")
+                warnings.warn(f"UnknownEnum: '{template_info['enum']}' found in template_info: {template_info}")
+    else:
+        element_type = overriding_element_type
+
+    required = (
+        template_info.get("required")
+        or template_info.get("is_required")
+        or template_info.get("class", "") == "required"
+        or "required" in template_info.get("rules_", "")
+        or "required" in template_info.get("_rules", "")
+        or "required" in template_info.get("__rules", "")
+    )
+    if required:
+        # logging.info("REQUIRED, item: %s", template_info)
         child_field_info = copy_field_set_required_status(child_field_info, True)
         field_type = element_type, child_field_info
     else:
         child_field_info.default = None
         child_field_info = copy_field_set_required_status(child_field_info, False)
         field_type = Optional[element_type], child_field_info
-    return {item["key"]: field_type}
+    return field_type
 
 
 def fill_skipped_field_info(d_old, parent_schema, parent_name=""):
@@ -138,23 +327,14 @@ def fill_skipped_field_info(d_old, parent_schema, parent_name=""):
             # v_new = fill_skipped_field_info(v, parent_schema, parent_name=childname)
             try:
                 field_info = get_child_field_info_from_dot_annotated_name(childname, parent_schema)
-                field_info_found = True
             except KeyError:
                 field_info = Field(..., title=k)
-                field_info_found = False
             mdl = create_model_for_template(v, parent_schema, k, childname)
             if ("required" in v and v["required"]) or ("is_required" in v and v["is_required"]):
                 field_info = copy_field_set_required_status(field_info, True)
-                logging.info(
-                    f"REQUIRED, k: {k}, field_info_found: {field_info_found}, field_info: {field_info}, d_old: {d_old}"
-                )
             else:
                 mdl = Optional[mdl]
                 field_info = copy_field_set_required_status(field_info, False)
-                logging.info(
-                    f"OPTIONAL, k: {k}, field_info_found: {field_info_found}, field_info: {field_info}, d_old: {d_old}"
-                )
-                # field_info.is_required
             new_vals[k] = (mdl, field_info)
     d_new = d_old
     for k, v in new_vals.items():
@@ -175,37 +355,47 @@ def create_model_for_template(
     dict_of_elements = standardize_keys_in_dict(dict_of_elements, pascal_to_snake=True)
 
     model_name = name.replace(" ", "_").rstrip("_").replace(".", "-")
-    return create_model(
+    model = create_model(
         model_name,
         __module__="template",
         __base__=SchemaBaseModel,
-        __metadata_type__=parent_schema.__metadata_type__,
-        __metadata_type_version__=parent_schema.__metadata_type_version__,
-        __template_name__=name if uid is not None else None,
-        __template_uid__=uid,
         **dict_of_elements,
     )
+    model._metadata_type__ = (
+        parent_schema._metadata_type__
+        if isinstance(parent_schema._metadata_type__, str)
+        else parent_schema._metadata_type__.default
+    )
+    model._metadata_type_version__ = (
+        parent_schema._metadata_type_version__
+        if isinstance(parent_schema._metadata_type_version__, str)
+        else parent_schema._metadata_type_version__.default
+    )
+    model._template_name__ = name if uid is not None else None
+    model._template_uid__ = uid
+    return model
 
 
 def get_children_of_props(
-    props: List[Dict[str, str]], parent_schema: Type[BaseModel]
+    props: List[Dict[str, str]], parent_schema: Type[BaseModel], apply_rules: bool = True
 ) -> Dict[str : Tuple[Type[BaseModel]], Field]:
     children = {}
     for prop in props:
         if "prop_key" not in prop:
-            children.update(template_type_handler(prop, parent_schema))
+            children.update(template_type_handler(prop, parent_schema, apply_rules=apply_rules))
         else:
             name = prop["prop_key"]
             try:
                 child_field_info = get_child_field_info_from_dot_annotated_name(name, parent_schema)
-                if "title" in prop:
-                    child_field_info.title = prop["title"]
-                if "help_text" in prop:
-                    child_field_info.description = prop["help_text"]
-                child_field = child_field_info.annotation, child_field_info
+                # if "title" in prop:
+                #     child_field_info.title = prop["title"]
+                # if "help_text" in prop:
+                #     child_field_info.description = prop["help_text"]
+                # child_field = child_field_info.annotation, child_field_info
+                child_field = update_field_info(prop, child_field_info, apply_rules=apply_rules)
                 children[prop["key"]] = child_field
             except KeyError:
-                children.update(template_type_handler(prop, parent_schema))
+                children.update(template_type_handler(prop, parent_schema, apply_rules=apply_rules))
     return children
 
 
@@ -227,65 +417,46 @@ def make_array_element_name(key: str) -> str:
         return f"{key.capitalize()}Item"
 
 
-def define_array_element(item, parent_schema) -> Dict[str : Tuple[Type[BaseModel]], Field]:
+def define_array_element(item, parent_schema, apply_rules: bool = True) -> Dict[str : Tuple[Type[BaseModel]], Field]:
     assert "type" in item and (
         item["type"] == "array" or item["type"] == "nested_array"
     ), f"expected array item but got {item}"
     assert "key" in item, f"expected key in item but got {item.keys()}"
     field_info = Field(..., title=item["title"])
-    if "help_text" in item:
-        field_info.description = item["help_text"]
+    # if "help_text" in item:
+    #     field_info.description = item["help_text"]
     if "props" not in item:
-        warnings.warn(f"array without a type found, assuming array of str: {item}")
+        warnings.warn(f"ArrayMissingType: '{item}' - assuming it's an array of str")
         element_type = List[str]
     else:
-        children = get_children_of_props(item["props"], parent_schema)
+        children = get_children_of_props(item["props"], parent_schema, apply_rules=apply_rules)
         child_model = create_model_for_template(children, parent_schema, make_array_element_name(item["key"]))
         element_type = List[child_model]
-    if ("required" in item and item["required"]) or ("is_required" in item and item["is_required"]):
-        field_type = element_type, field_info
-        field_info = copy_field_set_required_status(field_info, True)
-        logging.info("REQUIRED, item: %s", item)
-    else:
-        field_info.default = None
-        field_info = copy_field_set_required_status(field_info, False)
-        field_type = Optional[element_type], field_info
+
+    field_type = update_field_info(item, field_info, overriding_element_type=element_type, apply_rules=apply_rules)
 
     return {item["key"]: field_type}
 
 
 def define_simple_array_element(
-    item: dict, parent_schema: Type[BaseModel]
+    item: dict, parent_schema: Type[BaseModel], apply_rules: bool = True
 ) -> Dict[str : Tuple[Type[BaseModel]], Field]:
     assert (
         isinstance(item, dict) and "type" in item and item["type"] == "simple_array"
     ), f"expected simple_array item, got {item}"
     try:
         child_field_info = get_child_field_info_from_dot_annotated_name(item["key"], parent_schema)
-        if "title" in item:
-            child_field_info.title = item["title"]
-        if "description" in item:
-            child_field_info.description = item["description"]
     except KeyError as e:
         warnings.warn(
             (
                 f"KeyError: {e}. Field likely doesn't exist in base schema. "
                 f"Proceeding since key={item['key']} is a simple_array type. "
-                f"{item}"
+                f"Full item defition = {item}"
             ),
             UserWarning,
         )
         child_field_info = Field(..., title=item["title"])
-        if "help_test" in item:
-            child_field_info.description = item["help_text"]
-    if ("required" in item and item["required"]) or ("is_required" in item and item["is_required"]):
-        field_type = List[str], child_field_info
-        child_field_info = copy_field_set_required_status(child_field_info, True)
-        logging.info("REQUIRED, item: %s", item)
-    else:
-        child_field_info.default = None
-        child_field_info = copy_field_set_required_status(child_field_info, False)
-        field_type = Optional[List[str]], child_field_info
+    field_type = update_field_info(item, child_field_info, overriding_element_type=List[str], apply_rules=apply_rules)
     return {item["key"]: field_type}
 
 
@@ -333,35 +504,26 @@ def dot_to_hierarchy(d):
 
 
 def define_group_of_elements(
-    items: List[dict], parent_schema: Type[BaseModel]
+    items: List[dict], parent_schema: Type[BaseModel], apply_rules: bool = True
 ) -> Dict[str : Tuple[Type[BaseModel]], Field]:
     elements = {}
     for item in items:
         if "is_custom" in item and item["is_custom"] is True:
-            if "additional" not in elements:
-                elements["additional"] = {}
-            elif not isinstance(elements["additional"], dict):
-                elements["additional"] = {
-                    k: (v.annotation, v) for k, v in elements["additional"][0].model_fields.items()
-                }
-            d = template_type_handler(item, parent_schema)
-            m = create_model_for_template(d, parent_schema, item["key"])
-            field_info = Field(..., title=item["title"])
-            if "description" in item:
-                field_info.description = item["description"]
-            if "help_test" in item:
-                field_info.description = item["help_text"]
-            if ("required" in item and item["required"]) or ("is_required" in item and item["is_required"]):
-                field_type = m, field_info
-                field_info = copy_field_set_required_status(field_info, True)
-                logging.info("REQUIRED, item: %s", item)
-            else:
-                field_info.default = None
-                field_type = Optional[m], field_info
-                field_info = copy_field_set_required_status(field_info, False)
-            elements["additional"][item["key"]] = field_type
+            warnings.warn(f"SkippingCustomElement: '{item}' - Future work required to support these.")
+            continue
+            # if "additional" not in elements:
+            #     elements["additional"] = {}
+            # elif not isinstance(elements["additional"], dict):
+            #     elements["additional"] = {
+            #         k: (v.annotation, v) for k, v in elements["additional"][0].model_fields.items()
+            #     }
+            # d = template_type_handler(item, parent_schema, apply_rules=apply_rules)
+            # m = create_model_for_template(d, parent_schema, item["key"])
+            # field_info = Field(..., title=item["title"])
+            # field_type = update_field_info(item, field_info, overriding_element_type = m, apply_rules=apply_rules)
+            # elements["additional"][item["key"]] = field_type
         else:
-            new_dict = template_type_handler(item, parent_schema)
+            new_dict = template_type_handler(item, parent_schema, apply_rules=apply_rules)
             elements = merge_dicts(elements, new_dict)
     elements = dot_to_hierarchy(elements)
     elements = standardize_keys_in_dict(elements, pascal_to_snake=True)
@@ -374,30 +536,52 @@ def define_group_of_elements(
     return elements
 
 
-def template_type_handler(item, parent_schema):
+def template_type_handler(item, parent_schema, apply_rules: bool = True):
     if item["type"] in ["string", "text", "date", "textarea"]:
-        return define_simple_element(item, parent_schema, str)
+        return define_simple_element(item, parent_schema, str, apply_rules=apply_rules)
     elif item["type"] in ["integer", "number"]:
-        return define_simple_element(item, parent_schema, int)
+        return define_simple_element(item, parent_schema, int, apply_rules=apply_rules)
     elif item["type"] == "boolean":
-        return define_simple_element(item, parent_schema, bool)
+        return define_simple_element(item, parent_schema, bool, apply_rules=apply_rules)
     elif item["type"] in ["array", "nested_array"]:
-        return define_array_element(item, parent_schema)
+        return define_array_element(item, parent_schema, apply_rules=apply_rules)
     elif item["type"] == "simple_array":
-        return define_simple_array_element(item, parent_schema)
+        return define_simple_array_element(item, parent_schema, apply_rules=apply_rules)
     elif item["type"] in ["section", "section_container"]:
         if "items" in item:
-            return define_group_of_elements(item["items"], parent_schema)
+            return define_group_of_elements(item["items"], parent_schema, apply_rules=apply_rules)
         elif "props" in item:
-            return define_group_of_elements(item["props"], parent_schema)
+            return define_group_of_elements(item["props"], parent_schema, apply_rules=apply_rules)
         else:
             raise ValueError(f"{item['type']} does not contain items or props, found only {item}")
     else:
         raise NotImplementedError(f"type {item['type']}, {item}")
 
 
+def append_variables_and_data_files(model_elements, parent_schema):
+    if not (
+        parent_schema._metadata_type__ == "microdata"
+        or (
+            hasattr(parent_schema._metadata_type__, "default") and parent_schema._metadata_type__.default == "microdata"
+        )
+    ):
+        return model_elements
+
+    for v in ["data_files", "variables", "variable_groups"]:
+        if v in model_elements:
+            continue
+        field_info = get_child_field_info_from_dot_annotated_name(v, parent_schema)
+        annotation = field_info.annotation
+        if is_optional_annotation(annotation):
+            field_info = copy_field_set_required_status(field_info, False)
+        else:
+            field_info = copy_field_set_required_status(field_info, True)
+        model_elements[v] = (annotation, field_info)
+    return model_elements
+
+
 def pydantic_from_template(
-    template: Dict, parent_schema: Type[SchemaBaseModel], uid: str, name: Optional[str] = None
+    template: Dict, parent_schema: Type[SchemaBaseModel], uid: str, name: Optional[str] = None, apply_rules: bool = True
 ) -> Type[BaseModel]:
     assert "items" in template, f"expected 'items' in template but got {list(template.keys())}"
     if name is None:
@@ -405,5 +589,9 @@ def pydantic_from_template(
             name = template["title"]
         else:
             name = "new_model"
-    model_elements = define_group_of_elements(template["items"], parent_schema)
+    model_elements = define_group_of_elements(template["items"], parent_schema, apply_rules=apply_rules)
+    if parent_schema._metadata_type__ == "microdata" or (
+        hasattr(parent_schema._metadata_type__, "default") and parent_schema._metadata_type__.default == "microdata"
+    ):
+        model_elements = append_variables_and_data_files(model_elements, parent_schema)
     return create_model_for_template(model_elements, parent_schema, name, uid=uid)

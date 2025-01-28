@@ -4,15 +4,23 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import pandas as pd
+import tiktoken
+from markitdown import MarkItDown
 from metadataschemas.metadata_manager import MetadataManager
 from metadataschemas.utils.schema_base_model import SchemaBaseModel
 
 # from metadataschemas.utils.quick_start import make_skeleton
 from metadataschemas.utils.utils import merge_dicts, standardize_keys_in_dict
+from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 from requests.exceptions import HTTPError
 from urllib3.exceptions import InsecureRequestWarning
 
+from pymetadataeditor.llm_helpers import (
+    _iterated_validated_update_to_outline,
+    _prepend_draft_drop_non_str,
+    get_date_as_text,
+)
 from pymetadataeditor.requester import RequestsWithSpecificErrors
 from pymetadataeditor.templates import pydantic_from_template
 
@@ -24,21 +32,23 @@ DICT_MODES = ["dict", "dictionary"]
 PYDANTIC_MODES = ["pydantic", "model", "basemodel", "object"]
 EXCEL_MODES = ["excel"]
 
-# warnings.filterwarnings(
-#     "ignore", category=UserWarning, module="pydantic"
-# )  # suppresses warning when metadata passed as dict instead of a pydantic object
-
-# Create a flag for tracking if the warning was shown
-shown_insecure_warning = False
+shown_insecure_request_warnings = set()
 
 
-# Define a custom function to display warnings only once
+# Define a custom function to display warnings once only for unique InsecureRequestWarning messages
 def custom_showwarning(message, category, filename, lineno, file=None, line=None):
-    global shown_insecure_warning
-    if category is InsecureRequestWarning and not shown_insecure_warning:
-        # Show the warning and set the flag
+    global shown_insecure_request_warnings
+    # Only handle InsecureRequestWarning
+    if category is InsecureRequestWarning:
+        # Check if this message has already been shown
+        warning_key = (str(message), filename, lineno)
+        if warning_key not in shown_insecure_request_warnings:
+            # Show the warning and add the message to the set
+            warnings._showwarnmsg_impl(warnings.WarningMessage(message, category, filename, lineno, file, line))
+            shown_insecure_request_warnings.add(warning_key)
+    else:
+        # Pass other warnings through without suppression
         warnings._showwarnmsg_impl(warnings.WarningMessage(message, category, filename, lineno, file, line))
-        shown_insecure_warning = True
 
 
 # Set the warnings to always trigger, but filter them through custom_showwarning
@@ -226,8 +236,14 @@ class MetadataEditor:
         """
         if isinstance(metadata, BaseModel):
             metadata_type, uid = (
-                metadata.__metadata_type__,
-                metadata.__template_uid__,
+                metadata._metadata_type__
+                if isinstance(metadata._metadata_type__, str)
+                else metadata._metadata_type__.default,
+                metadata._template_uid__
+                if isinstance(metadata._template_uid__, str)
+                else metadata._template_uid__.default
+                if hasattr(metadata._template_uid__, "default")
+                else None,
             )  # self._lookup_metadata_type_and_uid(metadata)
         elif isinstance(metadata, dict):
             if metadata_type_or_template_uid is None:
@@ -282,10 +298,14 @@ class MetadataEditor:
             else:
                 return metadata_dict
         else:
-            metadata_type = metadata_object.__metadata_type__
+            metadata_type = (
+                metadata_object._metadata_type__
+                if isinstance(metadata_object._metadata_type__, str)
+                else metadata_object._metadata_type__.default
+            )
             # metadata_type, _ = self._lookup_metadata_type_and_uid(metadata_object)
             return self._mm.save_metadata_to_excel(
-                object=metadata_object,
+                metadata_model=metadata_object,
                 filename=filename,
                 title=title,
                 metadata_type=metadata_type,
@@ -295,7 +315,9 @@ class MetadataEditor:
     # Metadata Classes
     ####################################################################################################################
 
-    def _get_template_class_and_type_and_UID(self, template_uid: str) -> Tuple[Type[BaseModel], str, str]:
+    def _get_template_class_and_type_and_UID(
+        self, template_uid: str, apply_template_rules: bool = True
+    ) -> Tuple[Type[BaseModel], str, str]:
         """
         Args:
             template_uid (str): The UID of the template.
@@ -305,7 +327,7 @@ class MetadataEditor:
             str: The metadata type, such as 'document', 'geospatial', or 'image'.
             str: The template UID.
         """
-        if template_uid in self._templates and "class" in self._templates[template_uid]:
+        if template_uid in self._templates and "class" in self._templates[template_uid] and apply_template_rules:
             return self._templates[template_uid]["class"], self._templates[template_uid]["metadata_type"], template_uid
         try:
             temp = self.get_template_by_uid(template_uid)
@@ -316,21 +338,25 @@ class MetadataEditor:
                 f"from MetadataEditor.list_templates(limit='all')",
                 response=e,
             )
-
         else:
             metadata_type = self._templates[template_uid]["metadata_type"]
-            if "class" not in self._templates[template_uid]:
+            if "class" not in self._templates[template_uid] or apply_template_rules is False:
                 parent_schema = self._mm.metadata_class_from_name(metadata_type)
                 klass = pydantic_from_template(
-                    temp.template, parent_schema=parent_schema, uid=template_uid, name=temp.name
+                    temp.template,
+                    parent_schema=parent_schema,
+                    uid=template_uid,
+                    name=temp.name,
+                    apply_rules=apply_template_rules,
                 )
-                self._templates[template_uid]["class"] = klass
+                if apply_template_rules:
+                    self._templates[template_uid]["class"] = klass
             else:
                 klass = self._templates[template_uid]["class"]
             return klass, metadata_type, template_uid
 
     def _get_metadata_class_and_type_and_UID(
-        self, metadata_type_or_template_uid: str
+        self, metadata_type_or_template_uid: str, apply_template_rules: bool = True
     ) -> Tuple[Type[BaseModel], str, None | str]:
         """
         Args:
@@ -345,7 +371,9 @@ class MetadataEditor:
             metadata_type = self._mm.standardize_metadata_name(metadata_type_or_template_uid)
         except ValueError:
             # assume must be template
-            return self._get_template_class_and_type_and_UID(metadata_type_or_template_uid)
+            return self._get_template_class_and_type_and_UID(
+                metadata_type_or_template_uid, apply_template_rules=apply_template_rules
+            )
         else:
             if self._default_templates is None:
                 _ = self.list_templates()
@@ -356,33 +384,17 @@ class MetadataEditor:
                 and self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid != ""
             ):
                 return self._get_template_class_and_type_and_UID(
-                    self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid
+                    self._default_templates[self._default_templates.data_type == metadata_type].iloc[0].uid,
+                    apply_template_rules=apply_template_rules,
                 )
             else:
                 klass = self._mm.metadata_class_from_name(metadata_type)
                 return klass, metadata_type, None
 
-    # def _lookup_metadata_type_and_uid(self, metadata: BaseModel) -> Tuple[str, None | str]:
-    #     """
-    #     Args:
-    #         metadata (BaseModel): The metadata object to lookup the template for.
-
-    #     Returns:
-    #         str: The metadata type
-    #         None | str: The template UID if the metadata is from a template, otherwise None
-    #     """
-    #     for k, v in self._templates.items():
-    #         if isinstance(metadata, v["class"]):
-    #             return v["metadata_type"], k
-    #     else:
-    #         for k, v in self._mm._TYPE_TO_SCHEMA.items():
-    #             if isinstance(metadata, v):
-    #                 return k, None
-    #         else:
-    #             raise ValueError(f"Could not find metadata type for {metadata}")
-
     def get_metadata_class(self, metadata_type_or_template_uid: str) -> Type[BaseModel]:
-        return self._get_metadata_class_and_type_and_UID(metadata_type_or_template_uid)[0]
+        return self._get_metadata_class_and_type_and_UID(
+            metadata_type_or_template_uid.strip(), apply_template_rules=True
+        )[0]
 
     def make_metadata_outline(
         self,
@@ -531,14 +543,14 @@ class MetadataEditor:
             print(f"\nproject_metadata = {project['metadata']}\n")
         combined_dict = merge_dicts(
             skeleton_object,
-            project["metadata"],
+            remove_empty_from_dict(project["metadata"]),
             skeleton_mode=True,
         )
         combined_dict = standardize_keys_in_dict(combined_dict)
         if debug:
             print(f"combined_dict = {combined_dict}\n")
         try:
-            metadata_object = klass.model_validate(standardize_keys_in_dict(combined_dict))
+            metadata_object = klass.model_validate(standardize_keys_in_dict(combined_dict), strict=False)
         except ValidationError as e:
             raise TemplateError(
                 f"{validation_error_msg}, consider rerunning get_project_metadata_by_id with "
@@ -552,6 +564,200 @@ class MetadataEditor:
             filename=filename,
             title=title,
             simplify=simplify,
+        )
+
+    ####################################################################################################################
+    # Automatic Metadata Creation
+    ####################################################################################################################
+
+    def draft_metadata_from_files(
+        self,
+        openai_api_key: str,
+        files: List[str] | str,
+        output_mode: str,
+        metadata_type_or_template_uid: str,
+        metadata_producer_organization: Optional[str] = None,
+        # prefix: Optional[str] = "?",
+        filename: Optional[str] = None,
+        title: Optional[str] = None,
+        openai_model="gpt-4o",
+        tokenizer_model="o200k_base",
+        max_tokens=128_000,
+    ) -> Union[BaseModel, Dict, str]:
+        """
+        Automatically generate *draft* metadata for a project based on files such as questionnaires, reports, etc.
+
+        The files can be
+
+            •PDF
+            •PowerPoint
+            •Word
+            •Excel
+            •Images
+            •Audio
+            •HTML
+            •Text-based formats (CSV, JSON, XML)
+            •ZIP files
+
+        In the case of images and audio the files will first be passed to OpenAI for describing or transcribing.
+
+        Args:
+
+            openai_api_key (str): The OpenAI API key
+            files (List[str] | str): The path to the file or a list of paths to the files from which to base metadata.
+            output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
+            metadata_type_or_template_uid (str): The type of metadata to create or the UID of a template to use.
+            metadata_producer_organization (Optional[str]): The name of the organisation producing the metadata.
+            filename (Optional[str]): If output_mode=='excel', the path to the Excel file.
+                If None and output_mode=='excel', defaults to {name of metadata type}_metadata.xlsx
+            title (Optional[str]): If output_mode=='excel', the title for the Excel sheet.
+                If None and mode=='excel', defaults to '{name of metadata type} Metadata'
+            openai_model (str): The OpenAI model to use. Defaults to "gpt-4o". Note any model must accept a response
+                format (also called structured output). Usually you should leave this to the default value.
+                The option is provided in case OpenAI deprecated the 4o model.
+            tokenizer_model (str): The tokenizer model to use. Defaults to "o200k_base". Note this should be the
+                tokenizer corresponding to the OpenAI model used. Usually you should leave this to the default value.
+                The option is provided in case OpenAI deprecated the 4o model.
+            max_tokens (int): The maximum number of tokens to use when sending the content to OpenAI.
+                Defaults to 128_000, which has been the typical maximum for the 4o model.
+
+        Returns:
+            (Union[BaseModel, Dict, str]):
+                If mode == 'dict', a dictionary is returned.
+                If mode == 'pydantic', a pydantic model object is returned.
+                If mode == 'excel' then the metadata was saved to a file and the filename is returned.
+        """
+        #  prefix (Optional[str]): A prefix to add to the metadata. Defaults to '?'. If None, no prefix is added.
+
+        metadata_class_no_rules, metadata_type, _ = self._get_metadata_class_and_type_and_UID(
+            metadata_type_or_template_uid, apply_template_rules=False
+        )
+        enc = tiktoken.get_encoding(tokenizer_model)
+        client = OpenAI(api_key=openai_api_key)
+
+        if metadata_producer_organization is not None:
+            system_prompt = (
+                f"You are an expert on producing {metadata_type} documentation from {metadata_producer_organization}. "
+            )
+        else:
+            system_prompt = f"You are an expert on producing {metadata_type} documentation. "
+        system_prompt += (
+            f"Based on the user content, write project metadata. "
+            f"If you are unsure about the correct metadata values, leave them blank. "
+            f"Do not guess. Accuracy is more important than completeness. "
+            f"The metadata is being produced today, {get_date_as_text()}."
+        )
+
+        # "You are an expert on survey microdata documentation. Based on the user content alone, write project metadata.
+        # If you are unsure about the correct metadata values, leave them blank. Do not guess. Accuracy is more
+        # important than completeness."},
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
+
+        md = MarkItDown(llm_client=client, llm_model=openai_model)
+
+        if isinstance(files, str):
+            files = [files]
+
+        out = ""
+        for doc in files:
+            out += f"# {doc}\n\n"
+            out += md.convert(doc).text_content + "\n\n"
+            user_message = [{"role": "user", "content": out}]
+            num_tokens = len(enc.encode(messages[0]["content"]) + enc.encode(user_message[0]["content"]))
+            if num_tokens > max_tokens:
+                warnings.warn(
+                    f"Caution - after importing {doc} the token count will be {num_tokens} which exceeds the maximum of"
+                    f" {max_tokens}, truncating the content and proceeding."
+                )
+            else:
+                print(f"Read in {doc}, running token count is {num_tokens}")
+        messages += user_message
+
+        print("Sending to OpenAI, this may take a few minutes...")
+        completion = client.beta.chat.completions.parse(
+            model=openai_model,
+            messages=messages,
+            response_format=metadata_class_no_rules,
+        )
+
+        message = completion.choices[0].message
+        if not message.parsed:
+            raise ValueError(message.refusal)
+
+        metadata_dict = message.parsed.model_dump(exclude_none=True, exclude_unset=True)
+
+        # if prefix:
+        #     metadata_dict = self._prepend_draft_drop_non_str(metadata_dict, prefix)
+        metadata_class_with_rules = self.get_metadata_class(metadata_type_or_template_uid)
+        metadata_with_rules = _iterated_validated_update_to_outline(metadata_class_with_rules, metadata_dict)
+
+        return self._process_metadata_output(
+            metadata_object=metadata_with_rules,
+            output_mode=output_mode,
+            filename=filename,
+            title=title,
+        )
+
+    def augment_metadata_from_files(
+        self,
+        input_metadata: Union[BaseModel, Dict, str],
+        openai_api_key: str,
+        files: List[str] | str,
+        output_mode: str,
+        metadata_type_or_template_uid: Optional[str] = None,
+        prefix: Optional[str] = None,
+        filename: Optional[str] = None,
+        title: Optional[str] = None,
+        openai_model="gpt-4o",
+        tokenizer_model="o200k_base",
+        max_tokens=128_000,
+    ) -> Union[BaseModel, Dict, str]:
+        if metadata_type_or_template_uid is None:
+            if isinstance(input_metadata, dict):
+                raise ValueError("metadata_type_or_template_uid must be passed when input_metadata is a dictionary")
+
+            _, _, metadata_type_or_template_uid = self._process_metadata_input(
+                input_metadata, metadata_type_or_template_uid
+            )
+
+        old_metadata = self.change_mode_or_template(
+            input_metadata, output_mode="dict", input_template_uid=metadata_type_or_template_uid, simplify=True
+        )
+
+        klass = self.get_metadata_class(metadata_type_or_template_uid)
+
+        old_metadata = _iterated_validated_update_to_outline(klass, updates=old_metadata)
+
+        new_metadata = self.draft_metadata_from_files(
+            openai_api_key=openai_api_key,
+            files=files,
+            metadata_type_or_template_uid=metadata_type_or_template_uid,
+            output_mode="dict",
+            # prefix=prefix,
+            filename=None,
+            title=None,
+            openai_model=openai_model,
+            tokenizer_model=tokenizer_model,
+            max_tokens=max_tokens,
+        )
+
+        if new_metadata is None or len(new_metadata) == 0:
+            raise ValueError("No metadata was generated from the files.")
+
+        if prefix:
+            new_metadata = _prepend_draft_drop_non_str(new_metadata, prefix=prefix)
+
+        combined_metadata = merge_dicts(old_metadata, new_metadata)
+
+        metadata_object = _iterated_validated_update_to_outline(klass, updates=combined_metadata)
+        return self._process_metadata_output(
+            metadata_object=metadata_object,
+            output_mode=output_mode,
+            filename=filename,
+            title=title,
         )
 
     ####################################################################################################################
@@ -625,8 +831,18 @@ class MetadataEditor:
 
         if not isinstance(new_metadata, dict):
             if isinstance(new_metadata, BaseModel):
-                metadata_type = new_metadata.__metadata_type__
-                uid = new_metadata.__template_uid__
+                metadata_type = (
+                    new_metadata._metadata_type__
+                    if isinstance(new_metadata._metadata_type__, str)
+                    else new_metadata._metadata_type__.default
+                )
+                uid = (
+                    new_metadata._template_uid__
+                    if isinstance(new_metadata._template_uid__, str)
+                    else new_metadata._template_uid__.default
+                    if hasattr(new_metadata._template_uid__, "default")
+                    else None
+                )
             else:
                 metadata_info = self._mm.get_metadata_type_info_from_excel_file(new_metadata)
                 metadata_type = metadata_info["metadata_type"]
@@ -824,7 +1040,8 @@ class MetadataEditor:
             new_klass, new_type, _ = self._get_metadata_class_and_type_and_UID(output_template_uid)
             try:
                 metadata = new_klass.model_validate(
-                    remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True))
+                    remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)),
+                    strict=False,
                 )
             except ValidationError as e:
                 raise TemplateError(
@@ -851,21 +1068,30 @@ class MetadataEditor:
     ####################################################################################################################
 
     def save_metadata_to_excel(
-        self, object: BaseModel, filename: Optional[str] = None, title: Optional[str] = None
+        self,
+        metadata_model: BaseModel | dict | str,
+        metadata_type_or_template_uid: Optional[str] = None,
+        filename: Optional[str] = None,
+        title: Optional[str] = None,
     ) -> str:
         """
         Save a metadata object to an Excel file.
 
         Args:
-            object (BaseModel): The pydantic object to save to the Excel file.
-            filename (Optional[str]): The path to the Excel file. Defaults to {name}_metadata.xlsx
-            title (Optional[str]): The title for the Excel sheet. Defaults to '{name} Metadata'
+            metadata_model (BaseModel|dict|str): The pydantic object, python dictionary or path to an Excel file.
+            metadata_type_or_template_uid (Optional[str]): If the metadata is a dictionary, this is the UID of the
+                template to use. Ignored if metadata is a pydantic model or a path to an Excel file.
+            filename (Optional[str]): The path to the output Excel file. Defaults to {name}_metadata.xlsx
+            title (Optional[str]): The title for the output Excel sheet. Defaults to '{name} Metadata'
 
         Returns:
             str: The path to the saved Excel file.
         """
+        processed_model = self._process_metadata_input(
+            metadata_model, metadata_type_or_template_uid=metadata_type_or_template_uid
+        )[0]
         return self._process_metadata_output(
-            metadata_object=object, output_mode="excel", filename=filename, title=title
+            metadata_object=processed_model, output_mode="excel", filename=filename, title=title
         )
 
     def read_metadata_from_excel(

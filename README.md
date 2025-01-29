@@ -2,8 +2,6 @@
 
 A tool connected to Metadata Editor for creating, editing and managing metadata for microdata, indicators, geospatial data, documents, scripts, images and videos.
 
-An overview of using the pyMetadataEditor library can be found at [pyMetadataEditor Demo](https://github.com/mah0001/pymetadataeditor/blob/main/demo/demo.ipynb) while a seperate guide to using automatic metadata creation and augmentation is available at [Automated Metadata Creation](https://github.com/mah0001/pymetadataeditor/blob/main/demo/demo_automated_metadata_creation.ipynb).
-
 # How to use pyMetadataEditor
 
 

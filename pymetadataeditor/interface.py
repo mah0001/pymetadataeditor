@@ -1,3 +1,5 @@
+"""The interface between pyMetadataEditor and the Metadata Editor API."""
+
 import warnings
 from json import JSONDecodeError
 from pathlib import Path
@@ -59,19 +61,25 @@ warnings.showwarning = custom_showwarning
 
 
 class DeleteNotAppliedError(Exception):
+    """Exception raised when a delete request is not accepted by the system."""
+
     def __init__(self, message="Delete request not accepted by system.", response=None):
+        """Initialize the error with a message and an optional response."""
         super().__init__(message)
         self.response = response
 
 
 class TemplateError(Exception):
+    """Exception raised when there is an error with a template."""
+
     def __init__(self, message="Error with template", response=None):
+        """Initialize the error with a message and an optional response."""
         super().__init__(message)
         self.message = message
         self.response = response
 
     def __str__(self):
-        # Customize the error message to include the response if available
+        """Customize the error message to include the response if available."""
         if self.response:
             return f"{self.response}\n\n{self.message}"
         else:
@@ -79,37 +87,43 @@ class TemplateError(Exception):
 
 
 class MetadataEditor:
+    """pyMetadataEditor helps create and manage metadata in a Metadata Editor database.
+
+    pyMetadataEditor allows you to list, create, update and delete projects, manage collections and list templates in
+      a metadata database.
+
+    You can save metadata to an Excel file. Or use OpenAI to draft metadata from files or web pages.
+
+    First obtain an API key and pase it into a file called '.env' in the root of your project. The contents of the
+        file should look like this:
+
+        METADATA_API_URL=https://<name_of_your_metadata_database>.org/index.php/api
+        METADATA_API_KEY=your_api_key
+
+    Then in python run
+
+        from pymetadataeditor import MetadataEditor
+        import os
+
+        api_url = os.getenv("METADATA_API_URL")
+        api_key = os.getenv("METADATA_API_KEY")
+        me = MetadataEditor(api_url = api_url, api_key = api_key)
+
+    Then you can list and create new projects like so:
+
+        me.list_projects(limit=100)
+        indicator_metadata = me.make_metadata_outline("indicator", "pydantic")
+        # update the indicator metadata as needed.
+
+        # View nicely formatted metadata
+        indicator_metadata.pretty_print()
+
+        # Then log the metadata to the database
+        me.create_project_log(dict_of_indicator, "indicator")
+    """
+
     def __init__(self, api_url: str, api_key: str, allow_http: bool = False, verify_ssl: bool = True):
-        """
-        MetadataEditor allows you to list, create, update and delete projects, manage collections and list templates in
-          a metadata database.
-
-        First obtain an API key and pase it into a file called '.env' in the root of your project. The contents of the
-            file should look like this:
-
-            METADATA_API_URL=https://<name_of_your_metadata_database>.org/index.php/api
-            METADATA_API_KEY=your_api_key
-
-        Then in python run
-
-            from pymetadataeditor import MetadataEditor
-            import os
-
-            api_url = os.getenv("METADATA_API_URL")
-            api_key = os.getenv("METADATA_API_KEY")
-            me = MetadataEditor(api_url = api_url, api_key = api_key)
-
-        Then you can list and create new projects like so:
-
-            me.list_projects(limit=100)
-            indicator_metadata = me.make_metadata_outline("indicator", "pydantic")
-            # update the indicator metadata as needed.
-
-            # View nicely formatted metadata
-            indicator_metadata.pretty_print()
-
-            # Then log the metadata to the database
-            me.create_project_log(dict_of_indicator, "indicator")
+        """Create a new MetadataEditor object connected to an instance of a Metadata Editor database.
 
         Args:
             api_url (str): the URL typically looks like 'https://<name_of_your_metadata_database>.org/index.php/api'
@@ -118,6 +132,14 @@ class MetadataEditor:
                 more secure "https". Defaults to False.
             verify_ssl (bool): Although it is good practice for API requests to verify SSL, some systems do not allow
                 this so setting verify_ssl=False may be required. Defaults to True.
+
+        Example:
+            from pymetadataeditor import MetadataEditor
+            import os
+
+            api_url = os.getenv("METADATA_API_URL")
+            api_key = os.getenv("METADATA_API_KEY")
+            me = MetadataEditor(api_url = api_url, api_key = api_key)
         """
         self._apinterface = RequestsWithSpecificErrors(
             api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl
@@ -131,8 +153,7 @@ class MetadataEditor:
     ####################################################################################################################
 
     def count_projects(self) -> int:
-        """
-        Count the number of projects you have access to
+        """Count the number of projects you have access to.
 
         Returns:
             int: The number of projects
@@ -150,11 +171,9 @@ class MetadataEditor:
         offset: int = 0,
         sort_by: Optional[str] = None,
     ) -> pd.DataFrame:
-        """
-        Lists all the projects associated with your API key.
+        """Lists all the projects associated with your API key.
 
         Args:
-
             limit (int or str): Page size e.g. 10 to show 10 records. If limit='All' then all records are retrieved.
             keywords (optional str or list of str): Keywords for filtering projects by title and/or idno.
             metadata_type (optional str): If given, only projects of this type are returned.
@@ -203,7 +222,8 @@ class MetadataEditor:
         return projects
 
     def get_project_by_id(self, id: int) -> pd.Series:
-        """
+        """Retrieve information about a project such as the title, creator, creation date and last updated date.
+
         Args:
             id (int): the id of the project, not to be confused with the idno.
 
@@ -225,7 +245,8 @@ class MetadataEditor:
     def _process_metadata_input(
         self, metadata: Union[SchemaBaseModel, Dict, str], metadata_type_or_template_uid: Optional[str] = None
     ) -> Tuple[BaseModel, str, None | str]:
-        """
+        """Internal function to process metadata input, converting it to a pydantic object if necessary.
+
         Args:
             metadata (Union[BaseModel, Dict, str]): The metadata to process.
             metadata_type_or_template_uid (Optional[str]): The metadata type or template UID. Required if metadata is a
@@ -272,7 +293,8 @@ class MetadataEditor:
         title: Optional[str] = None,
         simplify: Optional[bool] = None,
     ) -> Union[BaseModel, Dict, str]:
-        """
+        """Internal function to output metadata in a given format - dict, pydantic or excel.
+
         Args:
             metadata_object (BaseModel): The metadata object to output.
             output_mode (str): The output mode. Must be 'dict', 'pydantic' or 'excel'.
@@ -286,9 +308,9 @@ class MetadataEditor:
         Returns:
             Union[BaseModel, Dict, str]: The output metadata.
         """
-        assert (
-            output_mode in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES
-        ), f"mode should be 'pydantic', 'dict' or 'excel' but found '{output_mode}'"
+        assert output_mode in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES, (
+            f"mode should be 'pydantic', 'dict' or 'excel' but found '{output_mode}'"
+        )
         if output_mode in PYDANTIC_MODES:
             return metadata_object
         elif output_mode in DICT_MODES:
@@ -320,9 +342,15 @@ class MetadataEditor:
     def _get_template_class_and_type_and_UID(
         self, template_uid: str, apply_template_rules: bool = True
     ) -> Tuple[Type[BaseModel], str, str]:
-        """
+        """Internal function to return the class of a given template UID, it's type and UID.
+
+        Template rules are requirements on fields such as max_length of a string is 10 characters. We generally want
+            such rules if they're specified, but OpenAI strucutured output doesn't allow for such rules so when making
+            LLM calls we need to ignore rules.
+
         Args:
             template_uid (str): The UID of the template.
+            apply_template_rules (bool): Whether to apply template rules. Defaults to True.
 
         Returns:
             Type[BaseModel]: The Pydantic class of the template.
@@ -360,9 +388,15 @@ class MetadataEditor:
     def _get_metadata_class_and_type_and_UID(
         self, metadata_type_or_template_uid: str, apply_template_rules: bool = True
     ) -> Tuple[Type[BaseModel], str, None | str]:
-        """
+        """Internal function to return the class of a given metadata type or template UID, it's type and UID.
+
+        Template rules are requirements on fields such as max_length of a string is 10 characters. We generally want
+            such rules if they're specified, but OpenAI strucutured output doesn't allow for such rules so when making
+            LLM calls we need to ignore rules.
+
         Args:
             metadata_type_or_template_uid (str): The metadata type or template UID.
+            apply_template_rules (bool): Whether to apply template rules. Defaults to True.
 
         Returns:
             Type[BaseModel]: The pydantic class of the metadata.
@@ -394,6 +428,21 @@ class MetadataEditor:
                 return klass, metadata_type, None
 
     def get_metadata_class(self, metadata_type_or_template_uid: str) -> Type[BaseModel]:
+        """Create a pydantic class of a given metadata type or template UID.
+
+        If a metadata type is passed then the class will be created from the default template of that type.
+
+        Args:
+            metadata_type_or_template_uid (str): The metadata type or template UID.
+
+        Returns:
+            Type[BaseModel]: The pydantic class of the metadata.
+
+        Examples:
+            me = MetadataEditor(api_url=..., api_key=...)
+            indicator_metadata_class = me.get_metadata_class("indicator")
+            specific_metadata_class = me.get_metadata_class("timeseries-system-en")
+        """
         return self._get_metadata_class_and_type_and_UID(
             metadata_type_or_template_uid.strip(), apply_template_rules=True
         )[0]
@@ -405,9 +454,9 @@ class MetadataEditor:
         filename: Optional[str] = None,
         title: Optional[str] = None,
     ) -> Union[Dict, BaseModel, Path]:
-        """
-        Creates a skeleton outline of a given metadata type. Since the metadata can be quite complex, this function
-        creates all the possible fields and their subfields.
+        """Creates a skeleton outline of a given metadata type.
+
+        Since the metadata can be quite complex, it's useful to start with all the possible fields and their subfields.
 
         Args:
             metadata_type_or_template_uid (str):
@@ -427,7 +476,6 @@ class MetadataEditor:
                 - If `output_mode == 'excel'`, the metadata was saved to a file and the filename is returned.
 
         Examples:
-
             me = MetadataEditor(api_url=..., api_key=...)
 
             # using a metadata type will create an outline using the default template
@@ -465,7 +513,8 @@ class MetadataEditor:
         title: Optional[str] = None,
         debug: bool = False,
     ) -> Union[BaseModel, Dict, str]:
-        """
+        """Return the metadata as a dictionary, pydantic object or saved to an Excel file.
+
         Args:
             id (int): the id of the project, not to be confused with the idno.
             output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
@@ -482,6 +531,7 @@ class MetadataEditor:
                 If None and output_mode=='excel', defaults to {name of metadata type}_metadata.xlsx
             title (Optional[str]): If output_mode=='excel' then the title for the Excel sheet.
                 If None and mode=='excel', defaults to '{name of metadata type} Metadata'
+            debug (bool): If True, then the function will print out some internal, intermediate output. Default False.
 
         Returns:
             (Union[BaseModel, Dict, str]):
@@ -490,9 +540,9 @@ class MetadataEditor:
                 If mode == 'excel' then the metadata was saved to a file and the filename is returned.
         """
         output_mode = output_mode.lower().strip()
-        assert (
-            output_mode in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES
-        ), f"mode should be 'pydantic', 'dict' or 'excel' but found '{output_mode}'"
+        assert output_mode in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES, (
+            f"mode should be 'pydantic', 'dict' or 'excel' but found '{output_mode}'"
+        )
 
         template_uid = template_uid.lower().strip() if template_uid is not None else None
         if template_uid == "none" and output_mode not in DICT_MODES:
@@ -521,9 +571,9 @@ class MetadataEditor:
                 f"The stored metadata conflicts with the specified {project.type} template with UID '{uid}'"
             )
         elif "template_uid" in project and project.template_uid is not None and project.template_uid != "":
-            assert (
-                project.template_uid.lower() != "none"
-            ), f"template_uid is 'none' but this should have been caught earlier, {project}"
+            assert project.template_uid.lower() != "none", (
+                f"template_uid is 'none' but this should have been caught earlier, {project}"
+            )
             klass, _, uid = self._get_template_class_and_type_and_UID(project.template_uid)
             skeleton_object = self.make_metadata_outline(uid, output_mode="dict")
             validation_error_msg = (
@@ -586,8 +636,7 @@ class MetadataEditor:
         tokenizer_model="o200k_base",
         max_tokens=128_000,
     ) -> Union[BaseModel, Dict, str]:
-        """
-        Automatically generate *draft* metadata for a project based on files such as questionnaires, reports, etc.
+        """Automatically generate *draft* metadata for a project based on local files or web pages.
 
         The files can be
 
@@ -604,7 +653,6 @@ class MetadataEditor:
         In the case of images and audio the files will first be passed to OpenAI for describing or transcribing.
 
         Args:
-
             openai_api_key (str): The OpenAI API key
             files (List[str] | str): The path to the file or a list of paths to the files from which to base metadata.
             output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
@@ -628,6 +676,17 @@ class MetadataEditor:
                 If mode == 'dict', a dictionary is returned.
                 If mode == 'pydantic', a pydantic model object is returned.
                 If mode == 'excel' then the metadata was saved to a file and the filename is returned.
+
+        Example:
+            metadataeditor.draft_metadata_from_files(
+                openai_api_key="...",
+                files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
+                output_mode="pydantic",
+                metadata_type_or_template_uid="indicator",
+                metadata_producer_organization="My Organization",
+                filename="output.xlsx",
+                title="My Metadata",
+            )
         """
         #  prefix (Optional[str]): A prefix to add to the metadata. Defaults to '?'. If None, no prefix is added.
 
@@ -719,6 +778,75 @@ class MetadataEditor:
         tokenizer_model="o200k_base",
         max_tokens=128_000,
     ) -> Union[BaseModel, Dict, str]:
+        """Augment existing metadata with information from files or web pages.
+
+        Since the metadata is being augmented, the new metadata can be given a prefix to indicate it is new.
+
+        Args:
+            input_metadata (Union[BaseModel, Dict, str]): The existing metadata to augment. Can be a dictionary, a
+                pydantic model or a path to an Excel file.
+            openai_api_key (str): The OpenAI API key
+            files (List[str] | str): The path to the file or a list of paths to the files from which to base metadata.
+            output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
+            metadata_type_or_template_uid (Optional[str]): The type of metadata to create or the UID of a template to
+                use. If None then the type will be inferred from the input_metadata.
+            metadata_producer_organization (Optional[str]): The name of the organisation producing the metadata.
+            prefix (Optional[str]): A prefix to add to the new metadata. If None, no prefix is added.
+            filename (Optional[str]): If output_mode=='excel', the path to the Excel file.
+                If None and output_mode=='excel', defaults to {name of metadata type}_metadata.xlsx
+            title (Optional[str]): If output_mode=='excel', the title for the Excel sheet.
+                If None and mode=='excel', defaults to '{name of metadata type} Metadata'
+            openai_model (str): The OpenAI model to use. Defaults to "gpt-4o". Note any model must accept a response
+                format (also called structured output). Usually you should leave this to the default value.
+                The option is provided in case OpenAI deprecated the 4o model.
+            tokenizer_model (str): The tokenizer model to use. Defaults to "o200k_base". Note this should be the
+                tokenizer corresponding to the OpenAI model used. Usually you should leave this to the default value.
+                The option is provided in case OpenAI deprecated the 4o model.
+            max_tokens (int): The maximum number of tokens to use when sending the content to OpenAI.
+                Defaults to 128_000, which has been the typical maximum for the 4o model.
+
+        Returns:
+            Union[BaseModel, Dict, str]: The augmented metadata.
+
+        Example:
+            me = MetadataEditor(api_url=..., api_key=...)
+
+            # augment existing metadata with information from files
+            me.augment_metadata_from_files(
+                input_metadata=my_indicator_metadata,
+                openai_api_key="...",
+                files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
+                output_mode="pydantic",
+                metadata_producer_organization="My Organization",
+                prefix="<AI>"
+            )
+        """
+        #  prefix (Optional[str]): A prefix to add to the metadata. Defaults to '?'. If None, no prefix is added.
+
+        if isinstance(input_metadata, str):
+            input_metadata = pd.read_excel(input_metadata, sheet_name=0).to_dict(orient="records")[0]
+
+        metadata_type_or_template_uid = self._process_metadata_input(input_metadata, metadata_type_or_template_uid)[2]
+
+        if metadata_type_or_template_uid is None:
+            raise ValueError("metadata_type_or_template_uid must be passed when input_metadata is a dictionary")
+
+        old_metadata = self.change_mode_or_template(
+            input_metadata, output_mode="dict", input_template_uid=metadata_type_or_template_uid, simplify=True
+        )
+
+        klass = self.get_metadata_class(metadata_type_or_template_uid)
+
+        old_metadata = _iterated_validated_update_to_outline(klass, updates=old_metadata)
+
+        old_metadata = self.change_mode_or_template(old_metadata, output_mode="dict", simplify=True)
+        old_metadata_md = "# Previously written metadata\n\n"
+        old_metadata_md += json_to_markdown(old_metadata, level=2)
+
+        with NamedTemporaryFile(delete=True, suffix=".txt") as f:
+            f.write(old_metadata_md.encode("utf-8"))
+            f.flush()
+
         if metadata_type_or_template_uid is None:
             if isinstance(input_metadata, dict):
                 raise ValueError("metadata_type_or_template_uid must be passed when input_metadata is a dictionary")
@@ -785,8 +913,7 @@ class MetadataEditor:
     def create_project_log(
         self, metadata: Union[BaseModel, Dict, str], metadata_type_or_template_uid: Optional[str] = None
     ) -> int:
-        """
-        Validates and logs metadata which can be a dictionary, a pydantic model or a path to an Excel spreadsheet.
+        """Validates and logs metadata which can be a dictionary, a pydantic model or a path to an Excel spreadsheet.
 
         Args:
             metadata (dictionary or BaseModel or str):
@@ -817,9 +944,10 @@ class MetadataEditor:
         return ret["id"]
 
     def update_project_log_by_id(self, id: int, new_metadata: Union[BaseModel, Dict, str]):
-        """
-        Updates the record of the metadata. If a dictionary is passed that only contains a subset of the possible keys
-            then the remaining values not mentioned are left as is.
+        """Updates the record of the metadata.
+
+        If a dictionary is passed that only contains a subset of the possible keys then the remaining values not
+        mentioned are left as is.
 
         Args:
             id (int):
@@ -913,8 +1041,7 @@ class MetadataEditor:
         )
 
     def patch_update_project_log_by_id(self, id: int, op: str, path: str, value: Optional[str] = None):
-        """
-        Add, update, or remove parts of a project's metadata using a single JSON Patch operation.
+        """Add, update, or remove parts of a project's metadata using a single JSON Patch operation.
 
         "JSON Patch is a format for describing changes to a JSON document. It can be used to avoid sending a whole
         document when only a part has changed." - https://jsonpatch.com/ accessed 2024-08-20
@@ -966,8 +1093,7 @@ class MetadataEditor:
     ####################################################################################################################
 
     def list_templates(self) -> pd.DataFrame:
-        """
-        Retrieves templates, both standard and any custom templates
+        """Retrieves templates, both standard and any custom templates.
 
         Returns:
             pd.DataFrame: A DataFrame containing the templates. If none are found, an empty DataFrame is returned.
@@ -993,8 +1119,7 @@ class MetadataEditor:
             return templates
 
     def get_template_by_uid(self, uid: str) -> pd.Series:
-        """
-        Retrieves given template by *UID*, not id.
+        """Retrieves given template by *UID*, not id.
 
         Args:
             uid (str): The Unique Identifier of the template to retrieve.
@@ -1027,8 +1152,9 @@ class MetadataEditor:
         title: Optional[str] = None,
         simplify: Optional[bool] = None,
     ) -> Union[BaseModel, Dict, str]:
-        """
-        Change the mode or template of a metadata object. In terms of modes, you can convert
+        """Change the mode or template of a metadata object.
+
+        In terms of modes, you can convert
             - a dict to a pydantic model, or vice versa,
             - a dict to an Excel file, or vice versa,
             - a pydantic model to an Excel file, or vice versa
@@ -1092,8 +1218,7 @@ class MetadataEditor:
         filename: Optional[str] = None,
         title: Optional[str] = None,
     ) -> str:
-        """
-        Save a metadata object to an Excel file.
+        """Save a metadata object to an Excel file.
 
         Args:
             metadata_model (BaseModel|dict|str): The pydantic object, python dictionary or path to an Excel file.
@@ -1118,21 +1243,20 @@ class MetadataEditor:
         output_mode: str = "pydantic",
         exclude_unset=True,
     ) -> Union[BaseModel, Dict]:
-        """
-        Read metadata from an Excel file.
+        """Read metadata from an Excel file.
 
         Args:
             filename (str): The path to the Excel file.
-            mode (str): The output mode. Must be 'pydantic' or 'dict'.
+            output_mode (str): The output mode. Must be 'pydantic' or 'dict'.
             exclude_unset (bool): If mode=='dict', then if exclude_unset=True, only elements that were explicitly set
                 with non-null, non-empty values are returned in the dictionary.
 
         Returns:
             Union[BaseModel, Dict]: The metadata object or dictionary.
         """
-        assert (
-            output_mode not in EXCEL_MODES
-        ), f"read_metadata_from_excel output_mode should be 'pydantic' or 'dict' but found '{output_mode}'"
+        assert output_mode not in EXCEL_MODES, (
+            f"read_metadata_from_excel output_mode should be 'pydantic' or 'dict' but found '{output_mode}'"
+        )
         object = self._process_metadata_input(filename)[0]
         return self._process_metadata_output(object, output_mode, simplify=exclude_unset)
 
@@ -1141,8 +1265,7 @@ class MetadataEditor:
     ####################################################################################################################
 
     def list_collections(self) -> pd.DataFrame:
-        """
-        Lists all the collections associated with your API key.
+        """Lists all the collections associated with your API key.
 
         Returns:
             pd.DataFrame: Collection information
@@ -1153,7 +1276,8 @@ class MetadataEditor:
         return pd.DataFrame(response["collections"]).set_index("id")
 
     def get_collection_by_id(self, id: int) -> pd.Series:
-        """
+        """Get information about a collection like title, description, created date.
+
         Args:
             id (int): the id of the collection.
 
@@ -1169,8 +1293,7 @@ class MetadataEditor:
         return pd.Series(collection_data["collection"])
 
     def create_collection(self, title: str, description: str):
-        """
-        Creates a new collection with the specified title and description.
+        """Creates a new collection with the specified title and description.
 
         Args:
             title (str): The title of the collection.
@@ -1184,8 +1307,7 @@ class MetadataEditor:
         return ret["collection"]
 
     def update_collection(self, id: int, title: Optional[str] = None, description: Optional[str] = None):
-        """
-            Updates the specified collection with a new title and/or description.
+        """Updates the specified collection with a new title and/or description.
 
         Args:
             id (int): The unique identifier of the collection to update.
@@ -1205,8 +1327,7 @@ class MetadataEditor:
         self._apinterface.post_request("collections/update/{}", id=id, json=metadata)
 
     def count_projects_in_collection(self, collection: int) -> int:
-        """
-        Count the number of projects you have access to
+        """Count the number of projects you have access to.
 
         Args:
             collection (int):
@@ -1227,16 +1348,14 @@ class MetadataEditor:
         offset: int = 0,
         sort_by: Optional[str] = None,
     ) -> pd.DataFrame:
-        """
-        Retrieve projects that have been added to the given collection.
+        """Retrieve projects that have been added to the given collection.
 
         Args:
-
             collection (int):
                 The id of the collection.
             limit (int):
                 The maximum number of projects to return. If limit='All' then all records are retrieved.
-            keyword (optional str):
+            keywords (optional str or list of str):
                 filter projects based on whether the project title or idno contains this keyword
             offset (int):
                 Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
@@ -1244,11 +1363,9 @@ class MetadataEditor:
                 valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
 
         Returns:
-
             pd.DataFrame:
                 Information on the projects in the collection, such as id, idno, title and type.
         """
-
         if isinstance(limit, str):
             assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
             new_offset = offset
@@ -1283,8 +1400,7 @@ class MetadataEditor:
     def add_projects_to_collection(
         self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
     ):
-        """
-        Adds project or projects to specified collection or collections.
+        """Adds project or projects to specified collection or collections.
 
         This method associates one or more projects with one or more collections. The `collection`
         parameter can be a single collection ID or a list of collection IDs. The `projects` parameter
@@ -1293,7 +1409,6 @@ class MetadataEditor:
         are in the form of IDs (integer) or idno (string).
 
         Args:
-
             collection : Union[int, List[int]]
                 A single collection ID or a list of collection IDs to which projects should be added.
             id_format : str
@@ -1303,7 +1418,6 @@ class MetadataEditor:
                 project idnos to be added to the specified collection(s).
 
         Raises:
-
             AssertionError
                 If `id_format` is not 'id' or 'idno'.
 
@@ -1337,8 +1451,7 @@ class MetadataEditor:
     def remove_projects_from_collection(
         self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
     ):
-        """
-        Removes project or projects from specified collection or collections.
+        """Removes project or projects from specified collection or collections.
 
         This method dissociates one or more projects from one or more collections. The `collection`
         parameter can be a single collection ID or a list of collection IDs. The `projects` parameter
@@ -1349,8 +1462,7 @@ class MetadataEditor:
         Note that if the project(s) are not in the collection there is no error raised since either way the project
             will not be in the collection after this function executes
 
-        Args
-
+        Args:
             collection : Union[int, List[int]]
                 A single collection ID or a list of collection IDs to which projects should be removed.
 
@@ -1362,7 +1474,6 @@ class MetadataEditor:
                 project idnos to be removed from the specified collection(s).
 
         Raises:
-
             AssertionError
                 If `id_format` is not 'id' or 'idno'.
 
@@ -1374,7 +1485,6 @@ class MetadataEditor:
 
 
         Example:
-
             >>> client.remove_projects_from_collection(collection=1, id_format='id', projects=[101, 102])
             >>> client.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
 
@@ -1395,9 +1505,7 @@ class MetadataEditor:
         )
 
     def set_template_for_collection(self, collection_id: int, template_uid: str):
-        """
-        Set the specified template to be used for all metadata of its type (for example microdata, indicator, or
-            document metadata) in the collection.
+        """Set the specified template to be used for all metadata of its type to a collection.
 
         Args:
             collection_id (int): the id of the collection.
@@ -1417,8 +1525,7 @@ class MetadataEditor:
     ####################################################################################################################
 
     def get_resources_by_id(self, id: int) -> pd.DataFrame:
-        """
-        List documentation (Reports, Questionnaires, Tables, etc.) for a project
+        """List documentation (Reports, Questionnaires, Tables, etc.) for a project.
 
         Args:
             id (int): project id
@@ -1449,8 +1556,7 @@ class MetadataEditor:
         toc: Optional[str] = None,
         filename: Optional[str] = None,
     ) -> int:
-        """
-        Log a new resource associated with a project (Reports, Questionnaires, Tables, etc.)
+        """Log a new resource associated with a project (Reports, Questionnaires, Tables, etc).
 
         If filename is provided then the file is uploaded and logged.
 
@@ -1514,8 +1620,7 @@ class MetadataEditor:
         toc: Optional[str] = None,
         filename: Optional[str] = None,
     ) -> int:
-        """
-        Update the log of resource associated with a project (Reports, Questionnaires, Tables, etc.)
+        """Update the log of resource associated with a project (Reports, Questionnaires, Tables, etc).
 
         If filename is provided then the file is uploaded and logged.
 
@@ -1536,7 +1641,6 @@ class MetadataEditor:
             toc (Optional[str]): The table of contents of the resource. Defaults to None.
             filename (Optional[str]): The filename of the resource which will be uploaded. Defaults to None.
         """
-
         data = {
             "dctype": dctype,
             "title": title,
@@ -1564,8 +1668,7 @@ class MetadataEditor:
     ####################################################################################################################
 
     def delete_project_by_id(self, id: int):
-        """
-        If the project exists then delete it and check it was deleted.
+        """If the project exists then delete it and check it was deleted.
 
         Args:
             id (int): the id of the project, not to be confused with the idno.
@@ -1577,8 +1680,7 @@ class MetadataEditor:
         self._delete_by_id(pth=pth, id=id, checker_fn=self.get_project_by_id)
 
     def delete_collection_by_id(self, id: int):
-        """
-        If the collection exists then deletes it and check it was deleted.
+        """If the collection exists then deletes it and check it was deleted.
 
         Args:
             id (int): the id of the colection.
@@ -1590,8 +1692,7 @@ class MetadataEditor:
         self._delete_by_id(pth=pth, id=id, checker_fn=self.get_collection_by_id)
 
     def delete_resource_by_id(self, project_id, resource_id):
-        """
-        If the resource exists then deletes it and check it was deleted.
+        """If the resource exists then deletes it and check it was deleted.
 
         Args:
             project_id (int): The project id the resource is associated with.
@@ -1610,8 +1711,7 @@ class MetadataEditor:
         self._delete_by_id(pth, resource_id, checker_fn=check_exists)
 
     def delete_template(self, uid: str):
-        """
-        Deletes the given template.
+        """Deletes the given template.
 
         Args:
             uid (str): The Unique Identifier of the template to delete.
@@ -1622,9 +1722,7 @@ class MetadataEditor:
         self._delete_by_id("templates/delete/{}", id=uid, checker_fn=self.get_template_by_uid)
 
     def _delete_by_id(self, pth: str, id: Union[int, str], checker_fn: Callable[[int], pd.Series]):
-        """
-        Internal, generic method for deleting either collections or projects or similar.
-        """
+        """Internal, generic method for deleting either collections or projects or similar."""
         # # first check that the project/collection is there to be deleted
         # checker_fn(id)
         try:

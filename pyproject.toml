@@ -1,9 +1,10 @@
 [tool.poetry]
 name = "pymetadataeditor"
 version = "0.1.0"
-description = "Metadata editor client in python"
+description = "Metadata editor client for python"
 authors = ["Gordon Blackadder <gblackadder@worldbank.org>"]
 readme = "README.md"
+license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -14,7 +15,7 @@ pydantic = "^2.7.4"
 openai = "^1.59.4"
 tiktoken = "^0.8.0"
 markitdown = "^0.0.1a3"
-metadataschemas = {path = "../metadata-schemas/dist/metadataschemas-0.1.0-py3-none-any.whl"}
+metadataschemas = "^0.1.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"

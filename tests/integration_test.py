@@ -780,8 +780,8 @@ def test_change_mode_or_template(metadata_editor, tmpdir):
 
 
 def test_execute_demo_notebook():
-    notebook_path = os.path.join(os.path.dirname(__file__), "..", "demo.ipynb")
-    executed_notebook_path = os.path.join(os.path.dirname(__file__), "..", "demo.ipynb")
+    notebook_path = os.path.join(os.path.dirname(__file__), "..", "demo", "demo.ipynb")
+    executed_notebook_path = os.path.join(os.path.dirname(__file__), "..", "demo", "demo.ipynb")
 
     with open(notebook_path) as f:
         nb = nbformat.read(f, as_version=4)

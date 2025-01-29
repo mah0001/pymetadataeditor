@@ -97,29 +97,35 @@ class MetadataEditor:
     First obtain an API key and pase it into a file called '.env' in the root of your project. The contents of the
         file should look like this:
 
-        METADATA_API_URL=https://<name_of_your_metadata_database>.org/index.php/api
-        METADATA_API_KEY=your_api_key
+        `METADATA_API_URL=https://<name_of_your_metadata_database>.org/index.php/api`
+
+        `METADATA_API_KEY=your_api_key`
+
 
     Then in python run
 
-        from pymetadataeditor import MetadataEditor
-        import os
+    ```python
+    from pymetadataeditor import MetadataEditor
+    import os
 
-        api_url = os.getenv("METADATA_API_URL")
-        api_key = os.getenv("METADATA_API_KEY")
-        me = MetadataEditor(api_url = api_url, api_key = api_key)
+    api_url = os.getenv("METADATA_API_URL")
+    api_key = os.getenv("METADATA_API_KEY")
+    me = MetadataEditor(api_url = api_url, api_key = api_key)
+    ```
 
     Then you can list and create new projects like so:
 
-        me.list_projects(limit=100)
-        indicator_metadata = me.make_metadata_outline("indicator", "pydantic")
-        # update the indicator metadata as needed.
+    ```python
+    me.list_projects(limit=100)
+    indicator_metadata = me.make_metadata_outline("indicator", "pydantic")
+    # update the indicator metadata as needed.
 
-        # View nicely formatted metadata
-        indicator_metadata.pretty_print()
+    # View nicely formatted metadata
+    indicator_metadata.pretty_print()
 
-        # Then log the metadata to the database
-        me.create_project_log(dict_of_indicator, "indicator")
+    # Then log the metadata to the database
+    me.create_project_log(dict_of_indicator, "indicator")
+    ```
     """
 
     def __init__(self, api_url: str, api_key: str, allow_http: bool = False, verify_ssl: bool = True):
@@ -134,12 +140,14 @@ class MetadataEditor:
                 this so setting verify_ssl=False may be required. Defaults to True.
 
         Example:
-            from pymetadataeditor import MetadataEditor
-            import os
+        ```python
+        from pymetadataeditor import MetadataEditor
+        import os
 
-            api_url = os.getenv("METADATA_API_URL")
-            api_key = os.getenv("METADATA_API_KEY")
-            me = MetadataEditor(api_url = api_url, api_key = api_key)
+        api_url = os.getenv("METADATA_API_URL")
+        api_key = os.getenv("METADATA_API_KEY")
+        me = MetadataEditor(api_url = api_url, api_key = api_key)
+        ```
         """
         self._apinterface = RequestsWithSpecificErrors(
             api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl
@@ -439,9 +447,11 @@ class MetadataEditor:
             Type[BaseModel]: The pydantic class of the metadata.
 
         Examples:
-            me = MetadataEditor(api_url=..., api_key=...)
-            indicator_metadata_class = me.get_metadata_class("indicator")
-            specific_metadata_class = me.get_metadata_class("timeseries-system-en")
+        ```python
+        me = MetadataEditor(api_url=..., api_key=...)
+        indicator_metadata_class = me.get_metadata_class("indicator")
+        specific_metadata_class = me.get_metadata_class("timeseries-system-en")
+        ```
         """
         return self._get_metadata_class_and_type_and_UID(
             metadata_type_or_template_uid.strip(), apply_template_rules=True
@@ -459,8 +469,7 @@ class MetadataEditor:
         Since the metadata can be quite complex, it's useful to start with all the possible fields and their subfields.
 
         Args:
-            metadata_type_or_template_uid (str):
-                The type of a supported metadata type, currently:
+            metadata_type_or_template_uid (str):The type of a supported metadata type, currently:
                     document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
                 If passed as a template UID then this template is retreived and an outline created.
             output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
@@ -470,24 +479,25 @@ class MetadataEditor:
                 If None, defaults to '{name of metadata type} Metadata'
 
         Returns:
-            `BaseModel` | `Dict` | `str`:
-                - If `output_mode == 'dict'`, a dictionary is returned.
-                - If `output_mode == 'pydantic'`, a pydantic model object is returned.
-                - If `output_mode == 'excel'`, the metadata was saved to a file and the filename is returned.
+            `BaseModel` | `Dict` | `str`: If `output_mode == 'dict'`, a dictionary is returned.
+                If `output_mode == 'pydantic'`, a pydantic model object is returned.
+                If `output_mode == 'excel'`, the metadata was saved to a file and the filename is returned.
 
         Examples:
-            me = MetadataEditor(api_url=..., api_key=...)
+        ```python
+        me = MetadataEditor(api_url=..., api_key=...)
 
-            # using a metadata type will create an outline using the default template
-            indicator_dict = me.make_metadata_outline("indicator", "dict")
-            indicator_dict['metadata_information']['idno'] = "my_idno"
+        # using a metadata type will create an outline using the default template
+        indicator_dict = me.make_metadata_outline("indicator", "dict")
+        indicator_dict['metadata_information']['idno'] = "my_idno"
 
-            # using a template uid
-            indicator_pydantic = me.outline_metadata("timeseries-system-en", "pydantic")
-            indicator_pydantic.metadata_information.idno = "my_idno"
+        # using a template uid
+        indicator_pydantic = me.outline_metadata("timeseries-system-en", "pydantic")
+        indicator_pydantic.metadata_information.idno = "my_idno"
 
-            # an outline can also be written to an Excel file
-            path_to_indicator_excel_file = me.outline_metadata("indicator", "excel", "indicator_outline_metadata.xlsx")
+        # an outline can also be written to an Excel file
+        path_to_indicator_excel_file = me.outline_metadata("indicator", "excel", "indicator_outline_metadata.xlsx")
+        ```
         """
         metadata_class = self.get_metadata_class(metadata_type_or_template_uid)
         # metadata_object = make_skeleton(metadata_class, debug=False)
@@ -534,10 +544,9 @@ class MetadataEditor:
             debug (bool): If True, then the function will print out some internal, intermediate output. Default False.
 
         Returns:
-            (Union[BaseModel, Dict, str]):
-                If mode == 'dict', a dictionary is returned.
-                If mode == 'pydantic', a pydantic model object is returned.
-                If mode == 'excel' then the metadata was saved to a file and the filename is returned.
+            (Union[BaseModel, Dict, str]): If mode == 'dict', a dictionary is returned. If mode == 'pydantic', a
+                pydantic model object is returned. If mode == 'excel' then the metadata was saved to a file and the
+                filename is returned.
         """
         output_mode = output_mode.lower().strip()
         assert output_mode in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES, (
@@ -638,17 +647,17 @@ class MetadataEditor:
     ) -> Union[BaseModel, Dict, str]:
         """Automatically generate *draft* metadata for a project based on local files or web pages.
 
-        The files can be
+        The files can be:
 
-            •PDF
-            •PowerPoint
-            •Word
-            •Excel
-            •Images
-            •Audio
-            •HTML
-            •Text-based formats (CSV, XML)
-            •ZIP files
+        - PDF
+        - PowerPoint
+        - Word
+        - Excel
+        - Images
+        - Audio
+        - HTML
+        - Text-based formats (CSV, XML)
+        - ZIP files
 
         In the case of images and audio the files will first be passed to OpenAI for describing or transcribing.
 
@@ -672,21 +681,22 @@ class MetadataEditor:
                 Defaults to 128_000, which has been the typical maximum for the 4o model.
 
         Returns:
-            (Union[BaseModel, Dict, str]):
-                If mode == 'dict', a dictionary is returned.
-                If mode == 'pydantic', a pydantic model object is returned.
-                If mode == 'excel' then the metadata was saved to a file and the filename is returned.
+            (Union[BaseModel, Dict, str]): If mode == 'dict', a dictionary is returned. If mode == 'pydantic', a
+                pydantic model object is returned. If mode == 'excel' then the metadata was saved to a file and the
+                filename is returned.
 
         Example:
-            metadataeditor.draft_metadata_from_files(
-                openai_api_key="...",
-                files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
-                output_mode="pydantic",
-                metadata_type_or_template_uid="indicator",
-                metadata_producer_organization="My Organization",
-                filename="output.xlsx",
-                title="My Metadata",
-            )
+        ```python
+        metadataeditor.draft_metadata_from_files(
+            openai_api_key="...",
+            files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
+            output_mode="pydantic",
+            metadata_type_or_template_uid="indicator",
+            metadata_producer_organization="My Organization",
+            filename="output.xlsx",
+            title="My Metadata",
+        )
+        ```
         """
         #  prefix (Optional[str]): A prefix to add to the metadata. Defaults to '?'. If None, no prefix is added.
 
@@ -809,17 +819,19 @@ class MetadataEditor:
             Union[BaseModel, Dict, str]: The augmented metadata.
 
         Example:
-            me = MetadataEditor(api_url=..., api_key=...)
+        ```python
+        me = MetadataEditor(api_url=..., api_key=...)
 
-            # augment existing metadata with information from files
-            me.augment_metadata_from_files(
-                input_metadata=my_indicator_metadata,
-                openai_api_key="...",
-                files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
-                output_mode="pydantic",
-                metadata_producer_organization="My Organization",
-                prefix="<AI>"
-            )
+        # augment existing metadata with information from files
+        me.augment_metadata_from_files(
+            input_metadata=my_indicator_metadata,
+            openai_api_key="...",
+            files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
+            output_mode="pydantic",
+            metadata_producer_organization="My Organization",
+            prefix="<AI>"
+        )
+        ```
         """
         #  prefix (Optional[str]): A prefix to add to the metadata. Defaults to '?'. If None, no prefix is added.
 
@@ -916,10 +928,9 @@ class MetadataEditor:
         """Validates and logs metadata which can be a dictionary, a pydantic model or a path to an Excel spreadsheet.
 
         Args:
-            metadata (dictionary or BaseModel or str):
-                If str, it's assumed this is a path to an appropriately formatted Excel file
-            metadata_type_or_template_uid (str):
-                If passing in a simple type then the supported metadata types are currently:
+            metadata (dictionary or BaseModel or str): If str, it's assumed this is a path to an appropriately
+                formatted Excel file.
+            metadata_type_or_template_uid (str): If passing in a simple type then the supported types are:
                     document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video
                 In this case we will use the default template for that metadata type.
                 Alternatively you can pass in the UID of a template. This is required if the metadata is a dictionary
@@ -950,10 +961,9 @@ class MetadataEditor:
         mentioned are left as is.
 
         Args:
-            id (int):
-                The ID of the metadata to update.
-            new_metadata (dictionary, BaseModel or str):
-                If str, it's assumed this is a path to an appropriately formatted Excel file
+            id (int): The ID of the metadata to update.
+            new_metadata (dictionary, BaseModel or str): If str, it's assumed this is a path to an appropriately
+                formatted Excel file
         """
         project_data = self.get_project_by_id(id)
         try:
@@ -1048,6 +1058,18 @@ class MetadataEditor:
 
         This method applies a single JSON Patch operation to update the metadata of a project specified by its ID.
 
+        JSON Patch Operations:
+
+        - "add": Adds a value to the specified path. If the path already exists, the value is replaced.
+        - "remove": Removes the value at the specified path.
+        - "replace": Replaces the value at the specified path with a new value.
+        - "test": Tests that the value at the specified path matches a given value.
+
+        The `path` is a string that uses a slash (`/`) notation to specify the location within the JSON document.
+        For example, `/author` refers to the "author" field, and `/metadata/title` refers to the "title" field
+        inside the "metadata" object. If the path does not start with a `/`, the method will automatically
+        prepend it.
+
         Args:
             id (int): The unique identifier of the project whose metadata is to be updated.
             op (str): The JSON Patch operation to be applied. Valid operations are "add", "remove",
@@ -1059,22 +1081,10 @@ class MetadataEditor:
         Raises:
             ValueError: If the provided operation, path, or value is invalid.
 
-        JSON Patch Operations:
-            - "add": Adds a value to the specified path. If the path already exists, the value is replaced.
-            - "remove": Removes the value at the specified path.
-            - "replace": Replaces the value at the specified path with a new value.
-            - "test": Tests that the value at the specified path matches a given value.
-
-        Path Notation:
-            - The `path` is a string that uses a slash (`/`) notation to specify the location within the JSON document.
-            For example, `/author` refers to the "author" field, and `/metadata/title` refers to the "title" field
-            inside the "metadata" object. If the path does not start with a `/`, the method will automatically
-            prepend it.
-
-        Usage:
-            ```python
-            metadata_editor.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
-            ```
+        Example:
+        ```python
+        metadata_editor.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
+        ```
         """
         project_data = self.get_project_by_id(id)
         metadata_name = project_data["type"]
@@ -1315,7 +1325,7 @@ class MetadataEditor:
             description (Optional[str]): The new description of the collection. Defaults to None.
 
         Raises:
-            Assertion error if both title and description are None, since we must update one or the other.
+            Assertion Error: if both title and description are None, since we must update one or the other.
         """
         # Is it clear this updates title/description of the collection and not the data in the collection?
         assert title is not None or description is not None, "can update title or description or both, but not neither"
@@ -1351,20 +1361,15 @@ class MetadataEditor:
         """Retrieve projects that have been added to the given collection.
 
         Args:
-            collection (int):
-                The id of the collection.
-            limit (int):
-                The maximum number of projects to return. If limit='All' then all records are retrieved.
-            keywords (optional str or list of str):
-                filter projects based on whether the project title or idno contains this keyword
-            offset (int):
-                Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
-            sort_by (optional str):
-                valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
+            collection (int): The id of the collection.
+            limit (int): The maximum number of projects to return. If limit='All' then all records are retrieved.
+            keywords (optional str or list of str):  filter projects based on whether the project title or idno contains
+                this keyword
+            offset (int): Offset for pagination e.g. 10 to skip first 10 records. Default is 0.
+            sort_by (optional str): valid values: "title_asc", "title_desc", "updated_asc", "updated_desc".
 
         Returns:
-            pd.DataFrame:
-                Information on the projects in the collection, such as id, idno, title and type.
+            pd.DataFrame: Information on the projects in the collection, such as id, idno, title and type.
         """
         if isinstance(limit, str):
             assert limit.lower() == "all", f"Expected limit to be 'all' or a positive integer but got '{limit}'"
@@ -1417,19 +1422,11 @@ class MetadataEditor:
                 A single project ID, a single project idno, a list of project IDs, or a list of
                 project idnos to be added to the specified collection(s).
 
-        Raises:
-            AssertionError
-                If `id_format` is not 'id' or 'idno'.
-
-            AssertionError
-                If a project ID is not an integer when `id_format` is 'id'.
-
-            AssertionError
-                If a project ID number is not a string when `id_format` is 'idno'.
-
         Example:
-            >>> client.add_projects_to_collection(collection=1, id_format='id', projects=[101, 102])
-            >>> client.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+        ```python
+        client.add_projects_to_collection(collection=1, id_format='id', projects=[101, 102])
+        client.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+        ```
         """
         assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
         if not isinstance(collection, Iterable) or isinstance(collection, str):
@@ -1474,20 +1471,17 @@ class MetadataEditor:
                 project idnos to be removed from the specified collection(s).
 
         Raises:
-            AssertionError
-                If `id_format` is not 'id' or 'idno'.
-
-            AssertionError
+            AssertionError: If `id_format` is not 'id' or 'idno'.
                 If a project ID is not an integer when `id_format` is 'id'.
-
-            AssertionError
                 If a project ID number is not a string when `id_format` is 'idno'.
 
 
         Example:
-            >>> client.remove_projects_from_collection(collection=1, id_format='id', projects=[101, 102])
-            >>> client.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+        ```python
+        metadata_editor.remove_projects_from_collection(collection=1, id_format='id', projects=[101, 102])
 
+        metadata_editor.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+        ```
         """
         assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
         if not isinstance(projects, Iterable) or isinstance(projects, str):

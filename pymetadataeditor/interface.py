@@ -1,6 +1,7 @@
 import warnings
 from json import JSONDecodeError
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import pandas as pd
@@ -20,6 +21,7 @@ from pymetadataeditor.llm_helpers import (
     _iterated_validated_update_to_outline,
     _prepend_draft_drop_non_str,
     get_date_as_text,
+    json_to_markdown,
 )
 from pymetadataeditor.requester import RequestsWithSpecificErrors
 from pymetadataeditor.templates import pydantic_from_template
@@ -596,7 +598,7 @@ class MetadataEditor:
             •Images
             •Audio
             •HTML
-            •Text-based formats (CSV, JSON, XML)
+            •Text-based formats (CSV, XML)
             •ZIP files
 
         In the case of images and audio the files will first be passed to OpenAI for describing or transcribing.
@@ -663,6 +665,7 @@ class MetadataEditor:
 
         out = ""
         for doc in files:
+            out += "################################################\n\n"
             out += f"# {doc}\n\n"
             out += md.convert(doc).text_content + "\n\n"
             user_message = [{"role": "user", "content": out}]
@@ -708,6 +711,7 @@ class MetadataEditor:
         files: List[str] | str,
         output_mode: str,
         metadata_type_or_template_uid: Optional[str] = None,
+        metadata_producer_organization: Optional[str] = None,
         prefix: Optional[str] = None,
         filename: Optional[str] = None,
         title: Optional[str] = None,
@@ -731,18 +735,32 @@ class MetadataEditor:
 
         old_metadata = _iterated_validated_update_to_outline(klass, updates=old_metadata)
 
-        new_metadata = self.draft_metadata_from_files(
-            openai_api_key=openai_api_key,
-            files=files,
-            metadata_type_or_template_uid=metadata_type_or_template_uid,
-            output_mode="dict",
-            # prefix=prefix,
-            filename=None,
-            title=None,
-            openai_model=openai_model,
-            tokenizer_model=tokenizer_model,
-            max_tokens=max_tokens,
-        )
+        old_metadata = self.change_mode_or_template(old_metadata, output_mode="dict", simplify=True)
+        old_metadata_md = "# Prevsiouly written metadata\n\n"
+        old_metadata_md += json_to_markdown(old_metadata, level=2)
+
+        with NamedTemporaryFile(delete=True, suffix=".txt") as f:
+            f.write(old_metadata_md.encode("utf-8"))
+            f.flush()  # Ensure the content is written to disk
+            file_path = f.name
+
+            if isinstance(files, str):
+                files = [files]
+            files = [file_path] + files
+
+            new_metadata = self.draft_metadata_from_files(
+                openai_api_key=openai_api_key,
+                files=files,
+                metadata_type_or_template_uid=metadata_type_or_template_uid,
+                metadata_producer_organization=metadata_producer_organization,
+                output_mode="dict",
+                # prefix=prefix,
+                filename=None,
+                title=None,
+                openai_model=openai_model,
+                tokenizer_model=tokenizer_model,
+                max_tokens=max_tokens,
+            )
 
         if new_metadata is None or len(new_metadata) == 0:
             raise ValueError("No metadata was generated from the files.")

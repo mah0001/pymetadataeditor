@@ -1374,11 +1374,11 @@ files = [
 [[package]]
 name = "metadataschemas"
 version = "0.1.0"
-description = ""
+description = "A library of metadata schemas for documents, geospatial, image, indicator (timeseries), microdata (ddi), script, table and video data"
 optional = false
 python-versions = ">=3.11,<4.0"
 files = [
-    {file = "metadataschemas-0.1.0-py3-none-any.whl", hash = "sha256:732a88b59ff477b432bf9462f21730307b420d611f0095c999f837b4a579b6d8"},
+    {file = "metadataschemas-0.1.0-py3-none-any.whl", hash = "sha256:3d2d9113b0ea49d1b0ea22b8e8044a2b378b9a33091c0abba6b21a0329a94c40"},
 ]
 
 [package.dependencies]

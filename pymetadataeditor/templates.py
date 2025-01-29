@@ -3,7 +3,7 @@ import copy
 # import logging
 import warnings
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type, get_args
 
 from annotated_types import Ge, Le, MaxLen, MinLen
 from metadataschemas.utils.schema_base_model import SchemaBaseModel
@@ -11,12 +11,15 @@ from metadataschemas.utils.utils import (
     get_subtype_of_optional_or_list,
     is_list_annotation,
     is_optional_annotation,
+    is_optional_list,
     merge_dicts,
     standardize_keys_in_dict,
 )
 from pydantic import BaseModel, Field, create_model
 from pydantic._internal._fields import pydantic_general_metadata
 from pydantic.fields import FieldInfo
+
+from pymetadataeditor.utils import strip_model_rules
 
 # # Configure logging
 # def setup_logging(enable_logging: bool = True):
@@ -558,7 +561,13 @@ def template_type_handler(item, parent_schema, apply_rules: bool = True):
         raise NotImplementedError(f"type {item['type']}, {item}")
 
 
-def append_variables_and_data_files(model_elements, parent_schema):
+def append_variables_and_data_files(model_elements, parent_schema, apply_rules: bool = True):
+    # as a hack, when we need no rules for LLM inference, don't include the "data_files", "variables", "variable_groups"
+    # I found that the LLM is bad at these anyway and struggled with default *numerical* values.
+    # I will have to come back to dealing with default numerical values.
+    if not apply_rules:
+        return model_elements
+
     if not (
         parent_schema._metadata_type__ == "microdata"
         or (
@@ -576,6 +585,17 @@ def append_variables_and_data_files(model_elements, parent_schema):
             field_info = copy_field_set_required_status(field_info, False)
         else:
             field_info = copy_field_set_required_status(field_info, True)
+
+        if not apply_rules:
+            if is_optional_list(annotation):
+                print("is optional list")
+                annotation = Optional[List[strip_model_rules(get_args(get_args(annotation)[0])[0])]]
+            elif is_list_annotation(annotation):
+                print("is list")
+                annotation = List[strip_model_rules(get_args(annotation)[0])]
+            elif is_optional_annotation(annotation):
+                print("is optional")
+                annotation = Optional[strip_model_rules(get_args(annotation)[0])]
         model_elements[v] = (annotation, field_info)
     return model_elements
 
@@ -593,5 +613,5 @@ def pydantic_from_template(
     if parent_schema._metadata_type__ == "microdata" or (
         hasattr(parent_schema._metadata_type__, "default") and parent_schema._metadata_type__.default == "microdata"
     ):
-        model_elements = append_variables_and_data_files(model_elements, parent_schema)
+        model_elements = append_variables_and_data_files(model_elements, parent_schema, apply_rules=apply_rules)
     return create_model_for_template(model_elements, parent_schema, name, uid=uid)

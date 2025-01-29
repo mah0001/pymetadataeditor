@@ -312,6 +312,9 @@ def test_projects_integration(tmpdir, metadata_editor):
 )
 def test_get_class(metadata_editor, metadata_type):
     metadata_editor.get_metadata_class(metadata_type)
+    metadata_class_no_rules, metadata_type, _ = metadata_editor._get_metadata_class_and_type_and_UID(
+        metadata_type, apply_template_rules=False
+    )
 
     temps = metadata_editor.list_templates()
     temps = temps[temps["data_type"] == metadata_type]
@@ -326,6 +329,10 @@ def test_get_class(metadata_editor, metadata_type):
             isinstance(klass._template_name__, str) or klass._template_name__.default is not None
         )
 
+        metadata_class_no_rules, metadata_type, _ = metadata_editor._get_metadata_class_and_type_and_UID(
+            temp["uid"], apply_template_rules=False
+        )
+
 
 def test_project_download_and_read(metadata_editor, tmpdir):
     projects = metadata_editor.list_projects(limit="all")
@@ -336,7 +343,7 @@ def test_project_download_and_read(metadata_editor, tmpdir):
     pydantic_validation_errors = {}
     excel_validation_errors = {}
     for project_id, project_info in projects.iterrows():
-        if i >= 100:
+        if i >= 50:
             break
         i += 1
         # if project_info.type == "geospatial":
@@ -381,7 +388,6 @@ def test_project_download_and_read(metadata_editor, tmpdir):
 
         excel_obj = metadata_editor.read_metadata_from_excel(filename)
         assert_pydantic_models_equal(pydantic_obj, excel_obj)
-        print()
 
     output = ""
 

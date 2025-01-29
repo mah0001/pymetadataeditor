@@ -92,6 +92,20 @@ def _iterated_validated_update_to_outline(model_def: type[BaseModel], updates: d
 
 
 def get_date_as_text():
+    """
+    Returns the current date as a formatted string with an ordinal suffix for the day.
+
+    The format of the returned date string is "Month DaySuffix, Year", where:
+    - Month is the full name of the month (e.g., January, February).
+    - DaySuffix is the day of the month with an appropriate ordinal suffix (e.g., 1st, 2nd, 3rd, 4th, etc.).
+    - Year is the four-digit year.
+
+    Example:
+        If today's date is October 21, 2023, the function will return "October 21st, 2023".
+
+    Returns:
+        str: The formatted date string.
+    """
     today = datetime.today()
     day = today.day
     # Determine ordinal suffix
@@ -102,3 +116,30 @@ def get_date_as_text():
 
     # Format the date
     return today.strftime(f"%B %-d{suffix}, %Y")
+
+
+def json_to_markdown(data, level=1):
+    """
+    Converts a JSON object into Markdown.  Future versions of MarkItDown will support this natively.
+
+    Args:
+        data: The JSON object (dict, list, or primitive type).
+        level: Current Markdown heading level for nested keys.
+
+    Returns:
+        A Markdown string.
+    """
+    markdown = ""
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            markdown += f"{'#' * level} {key}\n\n"  # Add heading for the key
+            markdown += json_to_markdown(value, level + 1)  # Recursively process value
+    elif isinstance(data, list):
+        for item in data:
+            markdown += f"- {json_to_markdown(item, level + 1).strip()}\n"  # Format as a list
+    else:
+        # Format primitive types (string, number, boolean, null)
+        markdown += f"{data}\n\n"
+
+    return markdown

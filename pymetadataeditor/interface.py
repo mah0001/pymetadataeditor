@@ -687,7 +687,8 @@ class MetadataEditor:
 
         Example:
         ```python
-        metadataeditor.draft_metadata_from_files(
+        me = MetadataEditor(api_url = api_url, api_key = api_key)
+        me.draft_metadata_from_files(
             openai_api_key="...",
             files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
             output_mode="pydantic",
@@ -1083,7 +1084,8 @@ class MetadataEditor:
 
         Example:
         ```python
-        metadata_editor.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
+        me = MetadataEditor(api_url = api_url, api_key = api_key)
+        me.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
         ```
         """
         project_data = self.get_project_by_id(id)
@@ -1424,8 +1426,9 @@ class MetadataEditor:
 
         Example:
         ```python
-        client.add_projects_to_collection(collection=1, id_format='id', projects=[101, 102])
-        client.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+        me = MetadataEditor(api_url = api_url, api_key = api_key)
+        me.add_projects_to_collection(collection=1, id_format='id', projects=[101, 102])
+        me.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
         ```
         """
         assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"
@@ -1478,9 +1481,10 @@ class MetadataEditor:
 
         Example:
         ```python
-        metadata_editor.remove_projects_from_collection(collection=1, id_format='id', projects=[101, 102])
+        me = MetadataEditor(api_url = api_url, api_key = api_key)
+        me.remove_projects_from_collection(collection=1, id_format='id', projects=[101, 102])
 
-        metadata_editor.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
+        me.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects=['A101', 'A102'])
         ```
         """
         assert id_format.lower() in ["id", "idno"], f"id_format must be either 'id' or 'idno' but got '{id_format}'"

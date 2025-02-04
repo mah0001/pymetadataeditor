@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "pymetadataeditor"
 version = "0.1.1"
-description = "Metadata editor client for python"
+description = "Metadata Editor client for python"
 authors = ["Gordon Blackadder <gblackadder@worldbank.org>"]
 readme = "README.md"
 license = "MIT"
@@ -23,6 +23,7 @@ ipykernel = "^6.29.4"
 pre-commit = "^3.7.1"
 ruff = "^0.9.3"
 detect-secrets = "^1.5.0"
+lazydocs = "^0.4.8"
 
 
 [tool.ruff]

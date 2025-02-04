@@ -107,24 +107,30 @@ def define_simple_element(
             try:
                 child_field_info = get_child_field_info_from_dot_annotated_name(prop_key, parent_schema)
             except KeyError as e2:
+                # fields starting with additional are implied not in the base schema
+                if not (
+                    item.get("key", "").startswith("additional") or item.get("prop_key", "").startswith("additional")
+                ):
+                    warnings.warn(
+                        (
+                            f"KeyError: {e2}. Field likely doesn't exist in base schema. "
+                            f"Proceeding since prop_key = '{prop_key}' is a {element_type} type. "
+                            f"Full item defition = {item}"
+                        ),
+                        UserWarning,
+                    )
+                child_field_info = Field(..., title=item["title"])
+        else:
+            # fields starting with additional are implied not in the base schema
+            if not item.get("key", "").startswith("additional"):
                 warnings.warn(
                     (
-                        f"KeyError: {e2}. Field likely doesn't exist in base schema. "
-                        f"Proceeding since prop_key = '{prop_key}' is a {element_type} type. "
+                        f"KeyError: {e}. Field likely doesn't exist in base schema. "
+                        f"Proceeding since key='{item['key']}' is a {element_type} type. "
                         f"Full item defition = {item}"
                     ),
                     UserWarning,
                 )
-                child_field_info = Field(..., title=item["title"])
-        else:
-            warnings.warn(
-                (
-                    f"KeyError: {e}. Field likely doesn't exist in base schema. "
-                    f"Proceeding since key='{item['key']}' is a {element_type} type. "
-                    f"Full item defition = {item}"
-                ),
-                UserWarning,
-            )
             child_field_info = Field(..., title=item["title"])
     field_type = update_field_info(item, child_field_info, element_type, apply_rules=apply_rules)
     return {item["key"]: field_type}
@@ -172,13 +178,14 @@ def get_constraints_from_string(s: str) -> List:
     return annotations
 
 
-# def create_enum(enum_name, values: list | dict) -> EnumWithValueOrKey:
-#     """
-#     Create an enum from a list of values.
+# def create_enum(enum_name, values: list | dict, store_column: Optional[str]) -> EnumWithValueOrKey:
+#     """Create an enum from a list of values.
 
 #     Args:
 #         enum_name (str): The name of the enum.
 #         values (list|dict): Can be a list of strings or a list of dicts with 'label' and 'code' keys.
+#         store_column (Optional[str]): The field to use as the value of the enum in the case of a list of dicts.
+#             Defaults to None in which case 'code' is used.
 
 #     Returns:
 #         EnumWithValueOrKey: The created enum.
@@ -188,8 +195,13 @@ def get_constraints_from_string(s: str) -> List:
 #     for value in values:
 #         if isinstance(value, str):
 #             e[value.strip().replace(" ", "_")] = value.strip()
-#         elif isinstance(value, dict) and "label" in value and "code" in value:
-#             e[value["label"].strip().replace(" ", "_")] = value["code"].strip()
+#         elif (
+#             isinstance(value, dict)
+#             and "label" in value
+#             and ("code" in value or (store_column is not None and store_column in value))
+#         ):
+#             store_column = store_column if store_column is not None else "code"
+#             e[value["label"].strip().replace(" ", "_")] = value[store_column].strip()
 #         else:
 #             raise ValueError(
 #                 f"Invalid value for enum: {value} from {values},"
@@ -260,6 +272,7 @@ def update_field_info(
             "is_custom",
             "items",
             "type_options",
+            "enum_store_column",
         ]:
             continue
         try:
@@ -291,12 +304,13 @@ def update_field_info(
                 # logging.warning(f"Unknown rule: {template_info['rules']}")
                 warnings.warn(f"UnknownRule: {template_info['rules']} - expected dict")
         if "enum" in template_info:
+            # the UI for Metadata Editor cannot handle enums, so we will ignore as well and let them be strs or whatever
             pass
             # if isinstance(template_info["enum"], list) and len(template_info["enum"]) > 0:
             #     enum_info = template_info["enum"]
             #     name = child_field_info.title
             #     try:
-            #         element_type = create_enum(name, enum_info)
+            #         element_type = create_enum(name, enum_info, template_info.get("enum_store_column", None))
             #     except ValueError:
             #         warnings.warn(f"UnknownEnum: '{template_info['enum']}' found in template_info: {template_info}")
             #         element_type = str
@@ -452,14 +466,15 @@ def define_simple_array_element(
     try:
         child_field_info = get_child_field_info_from_dot_annotated_name(item["key"], parent_schema)
     except KeyError as e:
-        warnings.warn(
-            (
-                f"KeyError: {e}. Field likely doesn't exist in base schema. "
-                f"Proceeding since key={item['key']} is a simple_array type. "
-                f"Full item defition = {item}"
-            ),
-            UserWarning,
-        )
+        if not (item.get("key", "").startswith("additional")):  # additional fields are implied not in base schema
+            warnings.warn(
+                (
+                    f"KeyError: {e}. Field likely doesn't exist in base schema. "
+                    f"Proceeding since key={item['key']} is a simple_array type. "
+                    f"Full item defition = {item}"
+                ),
+                UserWarning,
+            )
         child_field_info = Field(..., title=item["title"])
     field_type = update_field_info(item, child_field_info, overriding_element_type=List[str], apply_rules=apply_rules)
     return {item["key"]: field_type}
@@ -531,11 +546,12 @@ def define_group_of_elements(
     elements = dot_to_hierarchy(elements)
     elements = standardize_keys_in_dict(elements, pascal_to_snake=True)
     if "additional" in elements and isinstance(elements["additional"], dict):
-        additional = elements.pop("additional")
-        additional = create_model_for_template(additional, parent_schema, "additional")
-        sub_field = Field(...)
-        sub_field.title = "additional"
-        elements["additional"] = additional, sub_field
+        _ = elements.pop("additional")
+        # additional = elements.pop("additional")
+        # additional = create_model_for_template(additional, parent_schema, "additional")
+        # sub_field = Field(...)
+        # sub_field.title = "additional"
+        # elements["additional"] = additional, sub_field
     return elements
 
 

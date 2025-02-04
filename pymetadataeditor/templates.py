@@ -1,3 +1,5 @@
+"""Create pydantic models from template dictionaries."""
+
 import copy
 
 # import logging
@@ -44,8 +46,7 @@ __all__ = ["pydantic_from_template"]
 
 
 def copy_field_set_required_status(field: FieldInfo, required: bool) -> FieldInfo:
-    """
-    Create a copy of an existing field with the 'required' status adjusted.
+    """Create a copy of an existing field with the 'required' status adjusted.
 
     We want to take most of the field info from the original field, but the reqruied status from the template.
 
@@ -129,8 +130,7 @@ def define_simple_element(
 
 
 def get_constraints_from_string(s: str) -> List:
-    """
-    Parses a string of constraints separated by '|' and returns a list of corresponding constraint objects.
+    r"""Parses a string of constraints separated by '|' and returns a list of corresponding constraint objects.
 
     Supported constraints:
     - "required": This constraint is ignored in the current implementation as it is applied elsewhere
@@ -171,9 +171,56 @@ def get_constraints_from_string(s: str) -> List:
     return annotations
 
 
-def create_enum(enum_name, values: list | dict) -> Enum:
+class EnumWithValueOrKey(Enum):
+    """A custom Enum that allows input values to be either the key or the value.
+
+    Users of the Metadata Editor tend to put either the key or the value of an Enum.
+
+    For example I was seeing errors like:
+
+    series_description.related_indicators.1.type
+      Input should be 'concept', 'disaggregation' or 'derivation' [type=enum, input_value='Derivation', input_type=str]
+        For further information visit https://errors.pydantic.dev/2.10/v/enum/
+
+    This custom Enum class allows the input to be either the key or the value of the Enum.
+
+    Example:
+    ```python
+    class IndicatorType(EnumWithValueOrKey):
+        Concept = "concept"
+        Disaggregation = "disaggregation"
+        Derivation = "derivation"
+
+    # Example usage:
+
+    # This will work
+    IndicatorType("concept")  # gives IndicatorType.Concept
+    IndicatorType("Concept")  # gives IndicatorType.Concept
+
+    # This will raise a ValidationError
+    IndicatorType("Invalid")
+    ```
     """
-    Create an enum from a list of values.
+
+    @classmethod
+    def _missing_(cls, value):
+        """Handle both keys (names) and values for Enum."""
+        # Check if the value is a valid key (name)
+        if isinstance(value, str):
+            # Try to map the string value to the Enum's key
+            for item in cls:
+                if item.name.lower() == value.lower():  # case-insensitive check
+                    return item
+        # Otherwise, check if it's a valid value
+        try:
+            return cls(value)
+        except ValueError:
+            pass
+        return super()._missing_(value)  # Raise error if it's neither a key nor a value
+
+
+def create_enum(enum_name, values: list | dict) -> EnumWithValueOrKey:
+    """Create an enum from a list of values.
 
     Args:
         enum_name (str): The name of the enum.
@@ -194,19 +241,20 @@ def create_enum(enum_name, values: list | dict) -> Enum:
                 f"Invalid value for enum: {value} from {values},"
                 " must be a list of strings or dicts with 'label' and 'code' keys."
             )
-    return Enum(enum_name, e)
+    return EnumWithValueOrKey(enum_name, e)
 
 
 def update_field_info(
     template_info, child_field_info, overriding_element_type: Optional[str] = None, apply_rules: bool = True
 ) -> Tuple[Type, FieldInfo]:
-    """
-    Updates the attributes of `child_field_info` based on the `template_info` dictionary.
+    """Updates the attributes of `child_field_info` based on the `template_info` dictionary.
 
     Args:
         template_info (dict): A dictionary containing template information with keys and values to update.
         child_field_info (object): The object whose attributes are to be updated.
         overriding_element_type (Optional[str], optional): An optional string to override the element type.
+        apply_rules (bool, optional): Whether to apply rules to the field, such as string length less than 10.
+            Defaults to True.
 
     Returns:
         tuple: A tuple containing the field type and the updated `child_field_info`.
@@ -403,8 +451,7 @@ def get_children_of_props(
 
 
 def make_array_element_name(key: str) -> str:
-    """
-    If name ends in s then replace the s and capitalize, else append Item to the string and capitalize
+    """If name ends in s then replace the s and capitalize, else append Item to the string and capitalize.
 
     >>>make_array_element_name("elements")
     "Element"
@@ -421,9 +468,9 @@ def make_array_element_name(key: str) -> str:
 
 
 def define_array_element(item, parent_schema, apply_rules: bool = True) -> Dict[str : Tuple[Type[BaseModel]], Field]:
-    assert "type" in item and (
-        item["type"] == "array" or item["type"] == "nested_array"
-    ), f"expected array item but got {item}"
+    assert "type" in item and (item["type"] == "array" or item["type"] == "nested_array"), (
+        f"expected array item but got {item}"
+    )
     assert "key" in item, f"expected key in item but got {item.keys()}"
     field_info = Field(..., title=item["title"])
     # if "help_text" in item:
@@ -444,9 +491,9 @@ def define_array_element(item, parent_schema, apply_rules: bool = True) -> Dict[
 def define_simple_array_element(
     item: dict, parent_schema: Type[BaseModel], apply_rules: bool = True
 ) -> Dict[str : Tuple[Type[BaseModel]], Field]:
-    assert (
-        isinstance(item, dict) and "type" in item and item["type"] == "simple_array"
-    ), f"expected simple_array item, got {item}"
+    assert isinstance(item, dict) and "type" in item and item["type"] == "simple_array", (
+        f"expected simple_array item, got {item}"
+    )
     try:
         child_field_info = get_child_field_info_from_dot_annotated_name(item["key"], parent_schema)
     except KeyError as e:
@@ -464,11 +511,9 @@ def define_simple_array_element(
 
 
 def dot_to_hierarchy(d):
-    """
-    Where dictionary keys have '.', separate the strings either side of the dot into a hierarchy of dictionaries.
+    """Where dictionary keys have '.', separate the strings either side of the dot into a hierarchy of dictionaries.
 
     Example:
-
     >>> dot_to_hierarchy({"firstkey.secondkey.thirdkey": 1,
                           "firstkey.secondkey.fourthkey": 2,
                           "fifthkey": 3,
@@ -603,6 +648,38 @@ def append_variables_and_data_files(model_elements, parent_schema, apply_rules: 
 def pydantic_from_template(
     template: Dict, parent_schema: Type[SchemaBaseModel], uid: str, name: Optional[str] = None, apply_rules: bool = True
 ) -> Type[BaseModel]:
+    """Generate a Pydantic model from a given template.
+
+    Args:
+        template (Dict): The template dictionary containing the model definition.
+        parent_schema (Type[SchemaBaseModel]): The parent schema model to base the new model on.
+        uid (str): A unique identifier for the new model.
+        name (Optional[str], optional): The name of the new model. Defaults to None.
+        apply_rules (bool, optional): Whether to apply rules to the model elements. Defaults to True.
+
+    Returns:
+        Type[BaseModel]: The generated Pydantic model.
+
+    Raises:
+        AssertionError: If the template does not contain the 'items' key.
+
+    Example:
+    ```python
+    from pymetadataeditor.templates import pydantic_from_template
+    from pymetadataeditor import MetadataEditor
+    from metadataschemas.metadata_manager import MetadataManager
+
+
+
+    me = MetadataEditor(api_url=<API_URL>, api_key=<API_KEY>)
+
+    # Load a template
+    template_info = me.get_template_by_uid("template-uid")
+    template = template_info.template
+    metadata_type = template_info.metadata_type
+    parent_class = MetadataManager().metadata_class_from_name(metadata_type)
+    pydantic_model = pydantic_from_template(template, parent_schema=parent_class, uid="template-uid")
+    """
     assert "items" in template, f"expected 'items' in template but got {list(template.keys())}"
     if name is None:
         if "title" in template:

@@ -24,6 +24,8 @@ pre-commit = "^3.7.1"
 ruff = "^0.9.3"
 detect-secrets = "^1.5.0"
 lazydocs = "^0.4.8"
+nbformat = "^5.10.4"
+nbconvert = "^7.16.6"
 
 
 [tool.ruff]

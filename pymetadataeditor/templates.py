@@ -679,6 +679,7 @@ def pydantic_from_template(
     metadata_type = template_info.metadata_type
     parent_class = MetadataManager().metadata_class_from_name(metadata_type)
     pydantic_model = pydantic_from_template(template, parent_schema=parent_class, uid="template-uid")
+    ```
     """
     assert "items" in template, f"expected 'items' in template but got {list(template.keys())}"
     if name is None:

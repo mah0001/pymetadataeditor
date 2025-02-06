@@ -684,10 +684,9 @@ class MetadataEditor:
             public_llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
                 sends the request to OpenAI. This argument is ignored if an azure_llm_base_url is provided.
             azure_llm_base_url (Optional[str]): The base URL for the Azure LLM API. Typically used when an organization
-                has their own deployment of an LLM model, possibly for privacy reasons. This can look like:
-                    https://{your-resource-name}.openai.azure.com
-                The Azure endpoint will be used even if a public_llm_base_url is provided. If None then the
-                public_llm_base_url endpoint is used. If that's also none, then OpenAI is used.
+                has its own deployment of an LLM model, possibly for privacy reasons. The Azure endpoint will be used
+                even if a public_llm_base_url is provided. If None, then the public_llm_base_url endpoint is used. If
+                that's also None, then OpenAI is used.
 
         Returns:
             (Union[BaseModel, Dict, str]): If mode == 'dict', a dictionary is returned. If mode == 'pydantic', a
@@ -706,6 +705,18 @@ class MetadataEditor:
             filename="output.xlsx",
             title="My Metadata",
         )
+
+        # Example with an Azure instance of a Large Language Model:
+        me.draft_metadata_from_files(
+            llm_api_key="...",
+            files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
+            output_mode="pydantic",
+            metadata_type_or_template_uid="indicator",
+            metadata_producer_organization="My Organization",
+            filename="output.xlsx",
+            title="My Metadata",
+            azure_llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+        )
         ```
         """
         #  prefix (Optional[str]): A prefix to add to the metadata. Defaults to '?'. If None, no prefix is added.
@@ -719,17 +730,11 @@ class MetadataEditor:
         else:
             client = AzureOpenAI(api_key=llm_api_key, base_url=azure_llm_base_url, api_version="2024-10-01")
 
-        if metadata_producer_organization is not None:
-            system_prompt = (
-                f"You are an expert on producing {metadata_type} documentation from {metadata_producer_organization}. "
-            )
-        else:
-            system_prompt = f"You are an expert on producing {metadata_type} documentation. "
+        system_prompt = f"You are an expert on producing {metadata_type} documentation. "
         system_prompt += (
-            f"Based on the user content, write project metadata. "
-            f"If you are unsure about the correct metadata values, leave them blank. "
-            f"Do not guess. Accuracy is more important than completeness. "
-            f"The metadata is being produced today, {get_date_as_text()}."
+            "Based on the user content, write project metadata. "
+            "If you are unsure about the correct metadata values, leave them blank. "
+            "Do not guess. Accuracy is more important than completeness. "
         )
 
         # "You are an expert on survey microdata documentation. Based on the user content alone, write project metadata.
@@ -745,7 +750,9 @@ class MetadataEditor:
         if isinstance(files, str):
             files = [files]
 
-        out = ""
+        out = f"The metadata is being produced today, {get_date_as_text()}."
+        if metadata_producer_organization is not None:
+            out += f" The metadata is being produced by {metadata_producer_organization}.\n\n"
         for doc in files:
             out += "################################################\n\n"
             out += f"# {doc}\n\n"
@@ -839,10 +846,9 @@ class MetadataEditor:
             public_llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
                 sends the request to OpenAI.
             azure_llm_base_url (Optional[str]): The base URL for the Azure LLM API. Typically used when an organization
-                has their own deployment of an LLM model, possibly for privacy reasons. This can look like:
-                    https://{your-resource-name}.openai.azure.com
-                The Azure endpoint will be used even if a public_llm_base_url is provided. If None then the
-                public_llm_base_url endpoint is used. If that's also none, then OpenAI is used.
+                has its own deployment of an LLM model, possibly for privacy reasons. The Azure endpoint will be used
+                even if a public_llm_base_url is provided. If None, then the public_llm_base_url endpoint is used. If
+                that's also None, then OpenAI is used.
 
         Returns:
             Union[BaseModel, Dict, str]: The augmented metadata.
@@ -859,6 +865,17 @@ class MetadataEditor:
             output_mode="pydantic",
             metadata_producer_organization="My Organization",
             prefix="<AI>"
+        )
+
+        # Example with an Azure instance of a Large Language Model:
+        me.augment_metadata_from_files(
+            input_metadata=my_indicator_metadata,
+            llm_api_key="...",
+            files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
+            output_mode="pydantic",
+            metadata_producer_organization="My Organization",
+            prefix="<AI>",
+            azure_llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
         )
         ```
         """

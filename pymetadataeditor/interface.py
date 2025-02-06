@@ -14,7 +14,7 @@ from metadataschemas.utils.schema_base_model import SchemaBaseModel
 
 # from metadataschemas.utils.quick_start import make_skeleton
 from metadataschemas.utils.utils import merge_dicts, standardize_keys_in_dict
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 from pydantic import BaseModel, ValidationError
 from requests.exceptions import HTTPError
 from urllib3.exceptions import InsecureRequestWarning
@@ -633,7 +633,7 @@ class MetadataEditor:
 
     def draft_metadata_from_files(
         self,
-        openai_api_key: str,
+        llm_api_key: str,
         files: List[str] | str,
         output_mode: str,
         metadata_type_or_template_uid: str,
@@ -641,9 +641,11 @@ class MetadataEditor:
         # prefix: Optional[str] = "?",
         filename: Optional[str] = None,
         title: Optional[str] = None,
-        openai_model="gpt-4o",
+        llm_model_name="gpt-4o",
         tokenizer_model="o200k_base",
         max_tokens=128_000,
+        public_llm_base_url: Optional[str] = None,
+        azure_llm_base_url: Optional[str] = None,
     ) -> Union[BaseModel, Dict, str]:
         """Automatically generate *draft* metadata for a project based on local files or web pages.
 
@@ -662,7 +664,7 @@ class MetadataEditor:
         In the case of images and audio the files will first be passed to OpenAI for describing or transcribing.
 
         Args:
-            openai_api_key (str): The OpenAI API key
+            llm_api_key (str): The API key for the LLM API.
             files (List[str] | str): The path to the file or a list of paths to the files from which to base metadata.
             output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
             metadata_type_or_template_uid (str): The type of metadata to create or the UID of a template to use.
@@ -671,7 +673,7 @@ class MetadataEditor:
                 If None and output_mode=='excel', defaults to {name of metadata type}_metadata.xlsx
             title (Optional[str]): If output_mode=='excel', the title for the Excel sheet.
                 If None and mode=='excel', defaults to '{name of metadata type} Metadata'
-            openai_model (str): The OpenAI model to use. Defaults to "gpt-4o". Note any model must accept a response
+            llm_model_name (str): The model to use. Defaults to "gpt-4o". Note any model must accept a response
                 format (also called structured output). Usually you should leave this to the default value.
                 The option is provided in case OpenAI deprecated the 4o model.
             tokenizer_model (str): The tokenizer model to use. Defaults to "o200k_base". Note this should be the
@@ -679,6 +681,13 @@ class MetadataEditor:
                 The option is provided in case OpenAI deprecated the 4o model.
             max_tokens (int): The maximum number of tokens to use when sending the content to OpenAI.
                 Defaults to 128_000, which has been the typical maximum for the 4o model.
+            public_llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
+                sends the request to OpenAI. This argument is ignored if an azure_llm_base_url is provided.
+            azure_llm_base_url (Optional[str]): The base URL for the Azure LLM API. Typically used when an organization
+                has their own deployment of an LLM model, possibly for privacy reasons. This can look like:
+                    https://{your-resource-name}.openai.azure.com
+                The Azure endpoint will be used even if a public_llm_base_url is provided. If None then the
+                public_llm_base_url endpoint is used. If that's also none, then OpenAI is used.
 
         Returns:
             (Union[BaseModel, Dict, str]): If mode == 'dict', a dictionary is returned. If mode == 'pydantic', a
@@ -689,7 +698,7 @@ class MetadataEditor:
         ```python
         me = MetadataEditor(api_url = api_url, api_key = api_key)
         me.draft_metadata_from_files(
-            openai_api_key="...",
+            llm_api_key="...",
             files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
             output_mode="pydantic",
             metadata_type_or_template_uid="indicator",
@@ -705,7 +714,10 @@ class MetadataEditor:
             metadata_type_or_template_uid, apply_template_rules=False
         )
         enc = tiktoken.get_encoding(tokenizer_model)
-        client = OpenAI(api_key=openai_api_key)
+        if azure_llm_base_url is None:
+            client = OpenAI(api_key=llm_api_key, base_url=public_llm_base_url)
+        else:
+            client = AzureOpenAI(api_key=llm_api_key, base_url=azure_llm_base_url, api_version="2024-10-01")
 
         if metadata_producer_organization is not None:
             system_prompt = (
@@ -728,7 +740,7 @@ class MetadataEditor:
             {"role": "system", "content": system_prompt},
         ]
 
-        md = MarkItDown(llm_client=client, llm_model=openai_model)
+        md = MarkItDown(llm_client=client, llm_model=llm_model_name)
 
         if isinstance(files, str):
             files = [files]
@@ -749,9 +761,16 @@ class MetadataEditor:
                 print(f"Read in {doc}, running token count is {num_tokens}")
         messages += user_message
 
-        print("Sending to OpenAI, this may take a few minutes...")
+        endpoint_name = (
+            azure_llm_base_url
+            if azure_llm_base_url is not None
+            else "OpenAI"
+            if public_llm_base_url is None
+            else public_llm_base_url
+        )
+        print(f"Sending to {endpoint_name}, this may take a few minutes...")
         completion = client.beta.chat.completions.parse(
-            model=openai_model,
+            model=llm_model_name,
             messages=messages,
             response_format=metadata_class_no_rules,
         )
@@ -777,7 +796,7 @@ class MetadataEditor:
     def augment_metadata_from_files(
         self,
         input_metadata: Union[BaseModel, Dict, str],
-        openai_api_key: str,
+        llm_api_key: str,
         files: List[str] | str,
         output_mode: str,
         metadata_type_or_template_uid: Optional[str] = None,
@@ -785,9 +804,11 @@ class MetadataEditor:
         prefix: Optional[str] = None,
         filename: Optional[str] = None,
         title: Optional[str] = None,
-        openai_model="gpt-4o",
+        llm_model_name="gpt-4o",
         tokenizer_model="o200k_base",
         max_tokens=128_000,
+        public_llm_base_url: Optional[str] = None,
+        azure_llm_base_url: Optional[str] = None,
     ) -> Union[BaseModel, Dict, str]:
         """Augment existing metadata with information from files or web pages.
 
@@ -796,7 +817,7 @@ class MetadataEditor:
         Args:
             input_metadata (Union[BaseModel, Dict, str]): The existing metadata to augment. Can be a dictionary, a
                 pydantic model or a path to an Excel file.
-            openai_api_key (str): The OpenAI API key
+            llm_api_key (str): The API key for the LLM API.
             files (List[str] | str): The path to the file or a list of paths to the files from which to base metadata.
             output_mode (str): The type of output. Must be 'dict', 'pydantic' or 'excel'.
             metadata_type_or_template_uid (Optional[str]): The type of metadata to create or the UID of a template to
@@ -807,7 +828,7 @@ class MetadataEditor:
                 If None and output_mode=='excel', defaults to {name of metadata type}_metadata.xlsx
             title (Optional[str]): If output_mode=='excel', the title for the Excel sheet.
                 If None and mode=='excel', defaults to '{name of metadata type} Metadata'
-            openai_model (str): The OpenAI model to use. Defaults to "gpt-4o". Note any model must accept a response
+            llm_model_name (str): The OpenAI model to use. Defaults to "gpt-4o". Note any model must accept a response
                 format (also called structured output). Usually you should leave this to the default value.
                 The option is provided in case OpenAI deprecated the 4o model.
             tokenizer_model (str): The tokenizer model to use. Defaults to "o200k_base". Note this should be the
@@ -815,6 +836,13 @@ class MetadataEditor:
                 The option is provided in case OpenAI deprecated the 4o model.
             max_tokens (int): The maximum number of tokens to use when sending the content to OpenAI.
                 Defaults to 128_000, which has been the typical maximum for the 4o model.
+            public_llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
+                sends the request to OpenAI.
+            azure_llm_base_url (Optional[str]): The base URL for the Azure LLM API. Typically used when an organization
+                has their own deployment of an LLM model, possibly for privacy reasons. This can look like:
+                    https://{your-resource-name}.openai.azure.com
+                The Azure endpoint will be used even if a public_llm_base_url is provided. If None then the
+                public_llm_base_url endpoint is used. If that's also none, then OpenAI is used.
 
         Returns:
             Union[BaseModel, Dict, str]: The augmented metadata.
@@ -826,7 +854,7 @@ class MetadataEditor:
         # augment existing metadata with information from files
         me.augment_metadata_from_files(
             input_metadata=my_indicator_metadata,
-            openai_api_key="...",
+            llm_api_key="...",
             files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
             output_mode="pydantic",
             metadata_producer_organization="My Organization",
@@ -890,7 +918,7 @@ class MetadataEditor:
             files = [file_path] + files
 
             new_metadata = self.draft_metadata_from_files(
-                openai_api_key=openai_api_key,
+                llm_api_key=llm_api_key,
                 files=files,
                 metadata_type_or_template_uid=metadata_type_or_template_uid,
                 metadata_producer_organization=metadata_producer_organization,
@@ -898,9 +926,11 @@ class MetadataEditor:
                 # prefix=prefix,
                 filename=None,
                 title=None,
-                openai_model=openai_model,
+                llm_model_name=llm_model_name,
                 tokenizer_model=tokenizer_model,
                 max_tokens=max_tokens,
+                public_llm_base_url=public_llm_base_url,
+                azure_llm_base_url=azure_llm_base_url,
             )
 
         if new_metadata is None or len(new_metadata) == 0:

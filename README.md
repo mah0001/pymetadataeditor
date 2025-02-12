@@ -295,9 +295,9 @@ If you are running on Windows and see errors about numpy installation errors the
 
 ### Markdown API Documentation
 
-Create documentation for the pyMetadataEditor class by running:
+Create documentation for the pyMetadataEditor class by running the following command:
 ```
-lazydocs pymetadataeditor.interface.MetadataEditor --no-watermark
+python make_docs.py
 ```
 
 ## Notes

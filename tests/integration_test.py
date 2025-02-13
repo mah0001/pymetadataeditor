@@ -22,8 +22,7 @@ def metadata_editor():
 
 
 def test_projects_integration(tmpdir, metadata_editor):
-    """Do not use pytest.mark.parametrize since parallel runs cause the counts of projects to be off"""
-
+    """Do not use pytest.mark.parametrize since parallel runs cause the counts of projects to be off."""
     projects = metadata_editor.list_projects(limit="all")
     num_original_projects = len(projects)
     assert min(10, num_original_projects) == len(metadata_editor.list_projects(limit=10))
@@ -283,9 +282,9 @@ def test_projects_integration(tmpdir, metadata_editor):
             title_contains_updated = metadata_editor.list_projects(
                 limit="all", keywords="patched", metadata_type=metadata_type
             )
-            assert (
-                project_id not in title_contains_updated.index or str(project_id) in title_contains_updated.index
-            ), title_contains_updated
+            assert project_id not in title_contains_updated.index or str(project_id) in title_contains_updated.index, (
+                title_contains_updated
+            )
             print(f"patching project {project_id} with {patch_update_data[metadata_type]}")
             for p in patch_update_data[metadata_type]:
                 print(f"patching with {p}")
@@ -718,18 +717,22 @@ def test_templates(metadata_editor, tmpdir):
 
 
 def test_change_mode_or_template(metadata_editor, tmpdir):
+    # Define the template UID
     template_uid = "timeseries-system-en"
 
+    # Create a metadata outline and fill it in
     modl = metadata_editor.make_metadata_outline(template_uid, output_mode="pydantic")
     fill_in_pydantic_outline(modl)
 
-    # convert to dict
+    # Convert the pydantic model to a dictionary
     dict_modl = metadata_editor.change_mode_or_template(modl, "dict")
     assert isinstance(dict_modl, dict)
 
+    # Convert the dictionary back to a pydantic model and verify equality
     back_to_pydantic = metadata_editor.change_mode_or_template(dict_modl, "pydantic", input_template_uid=template_uid)
     assert_pydantic_models_equal(modl, back_to_pydantic)
 
+    # Convert the dictionary to an Excel file
     filename_from_dict = metadata_editor.change_mode_or_template(
         dict_modl,
         "excel",
@@ -737,11 +740,13 @@ def test_change_mode_or_template(metadata_editor, tmpdir):
         filename=tmpdir.join(f"test_change_mode_or_template_{template_uid}.xlsx"),
     )
 
+    # Convert the Excel file back to a pydantic model and verify equality
     from_excel_via_dict = metadata_editor.change_mode_or_template(
         filename_from_dict, "pydantic", input_template_uid=template_uid
     )
     assert_pydantic_models_equal(modl, from_excel_via_dict)
 
+    # Convert the Excel file to a dictionary and then back to a pydantic model, verifying equality
     from_dict_via_excel = metadata_editor.change_mode_or_template(
         filename_from_dict, "dict", input_template_uid=template_uid
     )
@@ -750,14 +755,18 @@ def test_change_mode_or_template(metadata_editor, tmpdir):
     )
     assert_pydantic_models_equal(modl, pydantic_from_dict_via_excel)
 
+    # Convert the pydantic model to an Excel file
     filename_from_pydantic = metadata_editor.change_mode_or_template(
         modl, "excel", filename=tmpdir.join(f"test_change_mode_or_template_{template_uid}2.xlsx")
     )
+
+    # Convert the Excel file back to a pydantic model and verify equality
     from_excel_via_pydantic = metadata_editor.change_mode_or_template(
         filename_from_pydantic, "pydantic", input_template_uid=template_uid
     )
     assert_pydantic_models_equal(modl, from_excel_via_pydantic)
 
+    # Convert the Excel file to a dictionary and then back to a pydantic model, verifying equality
     dict_from_excel_via_pydantic = metadata_editor.change_mode_or_template(
         filename_from_pydantic, "dict", input_template_uid=template_uid
     )
@@ -766,6 +775,7 @@ def test_change_mode_or_template(metadata_editor, tmpdir):
     )
     assert_pydantic_models_equal(modl, pydantic_from_dict_via_pydantic)
 
+    # Change the template UID and verify the conversion
     alternative_template_uid = "8603d94e27bccc2bdad1e00dbbf0fe32en"
     modl_alt = metadata_editor.change_mode_or_template(modl, "pydantic", output_template_uid=alternative_template_uid)
     modl_alt_from_dict = metadata_editor.change_mode_or_template(
@@ -773,6 +783,7 @@ def test_change_mode_or_template(metadata_editor, tmpdir):
     )
     assert_pydantic_models_equal(modl_alt, modl_alt_from_dict)
 
+    # Convert the Excel file to a pydantic model with the alternative template UID and verify equality
     modl_alt_from_excel = metadata_editor.change_mode_or_template(
         filename_from_dict, "pydantic", input_template_uid=template_uid, output_template_uid=alternative_template_uid
     )

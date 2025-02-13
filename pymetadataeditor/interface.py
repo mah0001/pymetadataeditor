@@ -1242,9 +1242,12 @@ class MetadataEditor:
         if not (output_template_uid is None or output_template_uid == uid):
             new_klass, new_type, _ = self._get_metadata_class_and_type_and_UID(output_template_uid)
             try:
-                metadata = new_klass.model_validate(
-                    remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)),
-                    strict=False,
+                # metadata = new_klass.model_validate(
+                #     remove_empty_from_dict(metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)),
+                #     strict=False,
+                # )
+                metadata = _iterated_validated_update_to_outline(
+                    new_klass, updates=metadata.model_dump(mode="json", exclude_none=True, exclude_unset=True)
                 )
             except ValidationError as e:
                 raise TemplateError(

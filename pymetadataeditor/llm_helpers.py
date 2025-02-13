@@ -1,3 +1,5 @@
+"""Helper functions for the LLM Metadata Editor when working with Pydantic models and LLM outputs."""
+
 from datetime import datetime
 from typing import Any, get_args
 
@@ -7,14 +9,15 @@ from pydantic import BaseModel, ValidationError
 
 
 def _prepend_draft_drop_non_str(d: Any, prefix: str) -> dict | list | str | None:
-    """
-    Recursively prepend a prefix to all strings in a dictionary or list and drop empty strings and non-strings.
+    """Recursively prepend a prefix to all strings in a dictionary or list and drop empty strings and non-strings.
 
     Args:
-
         d (Any): The dictionary or list to process.
-    """
+        prefix (str): The prefix to prepend to all strings.
 
+    Returns:
+        dict | list | str | None: The processed dictionary or list, or the string with the prefix prepended.
+    """
     if isinstance(d, dict):
         out = {}
         for k, v in d.items():
@@ -45,6 +48,35 @@ def _prepend_draft_drop_non_str(d: Any, prefix: str) -> dict | list | str | None
 
 
 def _iterated_validated_update_to_outline(model_def: type[BaseModel], updates: dict, verbose=False) -> BaseModel:
+    """Recursively updates a model definition with given updates and validates the result.
+
+    This function takes a model definition and a dictionary of updates, makes a skeleton and applies the updates
+    to that skeleton, and validates the updated model. If validation fails for any update value, the
+    original skeleton value is retained.
+
+    Args:
+        model_def (type[BaseModel]): The model definition class to be updated.
+        updates (dict): A dictionary containing the updates to be applied to the model.
+        verbose (bool, optional): If True, prints detailed information about validation failures. Defaults to False.
+
+    Returns:
+        BaseModel: The validated model instance with the applied updates.
+
+    Raises:
+        ValidationError: If the final model validation fails.
+
+    Steps:
+        1. Create a skeleton of the model and dump its initial state.
+        2. Validate the initial state of the model.
+        3. Iterate over the updates dictionary.
+        4. For each update, check if the key exists in the original model.
+        5. Determine the type of the field (annotation) and handle optional and list types.
+        6. Recursively update nested models if the value is a dictionary or a list of dictionaries.
+        7. Apply the candidate value to the original model.
+        8. Validate the updated model.
+        9. If validation fails, revert to the original value and optionally print the error.
+        10. Return the validated model instance.
+    """
     original_model = make_skeleton(model_def).model_dump()
     # print(original_model)
     model_def.model_validate(original_model, strict=False)
@@ -92,8 +124,7 @@ def _iterated_validated_update_to_outline(model_def: type[BaseModel], updates: d
 
 
 def get_date_as_text():
-    """
-    Returns the current date as a formatted string with an ordinal suffix for the day.
+    """Returns the current date as a formatted string with an ordinal suffix for the day.
 
     The format of the returned date string is "Month DaySuffix, Year", where:
     - Month is the full name of the month (e.g., January, February).
@@ -119,8 +150,7 @@ def get_date_as_text():
 
 
 def json_to_markdown(data, level=1):
-    """
-    Converts a JSON object into Markdown.  Future versions of MarkItDown will support this natively.
+    """Converts a JSON object into Markdown.  Future versions of MarkItDown will support this natively.
 
     Args:
         data: The JSON object (dict, list, or primitive type).

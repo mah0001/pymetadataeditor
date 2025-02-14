@@ -128,13 +128,9 @@ me.list_projects(limit=3, sort_by="updated_desc")
 <th>title</th>
 <th>abbreviation</th>
 <th>nation</th>
-<th>year_start</th>
-<th>year_end</th>
 </tr>
 <tr>
 <th>id</th>
-<th></th>
-<th></th>
 <th></th>
 <th></th>
 <th></th>

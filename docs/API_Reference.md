@@ -1,6 +1,5 @@
 <!-- markdownlint-disable -->
 
-<a href="../pymetadataeditor/interface.py#L89"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 # <kbd>class</kbd> `MetadataEditor`
 pyMetadataEditor helps create and manage metadata in a Metadata Editor database. 
@@ -42,7 +41,6 @@ indicator_metadata.pretty_print()
 me.create_project_log(dict_of_indicator, "indicator")
 ``` 
 
-<a href="../pymetadataeditor/interface.py#L131"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ### <kbd>method</kbd> `__init__`
 
@@ -83,7 +81,6 @@ me = MetadataEditor(api_url = api_url, api_key = api_key)
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1454"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `add_projects_to_collection`
 
@@ -118,7 +115,6 @@ me.add_projects_to_collection(collection=[1, 2], id_format='idno', projects=['A1
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L803"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `augment_metadata_from_files`
 
@@ -200,7 +196,6 @@ me.augment_metadata_from_files(
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1204"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `change_mode_or_template`
 
@@ -245,7 +240,6 @@ And in terms of templates, you can convert a metadata object from one template t
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L163"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `count_projects`
 
@@ -263,7 +257,6 @@ Count the number of projects you have access to.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1388"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `count_projects_in_collection`
 
@@ -286,7 +279,6 @@ Count the number of projects you have access to.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1354"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `create_collection`
 
@@ -311,7 +303,6 @@ Creates a new collection with the specified title and description.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L973"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `create_project_log`
 
@@ -339,7 +330,6 @@ Validates and logs metadata which can be a dictionary, a pydantic model or a pat
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1727"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `delete_collection_by_id`
 
@@ -363,7 +353,6 @@ If the collection exists then deletes it and check it was deleted.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1715"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `delete_project_by_id`
 
@@ -387,7 +376,6 @@ If the project exists then delete it and check it was deleted.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1739"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `delete_resource_by_id`
 
@@ -412,7 +400,6 @@ If the resource exists then deletes it and check it was deleted.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1758"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `delete_template`
 
@@ -430,7 +417,6 @@ Deletes the given template.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L634"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `draft_metadata_from_files`
 
@@ -521,7 +507,6 @@ me.draft_metadata_from_files(
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1337"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `get_collection_by_id`
 
@@ -551,7 +536,6 @@ Get information about a collection like title, description, created date.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L438"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `get_metadata_class`
 
@@ -586,7 +570,6 @@ specific_metadata_class = me.get_metadata_class("timeseries-system-en")
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L232"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `get_project_by_id`
 
@@ -616,7 +599,6 @@ Retrieve information about a project such as the title, creator, creation date a
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L516"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `get_project_metadata_by_id`
 
@@ -654,7 +636,6 @@ Return the metadata as a dictionary, pydantic object or saved to an Excel file.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1572"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `get_resources_by_id`
 
@@ -678,7 +659,6 @@ List documentation (Reports, Questionnaires, Tables, etc.) for a project.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1180"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `get_template_by_uid`
 
@@ -702,7 +682,6 @@ Retrieves given template by *UID*, not id.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1326"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `list_collections`
 
@@ -720,7 +699,6 @@ Lists all the collections associated with your API key.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L174"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `list_projects`
 
@@ -754,7 +732,6 @@ Lists all the projects associated with your API key.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1402"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `list_projects_in_collection`
 
@@ -788,7 +765,6 @@ Retrieve projects that have been added to the given collection.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1154"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `list_templates`
 
@@ -806,7 +782,6 @@ Retrieves templates, both standard and any custom templates.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1587"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `log_resource`
 
@@ -860,7 +835,6 @@ If filename is provided then the file is uploaded and logged.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L460"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `make_metadata_outline`
 
@@ -912,7 +886,6 @@ path_to_indicator_excel_file = me.outline_metadata("indicator", "excel", "indica
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1101"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `patch_update_project_log_by_id`
 
@@ -937,7 +910,7 @@ JSON Patch Operations:
 - "add": Adds a value to the specified path. If the path already exists, the value is replaced. 
 - "remove": Removes the value at the specified path. 
 - "replace": Replaces the value at the specified path with a new value. 
-- "test": Tests that the value at the specified path matches a given value. 
+- "test": Tests that the specified path contains the given value. 
 
 The `path` is a string that uses a slash (`/`) notation to specify the location within the JSON document. For example, `/author` refers to the "author" field, and `/metadata/title` refers to the "title" field inside the "metadata" object. If the path does not start with a `/`, the method will automatically prepend it. 
 
@@ -961,12 +934,22 @@ The `path` is a string that uses a slash (`/`) notation to specify the location 
 **Example:**
  ```python
 me = MetadataEditor(api_url = api_url, api_key = api_key)
+
+# set the author of the project with ID 123 to "John Doe"
 me.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
+
+# test that the author is "John Doe"
+me.patch_update_project_log_by_id(id=123, op="test", path="/author", value="John Doe")
+
+# change the author to "Jane Doe"
+me.patch_update_project_log_by_id(id=123, op="replace", path="/author", value="Jane Doe")
+
+# remove the value of author
+me.patch_update_project_log_by_id(id=123, op="remove", path="/author")
 ``` 
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1299"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `read_metadata_from_excel`
 
@@ -996,7 +979,6 @@ Read metadata from an Excel file.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1498"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `remove_projects_from_collection`
 
@@ -1046,7 +1028,6 @@ me.remove_projects_from_collection(collection=[1, 2], id_format='idno', projects
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1273"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `save_metadata_to_excel`
 
@@ -1078,7 +1059,6 @@ Save a metadata object to an Excel file.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1552"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `set_template_for_collection`
 
@@ -1097,7 +1077,6 @@ Set the specified template to be used for all metadata of its type to a collecti
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1368"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `update_collection`
 
@@ -1127,7 +1106,6 @@ Updates the specified collection with a new title and/or description.
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1005"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `update_project_log_by_id`
 
@@ -1148,7 +1126,6 @@ If a dictionary is passed that only contains a subset of the possible keys then 
 
 ---
 
-<a href="../pymetadataeditor/interface.py#L1650"><img align="right" style="float:right;" src="https://img.shields.io/badge/-source-cccccc?style=flat-square"></a>
 
 ## <kbd>method</kbd> `update_resource`
 

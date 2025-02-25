@@ -71,29 +71,6 @@ me.list_projects(limit=5)
 </thead>
 <tbody>
 <tr>
-<th>4363</th>
-<td>timeseries</td>
-<td>942d99c2-6ac3-4d87-bc33-d4239d889457</td>
-<td>NY.GDP.MKTP.CD</td>
-<td>GDP (current US$)</td>
-<td>None</td>
-<td></td>
-<td>0</td>
-<td>0</td>
-<td>None</td>
-<td>2025-01-31T13:40:27+00:00</td>
-<td>2025-01-31T13:40:27+00:00</td>
-<td>None</td>
-<td>24</td>
-<td>24</td>
-<td>None</td>
-<td>None</td>
-<td>8603d94e27bccc2bdad1e00dbbf0fe32en</td>
-<td>Gordon Blackadder</td>
-<td>Gordon Blackadder</td>
-<td>[]</td>
-</tr>
-<tr>
 <th>2202</th>
 <td>document</td>
 <td>644e84d5-9a0c-4dd2-8a66-ec27808a26e4</td>
@@ -348,7 +325,7 @@ You can use these services to augment your metadata by providing an endpoint (su
 
 ```python
 me.augment_metadata_from_files(input_metadata=existing_metadata,
-                               llm_api_key=os.getenv("API_KEY_FOR_AZURE_INSTANCE_OF_LLM")
+                               llm_api_key=os.getenv("API_KEY_FOR_AZURE_INSTANCE_OF_LLM"),
                                files=docs,
                                output_mode='pydantic',
                                metadata_producer_organization="The World Bank Group, DEC - Development Data Group",

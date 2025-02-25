@@ -19,7 +19,7 @@ me = MetadataEditor(api_url=api_url, api_key=your_api_key, verify_ssl=False)
 
 
 ```python
-me.list_projects(limit=8)
+me.list_projects(limit=2)
 ```
 
 
@@ -47,15 +47,6 @@ me.list_projects(limit=8)
   </thead>
   <tbody>
     <tr>
-      <th>1003</th>
-      <td>document</td>
-      <td>12345</td>
-      <td>DOC_001</td>
-      <td>Sample Document 1</td>
-      <td>SD1</td>
-      <td>Example Nation</td>
-    </tr>
-    <tr>
       <th>1002</th>
       <td>survey</td>
       <td>67890</td>
@@ -79,7 +70,6 @@ me.list_projects(limit=8)
 
 
 
-
 ```python
 me.count_projects()
 ```
@@ -95,7 +85,7 @@ me.count_projects()
 
 
 ```python
-demo_name = "GB20241030_demo"
+demo_name = "GB20250225_demo"
 ```
 
 
@@ -140,23 +130,14 @@ me.list_projects(limit=3, sort_by="updated_desc")
 </tr>
 </thead>
 <tbody>
-<tr>
-<th>4662</th>
-<td>timeseries</td>
-<td>f6720e01-e634-461a-bf88-5f6e762a1e4b</td>
-<td>GB20241030_demo</td>
-<td>Version 1</td>
-<td>None</td>
-<td></td>
-</tr>
-<tr>
-      <th>1003</th>
-      <td>document</td>
-      <td>12345</td>
-      <td>DOC_001</td>
-      <td>Sample Document 1</td>
-      <td>SD1</td>
-      <td>Example Nation</td>
+    <tr>
+      <th>4763</th>
+      <td>timeseries</td>
+      <td>158b48c6-c05e-4c66-9cb9-01af645c179f</td>
+      <td>GB20250225_demo</td>
+      <td>Version 1</td>
+      <td>None</td>
+      <td></td>
     </tr>
     <tr>
       <th>1002</th>
@@ -189,8 +170,8 @@ me.get_project_by_id(indicator_id)
 
 
 
-    id                                                               4662
-    idno                             f6720e01-e634-461a-bf88-5f6e762a1e4b
+    id                                                               4763
+    idno                             158b48c6-c05e-4c66-9cb9-01af645c179f
     type                                                       timeseries
     title                                                       Version 1
     abbreviation...
@@ -205,7 +186,7 @@ me.get_project_metadata_by_id(indicator_id, output_mode='dict')
 
 
 
-    {'series_description': {'idno': 'GB20241030_demo', 'name': 'Version 1'}}
+    {'series_description': {'idno': 'GB20250225_demo', 'name': 'Version 1'}}
 
 
 
@@ -298,7 +279,7 @@ indicator_pydantic
 
 
 
-## Printing
+### Printing
 
 The pydantic metadata object also contains a helper function for printing metadata:
 
@@ -376,7 +357,7 @@ demo_dict
 
 
 
-    {'series_description': {'idno': 'GB20241030_demo', 'name': 'Version 1'}}
+    {'series_description': {'idno': 'GB20250225_demo', 'name': 'Version 1'}}
 
 
 
@@ -402,7 +383,7 @@ me.get_project_metadata_by_id(indicator_id, output_mode='excel', filename=excel_
 
 
 
-    'GB20241030_demo.xlsx'
+    'GB20250225_demo.xlsx'
 
 
 
@@ -423,14 +404,38 @@ me.update_project_log_by_id(indicator_id, demo_pydantic)
 
 ```python
 me.update_project_log_by_id(indicator_id, excel_filename)
+# tidy up the file
+os.remove(excel_filename)
 ```
 
 ### Updating with patch updates
 
+You can also update metadata with patch updates. With this method you can add, update, or remove parts of a project's metadata using a single JSON Patch operation.
+
+"JSON Patch is a format for describing changes to a JSON document. It can be used to avoid sending a whole
+document when only a part has changed." (https://jsonpatch.com/ accessed 2024-08-20)
+
+JSON Patch Operations:
+
+- `add`: Adds a value to the specified path. If the path already exists, the value is replaced.
+- `remove`: Removes the value at the specified path.
+- `replace`: Replaces the value at the specified path with a new value.
+- `test`: Tests that the specified path contains the given value.
+
+The `path` is a string that uses a slash (`/`) notation to specify the location within the metadata.
+
+
 
 ```python
-# tidy up the file called f"{demo_name}.xlsx"
-os.remove(f"{demo_name}.xlsx")
+# add a value that was previously empty
+me.patch_update_project_log_by_id(indicator_id, 'add', '/series_description/definition_short', 'This is a test description')
+# test that a specified value is set
+me.patch_update_project_log_by_id(indicator_id, 'test', '/series_description/definition_short', 'This is a test description')
+# change a value
+me.patch_update_project_log_by_id(indicator_id, 'replace', '/series_description/definition_short', 'This is a new test description')
+# remove a value
+me.patch_update_project_log_by_id(indicator_id, 'remove', '/series_description/definition_short')
+
 ```
 
 # Collections
@@ -513,6 +518,7 @@ me.list_collections().head()
 
 
 
+
 ```python
 collection_id = me.create_collection(demo_name+"_collection", description = "An example collection for demonstration")
 ```
@@ -526,7 +532,7 @@ me.get_collection_by_id(collection_id)
 
 
     id                                                 179
-    title                       GB20241030_demo_collection
+    title                       GB20250225_demo_collection
     description    An example collection for demonstration
     created                                     1738874405
     changed                                     1738874405
@@ -603,7 +609,7 @@ me.list_projects_in_collection(collection=collection_id, limit=5)
 <th>4662</th>
 <td>timeseries</td>
 <td>f6720e01-e634-461a-bf88-5f6e762a1e4b</td>
-<td>GB20241030_demo</td>
+<td>GB20250225_demo</td>
 <td>Version 1</td>
 <td>None</td>
 <td></td>
@@ -618,9 +624,9 @@ me.list_projects_in_collection(collection=collection_id, limit=5)
 <td>None</td>
 <td>None</td>
 <td>8603d94e27bccc2bdad1e00dbbf0fe32en</td>
-<td>Dummy User</td>
-<td>Dummy User</td>
-<td>[{'id': '179', 'title': 'GB20241030_demo_colle...</td>
+<td>Gordon Blackadder</td>
+<td>Gordon Blackadder</td>
+<td>[{'id': '179', 'title': 'GB20250225_demo_colle...</td>
 </tr>
 </tbody>
 </table>
@@ -647,6 +653,8 @@ Different organizations often want to specify the use of different subsets of me
 ```python
 me.list_templates().head()
 ```
+
+
 
 
 
@@ -752,6 +760,7 @@ me.list_templates().head()
 </tr>
 </tbody>
 </table>
+
 
 
 

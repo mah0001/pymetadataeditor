@@ -1111,7 +1111,7 @@ class MetadataEditor:
         - "add": Adds a value to the specified path. If the path already exists, the value is replaced.
         - "remove": Removes the value at the specified path.
         - "replace": Replaces the value at the specified path with a new value.
-        - "test": Tests that the value at the specified path matches a given value.
+        - "test": Tests that the specified path contains the given value.
 
         The `path` is a string that uses a slash (`/`) notation to specify the location within the JSON document.
         For example, `/author` refers to the "author" field, and `/metadata/title` refers to the "title" field
@@ -1132,7 +1132,18 @@ class MetadataEditor:
         Example:
         ```python
         me = MetadataEditor(api_url = api_url, api_key = api_key)
+
+        # set the author of the project with ID 123 to "John Doe"
         me.patch_update_project_log_by_id(id=123, op="add", path="/author", value="John Doe")
+
+        # test that the author is "John Doe"
+        me.patch_update_project_log_by_id(id=123, op="test", path="/author", value="John Doe")
+
+        # change the author to "Jane Doe"
+        me.patch_update_project_log_by_id(id=123, op="replace", path="/author", value="Jane Doe")
+
+        # remove the value of author
+        me.patch_update_project_log_by_id(id=123, op="remove", path="/author")
         ```
         """
         project_data = self.get_project_by_id(id)
@@ -1144,7 +1155,7 @@ class MetadataEditor:
             patches["value"] = value
         if isinstance(patches, dict):
             patches = [patches]
-        patches = validate_json_patches(patches)  # depend on serverside validation
+        patches = validate_json_patches(patches)  # could instead only depend on serverside validation...
         self._apinterface.post_request(pth=pth + "{}", id=id, json={"patches": patches, "validate": False})
 
     ####################################################################################################################

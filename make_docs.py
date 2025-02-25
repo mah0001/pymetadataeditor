@@ -130,10 +130,26 @@ if __name__ == "__main__":
         with open(f"docs/{filename}.md", "w") as f:
             f.write(body)
 
-    command = ["lazydocs", "pymetadataeditor.interface.MetadataEditor", "--no-watermark", "--output-path", "docs"]
+    command = [
+        "lazydocs",
+        "pymetadataeditor.interface.MetadataEditor",
+        "--no-watermark",
+        "--src-base-url",
+        "https://github.com/mah0001/pymetadataeditor/blob/main/",
+        "--output-path",
+        "docs",
+    ]
 
     # Run the command
     subprocess.run(command, check=True)
 
     # rename the file docs/pymetadataeditor.interface.MetadataEditor.md to docs/API_Reference.md using os
     os.rename("docs/pymetadataeditor.interface.MetadataEditor.md", "docs/API_Reference.md")
+
+    # remove source links until the repo is public
+    with open("docs/API_Reference.md", "r") as f:
+        lines = f.readlines()
+    with open("docs/API_Reference.md", "w") as f:
+        for line in lines:
+            if not line.startswith("<a href"):
+                f.write(line)

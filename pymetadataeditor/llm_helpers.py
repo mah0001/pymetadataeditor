@@ -1,11 +1,21 @@
 """Helper functions for the LLM Metadata Editor when working with Pydantic models and LLM outputs."""
 
 from datetime import datetime
-from typing import Any, get_args
+from typing import Any, List, get_args
 
 from metadataschemas.utils.quick_start import make_skeleton
-from metadataschemas.utils.utils import is_list_annotation, is_optional_annotation
+from metadataschemas.utils.utils import (
+    get_subtype_of_optional_or_list,
+    is_list_annotation,
+    is_optional_annotation,
+    is_optional_list,
+    subset_pydantic_model_type,
+)
+from openai import APITimeoutError
 from pydantic import BaseModel, ValidationError
+
+# from tqdm import tqdm
+from tqdm import tqdm
 
 
 def _prepend_draft_drop_non_str(d: Any, prefix: str) -> dict | list | str | None:
@@ -173,3 +183,75 @@ def json_to_markdown(data, level=1):
         markdown += f"{data}\n\n"
 
     return markdown
+
+
+def call_per_field(
+    klass: type[BaseModel], client, model: str, messages: list[dict[str, str]], show_progress_bar: bool = False
+) -> BaseModel:
+    """Calls the LLM per field and returns a validated model.
+
+    This function is typically used when the LLM model is less powerful such as when the model is running locally.
+
+    Args:
+        klass (type[BaseModel]): The Pydantic model class to be updated.
+        client: The LLM client. such as OpenAI(api_key=..., base_url=...) or AzureOpenAI(api_key=..., base_url=...)
+        model (str): The model name, for example "gpt-4o" or "llama3.1".
+        messages (list[dict[str, str]]): The messages to be sent to the LLM.
+        show_progress_bar (bool): If True, shows a progress bar. Defaults to False but is set to True nested calls.
+
+
+    Returns:
+        BaseModel: The validated model instance with the applied updates.
+
+    Example:
+    ```python
+    klass = metadata_class_no_rules, metadata_type, _ = MetadataEditor._get_metadata_class_and_type_and_UID(
+            metadata_type_or_template_uid, apply_template_rules=False
+        )
+    client = OpenAI(api_key=..., base_url=...)
+    model = "gpt-4o"
+    messages = [{"role": "system", "content": "You are a helpful assistant who writes metadata."},
+                {"role": "user", "content": "A report on the state of the world"}]
+    updated_model = call_per_field(klass, client, model, messages)
+    ```
+    1. The function iterates over each field in the Pydantic model.
+    2. For each field, it sends a request to the LLM with the provided messages.
+    3. If the LLM response is valid, it updates the field in the model.
+    4. If the LLM response is invalid, it attempts to handle nested fields or lists.
+    5. The function returns the updated and validated model.
+    """
+    final_dict = {}
+    for field in tqdm(klass.model_fields.keys(), disable=not show_progress_bar):
+        try:
+            completion = client.beta.chat.completions.parse(
+                model=model,
+                messages=messages,
+                response_format=subset_pydantic_model_type(klass, [field]),
+                temperature=0.0,
+                timeout=60 * 1,
+            )
+        except APITimeoutError:
+            # print(f"{' '*(indent+2)}Timeout")
+            continue
+        except ValidationError:
+            # print(f"{' '*indent}Validation Error for {field}, attempting to step through subfields")
+            field_annotation = klass.model_fields[field].annotation
+            # print(f"{' '*indent}field")
+            if is_optional_list(field_annotation) or is_list_annotation(field_annotation):
+                # print(get_subtype_of_optional_or_list(field_annotation))
+                class subtype(BaseModel):
+                    field: List[get_subtype_of_optional_or_list(field_annotation)]
+
+                final_dict[field] = call_per_field(subtype, client, model, messages, show_progress_bar=True)
+            elif is_optional_annotation(field_annotation):
+                # print(get_subtype_of_optional_or_list(field_annotation))
+                final_dict[field] = call_per_field(
+                    get_subtype_of_optional_or_list(field_annotation), client, model, messages, show_progress_bar=True
+                )
+            else:
+                continue
+        else:
+            message = completion.choices[0].message
+            metadata_dict = message.parsed.model_dump(exclude_none=True, exclude_unset=True)
+            final_dict = {**final_dict, **metadata_dict}
+    return _iterated_validated_update_to_outline(klass, final_dict)

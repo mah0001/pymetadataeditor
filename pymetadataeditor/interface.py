@@ -22,6 +22,7 @@ from urllib3.exceptions import InsecureRequestWarning
 from pymetadataeditor.llm_helpers import (
     _iterated_validated_update_to_outline,
     _prepend_draft_drop_non_str,
+    call_per_field,
     get_date_as_text,
     json_to_markdown,
 )
@@ -644,7 +645,7 @@ class MetadataEditor:
         llm_model_name="gpt-4o",
         tokenizer_model="o200k_base",
         max_tokens=128_000,
-        public_llm_base_url: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
         azure_llm_base_url: Optional[str] = None,
     ) -> Union[BaseModel, Dict, str]:
         """Automatically generate *draft* metadata for a project based on local files or web pages.
@@ -681,11 +682,11 @@ class MetadataEditor:
                 The option is provided in case OpenAI deprecated the 4o model.
             max_tokens (int): The maximum number of tokens to use when sending the content to OpenAI.
                 Defaults to 128_000, which has been the typical maximum for the 4o model.
-            public_llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
+            llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
                 sends the request to OpenAI. This argument is ignored if an azure_llm_base_url is provided.
             azure_llm_base_url (Optional[str]): The base URL for the Azure LLM API. Typically used when an organization
                 has its own deployment of an LLM model, possibly for privacy reasons. The Azure endpoint will be used
-                even if a public_llm_base_url is provided. If None, then the public_llm_base_url endpoint is used. If
+                even if a llm_base_url is provided. If None, then the llm_base_url endpoint is used. If
                 that's also None, then OpenAI is used.
 
         Returns:
@@ -704,6 +705,19 @@ class MetadataEditor:
             metadata_producer_organization="My Organization",
             filename="output.xlsx",
             title="My Metadata",
+        )
+
+        # Example with a local model running on Ollama:
+        me.draft_metadata_from_files(
+            llm_api_key="ollama",  # pragma: allowlist secret
+            files=["/path/to/word_file1.docx", "http://www.example.com/report.pdf"],
+            output_mode="pydantic",
+            metadata_type_or_template_uid="indicator",
+            metadata_producer_organization="My Organization",
+            filename="output.xlsx",
+            title="My Metadata",
+            llm_base_url="http://localhost:11434/v1/",
+            llm_model_name="llama3.1"
         )
 
         # Example with an Azure instance of a Large Language Model:
@@ -726,7 +740,7 @@ class MetadataEditor:
         )
         enc = tiktoken.get_encoding(tokenizer_model)
         if azure_llm_base_url is None:
-            client = OpenAI(api_key=llm_api_key, base_url=public_llm_base_url)
+            client = OpenAI(api_key=llm_api_key, base_url=llm_base_url)
         else:
             client = AzureOpenAI(api_key=llm_api_key, base_url=azure_llm_base_url, api_version="2024-10-01")
 
@@ -765,29 +779,29 @@ class MetadataEditor:
                     f" {max_tokens}, truncating the content and proceeding."
                 )
             else:
-                print(f"Read in {doc}, running token count is {num_tokens}")
+                print(f"Reading {doc}, running token count is {num_tokens}")
         messages += user_message
 
         endpoint_name = (
-            azure_llm_base_url
-            if azure_llm_base_url is not None
-            else "OpenAI"
-            if public_llm_base_url is None
-            else public_llm_base_url
+            azure_llm_base_url if azure_llm_base_url is not None else "OpenAI" if llm_base_url is None else llm_base_url
         )
         print(f"Sending to {endpoint_name}, this may take a few minutes...")
-        completion = client.beta.chat.completions.parse(
-            model=llm_model_name,
-            messages=messages,
-            response_format=metadata_class_no_rules,
-        )
+        try:
+            completion = client.beta.chat.completions.parse(
+                model=llm_model_name,
+                messages=messages,
+                response_format=metadata_class_no_rules,
+            )
 
-        message = completion.choices[0].message
-        if not message.parsed:
-            raise ValueError(message.refusal)
+            message = completion.choices[0].message
+            if not message.parsed:
+                raise ValueError(message.refusal)
 
-        metadata_dict = message.parsed.model_dump(exclude_none=True, exclude_unset=True)
-
+            metadata_dict = message.parsed.model_dump(exclude_none=True, exclude_unset=True)
+        except ValidationError:
+            metadata_dict = call_per_field(metadata_class_no_rules, client, llm_model_name, messages).model_dump(
+                exclude_none=True, exclude_unset=True
+            )
         # if prefix:
         #     metadata_dict = self._prepend_draft_drop_non_str(metadata_dict, prefix)
         metadata_class_with_rules = self.get_metadata_class(metadata_type_or_template_uid)
@@ -814,7 +828,7 @@ class MetadataEditor:
         llm_model_name="gpt-4o",
         tokenizer_model="o200k_base",
         max_tokens=128_000,
-        public_llm_base_url: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
         azure_llm_base_url: Optional[str] = None,
     ) -> Union[BaseModel, Dict, str]:
         """Augment existing metadata with information from files or web pages.
@@ -843,11 +857,11 @@ class MetadataEditor:
                 The option is provided in case OpenAI deprecated the 4o model.
             max_tokens (int): The maximum number of tokens to use when sending the content to OpenAI.
                 Defaults to 128_000, which has been the typical maximum for the 4o model.
-            public_llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
+            llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
                 sends the request to OpenAI.
             azure_llm_base_url (Optional[str]): The base URL for the Azure LLM API. Typically used when an organization
                 has its own deployment of an LLM model, possibly for privacy reasons. The Azure endpoint will be used
-                even if a public_llm_base_url is provided. If None, then the public_llm_base_url endpoint is used. If
+                even if a llm_base_url is provided. If None, then the llm_base_url endpoint is used. If
                 that's also None, then OpenAI is used.
 
         Returns:
@@ -946,7 +960,7 @@ class MetadataEditor:
                 llm_model_name=llm_model_name,
                 tokenizer_model=tokenizer_model,
                 max_tokens=max_tokens,
-                public_llm_base_url=public_llm_base_url,
+                llm_base_url=llm_base_url,
                 azure_llm_base_url=azure_llm_base_url,
             )
 

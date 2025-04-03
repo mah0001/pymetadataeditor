@@ -135,7 +135,7 @@ class MetadataEditor:
 
         Args:
             api_url (str): the URL typically looks like 'https://<name_of_your_metadata_database>.org/index.php/api'
-            api_key (str): typically this is created through the web interface of the metadata system
+            api_key (str): typically this is created through the web interface of the metadata system.
             allow_http (bool): whether to allow calls to the metadata system when the URL begins "http" instead of the
                 more secure "https". Defaults to False.
             verify_ssl (bool): Although it is good practice for API requests to verify SSL, some systems do not allow
@@ -269,11 +269,11 @@ class MetadataEditor:
         Args:
             method (str): Either 'POST' or 'GET'
             endpoint (str): The path appended to the API_URL to which a GET or POST request is sent.
-            params (optional dict): additional parameters to send with a GET request such as 'keywords'
+            params (optional dict): additional parameters to send with a GET request.
             data (optional dict): The data to send with a POST request.
             json (optional dict): The JSON data to send with a POST request.
-            files (optional dict[str, BufferedReader]): The files to send with a POST request  in the form
-                {"filename": open(filename, "rb")}
+            files (optional dict[str, BufferedReader]): The files to send with a POST request in the form
+                ```{"filename": open(filename, "rb")}```.
 
         Returns:
             Dict: The response from the API as a dictionary.

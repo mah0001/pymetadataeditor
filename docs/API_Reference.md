@@ -60,7 +60,7 @@ Create a new MetadataEditor object connected to an instance of a Metadata Editor
 **Args:**
  
  - <b>`api_url`</b> (str):  the URL typically looks like 'https://<name_of_your_metadata_database>.org/index.php/api' 
- - <b>`api_key`</b> (str):  typically this is created through the web interface of the metadata system 
+ - <b>`api_key`</b> (str):  typically this is created through the web interface of the metadata system. 
  - <b>`allow_http`</b> (bool):  whether to allow calls to the metadata system when the URL begins "http" instead of the  more secure "https". Defaults to False. 
  - <b>`verify_ssl`</b> (bool):  Although it is good practice for API requests to verify SSL, some systems do not allow  this so setting verify_ssl=False may be required. Defaults to True. 
 
@@ -517,6 +517,45 @@ me.draft_metadata_from_files(
     azure_llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
 )
 ``` 
+
+---
+
+
+## <kbd>method</kbd> `generic_api_request`
+
+```python
+generic_api_request(
+    method: str,
+    endpoint: str,
+    params: Optional[Dict] = None,
+    data: Optional[Dict] = None,
+    json: Optional[Dict] = None,
+    files: Optional[Dict[str, BufferedReader]] = None
+) → Dict
+```
+
+Make a generic API request to the Metadata Editor API. 
+
+It's generally better to use the specific functions such as list_projects, create_project_log etc. but this function is provided for flexibility and to allow for future changes in the API. 
+
+
+
+**Args:**
+ 
+ - <b>`method`</b> (str):  Either 'POST' or 'GET' 
+ - <b>`endpoint`</b> (str):  The path appended to the API_URL to which a GET or POST request is sent. 
+ - <b>`params`</b> (optional dict):  additional parameters to send with a GET request. 
+ - <b>`data`</b> (optional dict):  The data to send with a POST request. 
+ - <b>`json`</b> (optional dict):  The JSON data to send with a POST request. 
+ - <b>`files`</b> (optional dict[str, BufferedReader]):  The files to send with a POST request in the form ```{"filename": open(filename, "rb")}```.
+
+
+
+**Returns:**
+
+
+ - <b>`    Dict`</b>:  The response from the API as a dictionary.
+
 
 ---
 

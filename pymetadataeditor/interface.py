@@ -1,6 +1,7 @@
 """The interface between pyMetadataEditor and the Metadata Editor API."""
 
 import warnings
+from io import BufferedReader
 from json import JSONDecodeError
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -246,6 +247,45 @@ class MetadataEditor:
         get_project_template = "/editor/{}"
         response = self._apinterface.get_request(get_project_template, id=id)
         return pd.Series(response["project"])
+
+    ####################################################################################################################
+    # Generic API requests
+    ####################################################################################################################
+
+    def generic_api_request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict] = None,
+        data: Optional[Dict] = None,
+        json: Optional[Dict] = None,
+        files: Optional[Dict[str, BufferedReader]] = None,
+    ) -> Dict:
+        """Make a generic API request to the Metadata Editor API.
+
+        It's generally better to use the specific functions such as list_projects, create_project_log etc. but this
+        function is provided for flexibility and to allow for future changes in the API.
+
+        Args:
+            method (str): Either 'POST' or 'GET'
+            endpoint (str): The path appended to the API_URL to which a GET or POST request is sent.
+            params (optional dict): additional parameters to send with a GET request such as 'keywords'
+            data (optional dict): The data to send with a POST request.
+            json (optional dict): The JSON data to send with a POST request.
+            files (optional dict[str, BufferedReader]): The files to send with a POST request  in the form
+                {"filename": open(filename, "rb")}
+
+        Returns:
+            Dict: The response from the API as a dictionary.
+        """
+        return self._apinterface._request(
+            method=method,
+            pth=endpoint,
+            params=params,
+            data=data,
+            json=json,
+            files=files,
+        )
 
     ####################################################################################################################
     # METADATA Input and Output

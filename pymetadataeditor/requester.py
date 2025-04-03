@@ -1,3 +1,9 @@
+"""A module to handle HTTP requests with specific error handling for SSL and JSON decoding errors.
+
+This module defines a class `RequestsWithSpecificErrors` that provides methods for making GET and POST requests
+to a specified API URL. It includes error handling for SSL errors, HTTP errors, and JSON decoding errors.
+"""
+
 from io import BufferedReader
 from json import JSONDecodeError
 from ssl import SSLError as ssl_SSLError
@@ -9,6 +15,8 @@ from requests.exceptions import HTTPError, SSLError
 
 
 class RequestsWithSpecificErrors(BaseModel):
+    """A class to handle HTTP requests with specific error handling for SSL and JSON decoding errors."""
+
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     api_url: AnyHttpUrl
@@ -43,12 +51,17 @@ class RequestsWithSpecificErrors(BaseModel):
         data: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, BufferedReader]] = None,
     ) -> Dict:
-        """
-        Sends a GET or POST request to the specified URL with the API key in the headers and returns the JSON response.
+        """Perform a GET or POST request to the specified URL with the API key in the headers.
 
         Args:
             method (str): Either post or get
             pth (str): The path appended to the API_URL to which the GET or POST request is sent.
+            json (optional dict): The JSON data to send with the POST request.
+            params (optional dict): additional parameters to send with the get request such as 'keywords'
+            id (optional int or str): The id of a specific collection or project.
+                                        If not none, then pth should contain '{}' where the id ought to go.
+            data (optional dict): The data to send with the POST request.
+            files (optional dict): The files to send with the POST request.
 
         Returns:
             Dict[str, str]: The JSON response from the server, parsed into a dictionary.
@@ -102,7 +115,7 @@ class RequestsWithSpecificErrors(BaseModel):
                 raise HTTPError(error_msg) from None
             elif response.status_code == 403:
                 raise PermissionError(
-                    f"Access to that URL is denied for {url} " "Check that the API key is correct"
+                    f"Access to that URL is denied for {url} Check that the API key is correct"
                 ) from e
             elif response.status_code == 400 and "message" in response.text:
                 if isinstance(response.text, dict):
@@ -125,7 +138,8 @@ class RequestsWithSpecificErrors(BaseModel):
     def get_request(
         self, pth: str, id: Optional[Union[int, str]] = None, params: Optional[Dict[str, Union[str, List[str]]]] = None
     ) -> Dict:
-        """
+        """Performs a GET request to the specified URL with the API key in the headers and returns the JSON response.
+
         Args:
             pth (str): The path appended to the API_URL to which the GET request is sent.
             id (optional int or str): The id of a specific collection or project.
@@ -145,7 +159,8 @@ class RequestsWithSpecificErrors(BaseModel):
         data: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, BufferedReader]] = None,
     ):
-        """
+        """Performs a POST request to the specified URL with the API key in the headers and returns the JSON response.
+
         Args:
             pth (str): The path appended to the API_URL to which the POST request is sent.
             json (optional dict): The JSON data to send with the POST request.

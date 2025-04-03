@@ -1,3 +1,10 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+wheels/
+*.egg-info
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

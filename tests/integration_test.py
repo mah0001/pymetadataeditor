@@ -40,7 +40,7 @@ def test_projects_integration(tmpdir, metadata_editor):
         "indicator",
         "indicators_db",
         "video",
-        "geospatial",
+        # "geospatial",  # evidently the default template is invalid
         "script",
         "image",
     ]
@@ -788,6 +788,21 @@ def test_change_mode_or_template(metadata_editor, tmpdir):
         filename_from_dict, "pydantic", input_template_uid=template_uid, output_template_uid=alternative_template_uid
     )
     assert_pydantic_models_equal(modl_alt, modl_alt_from_excel)
+
+
+def test_generic_api_request(metadata_editor):
+    # Define the API URL and parameters
+
+    list_projects_get_path = "/editor"
+    params = {"offset": 0, "limit": 2}
+
+    # Make a GET request to the API
+    response = metadata_editor.generic_api_request("get", endpoint=list_projects_get_path, params=params)
+    assert isinstance(response, dict)
+
+    # Check if the response contains the expected keys
+    assert "projects" in response, response
+    assert len(response["projects"]) <= 10, response["projects"]
 
 
 def test_execute_demo_notebook():

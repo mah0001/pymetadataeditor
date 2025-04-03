@@ -229,6 +229,13 @@ class MetadataEditor:
             projects = pd.DataFrame.from_dict(projects).set_index("id")
         except KeyError:  # is this the best way to cope with times when there are no projects?
             return pd.DataFrame(columns=["id", "created"]).set_index("id")
+
+        try:
+            new_index = projects.index.astype(int)
+        except ValueError:
+            pass
+        else:
+            projects.index = new_index
         return projects
 
     def get_project_by_id(self, id: int) -> pd.Series:
@@ -1240,6 +1247,13 @@ class MetadataEditor:
                         return row["data_type"]
 
                 self._default_templates["data_type"] = self._default_templates.apply(standardize, axis=1)
+
+            try:
+                new_index = templates.index.astype(int)
+            except ValueError:
+                pass
+            else:
+                templates.index = new_index
             return templates
 
     def get_template_by_uid(self, uid: str) -> pd.Series:
@@ -1400,7 +1414,14 @@ class MetadataEditor:
         response = self._apinterface.get_request("collections")
         if "collections" not in response or len(response["collections"]) == 0:
             return pd.DataFrame([], columns=["id", "title", "created"]).set_index("id")
-        return pd.DataFrame(response["collections"]).set_index("id")
+        df = pd.DataFrame(response["collections"]).set_index("id")
+        try:
+            new_index = df.index.astype(int)
+        except ValueError:
+            pass
+        else:
+            df.index = new_index
+        return df
 
     def get_collection_by_id(self, id: int) -> pd.Series:
         """Get information about a collection like title, description, created date.
@@ -1517,7 +1538,15 @@ class MetadataEditor:
         ret = self._apinterface.get_request("editor?collection={}", id=collection, params=params)
         if len(ret["projects"]) == 0:
             return pd.DataFrame([], columns=["id", "type", "idno", "title"]).set_index("id")
-        return pd.DataFrame(ret["projects"]).set_index("id")
+        df = pd.DataFrame(ret["projects"]).set_index("id")
+
+        try:
+            new_index = df.index.astype(int)
+        except ValueError:
+            pass
+        else:
+            df.index = new_index
+        return df
 
     def add_projects_to_collection(
         self, collection: Union[int, List[int]], id_format: str, projects: Union[int, List[int], str, List[str]]
@@ -1648,7 +1677,14 @@ class MetadataEditor:
         """
         response = self._apinterface.get_request("resources/{}", id=id)
         if "resources" in response and len(response["resources"]) > 0:
-            return pd.DataFrame(response["resources"])
+            df = pd.DataFrame(response["resources"])
+            try:
+                new_index = df.index.astype(int)
+            except ValueError:
+                pass
+            else:
+                df.index = new_index
+            return df
         else:
             return pd.DataFrame(columns=["id", "sid", "dctype", "title", "subtitle", "author", "filename", "dcformat"])
 

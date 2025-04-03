@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pymetadataeditor"
-version = "0.2.0"
+version = "0.3.0"
 description = "Metadata Editor client for python"
 authors = ["Gordon Blackadder <gblackadder@worldbank.org>"]
 readme = "README.md"

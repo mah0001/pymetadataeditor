@@ -38,7 +38,7 @@ class RequestsWithSpecificErrors(BaseModel):
         else:
             raise ValueError(
                 f"URL scheme should be 'https' but got {self.api_url}"
-                "To allow the less secure use of 'http', set allow_unsecure=True"
+                "To allow the less secure use of 'http', set allow_http=True"
             )
 
     def _request(

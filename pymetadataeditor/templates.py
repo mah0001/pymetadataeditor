@@ -617,7 +617,12 @@ def append_variables_and_data_files(model_elements, parent_schema, apply_rules: 
 
 
 def pydantic_from_template(
-    template: Dict, parent_schema: Type[SchemaBaseModel], uid: str, name: Optional[str] = None, apply_rules: bool = True
+    template: Dict,
+    parent_schema: Type[SchemaBaseModel],
+    uid: str,
+    name: Optional[str] = None,
+    metadata_type: Optional[str] = None,
+    apply_rules: bool = True,
 ) -> Type[BaseModel]:
     """Generate a Pydantic model from a given template.
 
@@ -626,6 +631,8 @@ def pydantic_from_template(
         parent_schema (Type[SchemaBaseModel]): The parent schema model to base the new model on.
         uid (str): A unique identifier for the new model.
         name (Optional[str], optional): The name of the new model. Defaults to None.
+        metadata_type (Optional[str], optional): The metadata type for the new model used if the parent_schema is
+            SchemaBaseModel. Otherwise the metadata_type of the parent_schema is used. Defaults to None.
         apply_rules (bool, optional): Whether to apply rules to the model elements. Defaults to True.
 
     Returns:
@@ -661,6 +668,10 @@ def pydantic_from_template(
         model_elements = append_variables_and_data_files(model_elements, parent_schema, apply_rules=apply_rules)
     new_model = create_model_for_template(model_elements, parent_schema, name, uid=uid)
     if parent_schema is SchemaBaseModel:
-        new_model._metadata_type__ = f"{name.replace(' ', '_')}_template"
+        if metadata_type is None:
+            raise ValueError("metadata_type must be provided if parent_schema is SchemaBaseModel. ")
+        new_model._template_name__ = f"{name.replace('-', '_').replace(' ', '_')}"
+        new_model._template_uid__ = uid
+        new_model._metadata_type__ = metadata_type.replace("-", "_").replace(" ", "_")
         new_model._metadata_type_version__ = "unknown"
     return new_model

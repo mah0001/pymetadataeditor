@@ -441,6 +441,7 @@ class MetadataEditor:
                     parent_schema=parent_schema,
                     uid=template_uid,
                     name=temp.name,
+                    metadata_type=metadata_type,
                     apply_rules=apply_template_rules,
                 )
                 if apply_template_rules:
@@ -1293,7 +1294,9 @@ class MetadataEditor:
                     f"Building a class from the template without a parent schema."
                 )
                 parent_schema = SchemaBaseModel
-            klass = pydantic_from_template(temp.template, parent_schema=parent_schema, uid=uid, name=temp.name)
+            klass = pydantic_from_template(
+                temp.template, parent_schema=parent_schema, uid=uid, name=temp.name, metadata_type=standard_type_name
+            )
             self._templates[uid]["class"] = klass
         finally:
             return temp

@@ -602,6 +602,16 @@ def test_templates_without_metadata_schemas(metadata_editor, tmpdir):
             read_filled_template = metadata_editor.read_metadata_from_excel(filled_filename, output_mode="pydantic")
             assert_pydantic_models_equal(template_outline, read_filled_template)
 
+            # log the filled in template
+            log_id = metadata_editor.create_project_log(
+                metadata_type_or_template_uid=template_info.uid, metadata=template_outline
+            )
+            # read back the logged template
+            read_logged_template = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic")
+            assert_pydantic_models_equal(template_outline, read_logged_template)
+            # delete the logged template
+            metadata_editor.delete_project_by_id(log_id)
+
 
 def test_templates(metadata_editor, tmpdir):
     templates = metadata_editor.list_templates().drop_duplicates(["uid"])

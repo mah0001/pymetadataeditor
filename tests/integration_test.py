@@ -569,13 +569,49 @@ def test_resources_integration(metadata_editor, tmpdir):
         metadata_editor.delete_project_by_id(project_id)
 
 
+def test_templates_without_metadata_schemas(metadata_editor, tmpdir):
+    templates = metadata_editor.list_templates().drop_duplicates(["uid"])
+    for t in templates.data_type.unique():
+        print(f"Testing {t}")
+        try:
+            metadata_editor._mm.standardize_metadata_name(t)
+        except Exception as e:
+            print(f"Error with {t}: {e}")
+            templates_without_parents = templates[templates.data_type == t]
+            example_template = templates_without_parents.iloc[0]
+
+            print(f"Example template of type {t}: '{example_template.uid}'")
+            template_info = metadata_editor.get_template_by_uid(example_template.uid)
+            metadata_editor.get_metadata_class(template_info.uid)
+            template_outline = metadata_editor.make_metadata_outline(template_info.uid, output_mode="pydantic")
+            # save to a temp excel file
+            filename = os.path.join(tmpdir, f"test_template_{template_info.uid}.xlsx")
+            metadata_editor.save_metadata_to_excel(template_outline, filename=filename)
+
+            # # read back the excel file
+            read_template = metadata_editor.read_metadata_from_excel(filename, output_mode="pydantic")
+
+            assert_pydantic_models_equal(template_outline, read_template)
+
+            # fill in the template outline
+            fill_in_pydantic_outline(template_outline)
+            # save the filled in template to a temp excel file
+            filled_filename = os.path.join(tmpdir, f"test_filled_template_{template_info.uid}.xlsx")
+            metadata_editor.save_metadata_to_excel(template_outline, filename=filled_filename)
+            # read back the filled in template
+            read_filled_template = metadata_editor.read_metadata_from_excel(filled_filename, output_mode="pydantic")
+            assert_pydantic_models_equal(template_outline, read_filled_template)
+
+
 def test_templates(metadata_editor, tmpdir):
     templates = metadata_editor.list_templates().drop_duplicates(["uid"])
     default_templates = templates[templates["default"]]
     for i, uid in enumerate(default_templates[["uid"]].values):
         temp = metadata_editor.get_template_by_uid(uid[0])
         metadata_type = metadata_editor._mm.standardize_metadata_name(temp.data_type)
-        if metadata_type == "resource" or metadata_type == "geospatial":
+        # if metadata_type == "resource" or metadata_type == "geospatial":
+        #     continue
+        if metadata_type == "geospatial":
             continue
         print(i, uid[0], metadata_type)
 

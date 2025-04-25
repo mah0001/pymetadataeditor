@@ -427,7 +427,15 @@ class MetadataEditor:
         else:
             metadata_type = self._templates[template_uid]["metadata_type"]
             if "class" not in self._templates[template_uid] or apply_template_rules is False:
-                parent_schema = self._mm.metadata_class_from_name(metadata_type)
+                try:
+                    parent_schema = self._mm.metadata_class_from_name(metadata_type)
+                except ValueError:
+                    warnings.warn(
+                        f"Could not find a metadata class for template type '{metadata_type}', UID '{template_uid}'. "
+                        f"Building a class from the template without a parent schema."
+                    )
+                    parent_schema = SchemaBaseModel
+
                 klass = pydantic_from_template(
                     temp.template,
                     parent_schema=parent_schema,
@@ -1252,7 +1260,6 @@ class MetadataEditor:
                 new_index = templates.index.astype(int)
             except ValueError:
                 pass
-            else:
                 templates.index = new_index
             return templates
 
@@ -1272,9 +1279,20 @@ class MetadataEditor:
             raise KeyError(f"No result returned.\nResponse: {response}")
 
         temp = pd.Series(response["result"], name=response["result"]["name"])
-        self._templates[uid] = {"template": temp, "metadata_type": self._mm.standardize_metadata_name(temp.data_type)}
         try:
-            parent_schema = self._mm.metadata_class_from_name(temp.data_type)
+            standard_type_name = self._mm.standardize_metadata_name(temp.data_type)
+        except ValueError:
+            standard_type_name = temp.data_type
+        self._templates[uid] = {"template": temp, "metadata_type": standard_type_name}
+        try:
+            try:
+                parent_schema = self._mm.metadata_class_from_name(temp.data_type)
+            except ValueError:
+                warnings.warn(
+                    f"Could not find a metadata class for template type '{standard_type_name}', UID '{uid}'. "
+                    f"Building a class from the template without a parent schema."
+                )
+                parent_schema = SchemaBaseModel
             klass = pydantic_from_template(temp.template, parent_schema=parent_schema, uid=uid, name=temp.name)
             self._templates[uid]["class"] = klass
         finally:

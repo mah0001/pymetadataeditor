@@ -169,7 +169,7 @@ def categorize_warnings(uid, template_info: pd.Series, folder):
 
 
 if __name__ == "__main__":
-    folder = "template_warnings_4"
+    folder = "template_warnings_5"
     os.makedirs(folder, exist_ok=False)
     env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
     with open(env_path) as f:
@@ -188,8 +188,8 @@ if __name__ == "__main__":
 
     unknown_warnings = set()
     for _, template in templates.iterrows():
-        if "admin" in template.data_type:
-            continue
+        # if "admin" in template.data_type:
+        #     continue
         unknown_warnings = unknown_warnings.union(categorize_warnings(template.uid, template, folder))
 
     for uw in sorted(unknown_warnings):

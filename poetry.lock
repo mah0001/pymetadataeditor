@@ -1340,13 +1340,13 @@ files = [
 
 [[package]]
 name = "metadataschemas"
-version = "0.1.2"
+version = "0.1.3"
 description = "A library of metadata schemas for documents, geospatial, image, indicator (timeseries), microdata (ddi), script, table and video data"
 optional = false
 python-versions = "<4.0,>=3.11"
 files = [
-    {file = "metadataschemas-0.1.2-py3-none-any.whl", hash = "sha256:ab1f45defef3e5a7d341019f6771fb3e9ec915dfdd5632b69b737f5eb3982432"},
-    {file = "metadataschemas-0.1.2.tar.gz", hash = "sha256:346587c4b6888c8e16484c7502db417a5307820c0608012c11e338c28e00fa5a"},
+    {file = "metadataschemas-0.1.3-py3-none-any.whl", hash = "sha256:202015a972582fffee8195b31cc60bd4ca6494733d4ed8c5157a6f3f8385da7f"},
+    {file = "metadataschemas-0.1.3.tar.gz", hash = "sha256:93eb573f00a2d0d247d16c3c3d5c5b1036989a191358330c53b97fd9c8161a64"},
 ]
 
 [package.dependencies]
@@ -3061,4 +3061,4 @@ requests = "*"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "5140245c23e77f2ab565ecb9fa310a78d78eeecfa63cd44d1d3eb199ea257339"
+content-hash = "9ccf41abe6bc1cd92f91a4cfcd844c38f84a736db9257f0ec108c77442c9e980"

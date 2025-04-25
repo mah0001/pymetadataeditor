@@ -659,4 +659,8 @@ def pydantic_from_template(
         hasattr(parent_schema._metadata_type__, "default") and parent_schema._metadata_type__.default == "microdata"
     ):
         model_elements = append_variables_and_data_files(model_elements, parent_schema, apply_rules=apply_rules)
-    return create_model_for_template(model_elements, parent_schema, name, uid=uid)
+    new_model = create_model_for_template(model_elements, parent_schema, name, uid=uid)
+    if parent_schema is SchemaBaseModel:
+        new_model._metadata_type__ = f"{name.replace(' ', '_')}_template"
+        new_model._metadata_type_version__ = "unknown"
+    return new_model

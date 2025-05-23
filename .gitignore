@@ -4,6 +4,8 @@ __pycache__/
 build/
 wheels/
 *.egg-info
+*.whl
+*.tar.gz
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -23,3 +25,6 @@ __pycache__/
 
 # System files
 .DS_Store
+
+# template warnings
+template_warnings*/

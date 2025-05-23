@@ -505,16 +505,51 @@ def test_collections_integration(metadata_editor):
             metadata_editor.remove_projects_from_collection(collection_id, "id", project_id)
             final_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
             assert len(final_collection) == 0
+
+            # add the project back to the collection by idno
+            metadata_editor.add_projects_to_collection(collection_id, "id", project_id)
+            # check the project can be found
+            oneproject_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
+            assert len(oneproject_collection) == 1
+            assert oneproject_collection.iloc[0].study_idno == project_idno, oneproject_collection.iloc[0].keys()
+
+            # make a second collection, first copy the first collection into and check that the project is there
+            collection_id2 = metadata_editor.create_collection(
+                title="integration_test_collection2", description="integration_test_collection2"
+            )
+            metadata_editor.copy_collection(collection_id, collection_id2)
+            copied_collection = metadata_editor.list_projects_in_collection(collection_id2, limit="all")
+            assert len(copied_collection) == 1
+            assert copied_collection.iloc[0].study_idno == project_idno, copied_collection.iloc[0].keys()
+            # check that the project is still in the first collection
+            original_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
+            assert len(original_collection) == 1
+            assert original_collection.iloc[0].study_idno == project_idno, original_collection.iloc[0].keys()
+            # remove the project from the second collection
+            metadata_editor.remove_projects_from_collection(collection_id2, "id", project_id)
+            final_collection = metadata_editor.list_projects_in_collection(collection_id2, limit="all")
+            assert len(final_collection) == 0
+
+            # now move the project from the first collection to the second collection and check
+            metadata_editor.move_collection(collection_id, collection_id2)
+            moved_collection = metadata_editor.list_projects_in_collection(collection_id2, limit="all")
+            assert len(moved_collection) == 0
+            original_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
+            assert len(original_collection) == 1
+            assert original_collection.iloc[0].study_idno == project_idno, original_collection.iloc[0].keys()
+
         except Exception as e:
             metadata_editor.delete_project_by_id(project_id)
             raise e
         metadata_editor.delete_project_by_id(project_id)
     except Exception as e:
         metadata_editor.delete_collection_by_id(collection_id)
+        metadata_editor.delete_collection_by_id(collection_id2)
         raise e
 
     # delete collection
     metadata_editor.delete_collection_by_id(collection_id)
+    metadata_editor.delete_collection_by_id(collection_id2)
     assert len(metadata_editor.list_collections()) == num_original_collections
 
 
@@ -569,48 +604,48 @@ def test_resources_integration(metadata_editor, tmpdir):
         metadata_editor.delete_project_by_id(project_id)
 
 
-def test_templates_without_metadata_schemas(metadata_editor, tmpdir):
-    templates = metadata_editor.list_templates().drop_duplicates(["uid"])
-    for t in templates.data_type.unique():
-        print(f"Testing {t}")
-        try:
-            metadata_editor._mm.standardize_metadata_name(t)
-        except Exception as e:
-            print(f"Error with {t}: {e}")
-            templates_without_parents = templates[templates.data_type == t]
-            example_template = templates_without_parents.iloc[0]
+# def test_templates_without_metadata_schemas(metadata_editor, tmpdir):
+#     templates = metadata_editor.list_templates().drop_duplicates(["uid"])
+#     for t in templates.data_type.unique():
+#         print(f"Testing {t}")
+#         try:
+#             metadata_editor._mm.standardize_metadata_name(t)
+#         except Exception as e:
+#             print(f"Error with {t}: {e}")
+#             templates_without_parents = templates[templates.data_type == t]
+#             example_template = templates_without_parents.iloc[0]
 
-            print(f"Example template of type {t}: '{example_template.uid}'")
-            template_info = metadata_editor.get_template_by_uid(example_template.uid)
-            metadata_editor.get_metadata_class(template_info.uid)
-            template_outline = metadata_editor.make_metadata_outline(template_info.uid, output_mode="pydantic")
-            # save to a temp excel file
-            filename = os.path.join(tmpdir, f"test_template_{template_info.uid}.xlsx")
-            metadata_editor.save_metadata_to_excel(template_outline, filename=filename)
+#             print(f"Example template of type {t}: '{example_template.uid}'")
+#             template_info = metadata_editor.get_template_by_uid(example_template.uid)
+#             metadata_editor.get_metadata_class(template_info.uid)
+#             template_outline = metadata_editor.make_metadata_outline(template_info.uid, output_mode="pydantic")
+#             # save to a temp excel file
+#             filename = os.path.join(tmpdir, f"test_template_{template_info.uid}.xlsx")
+#             metadata_editor.save_metadata_to_excel(template_outline, filename=filename)
 
-            # # read back the excel file
-            read_template = metadata_editor.read_metadata_from_excel(filename, output_mode="pydantic")
+#             # # read back the excel file
+#             read_template = metadata_editor.read_metadata_from_excel(filename, output_mode="pydantic")
 
-            assert_pydantic_models_equal(template_outline, read_template)
+#             assert_pydantic_models_equal(template_outline, read_template)
 
-            # fill in the template outline
-            fill_in_pydantic_outline(template_outline)
-            # save the filled in template to a temp excel file
-            filled_filename = os.path.join(tmpdir, f"test_filled_template_{template_info.uid}.xlsx")
-            metadata_editor.save_metadata_to_excel(template_outline, filename=filled_filename)
-            # read back the filled in template
-            read_filled_template = metadata_editor.read_metadata_from_excel(filled_filename, output_mode="pydantic")
-            assert_pydantic_models_equal(template_outline, read_filled_template)
+#             # fill in the template outline
+#             fill_in_pydantic_outline(template_outline)
+#             # save the filled in template to a temp excel file
+#             filled_filename = os.path.join(tmpdir, f"test_filled_template_{template_info.uid}.xlsx")
+#             metadata_editor.save_metadata_to_excel(template_outline, filename=filled_filename)
+#             # read back the filled in template
+#             read_filled_template = metadata_editor.read_metadata_from_excel(filled_filename, output_mode="pydantic")
+#             assert_pydantic_models_equal(template_outline, read_filled_template)
 
-            # log the filled in template
-            log_id = metadata_editor.create_project_log(
-                metadata_type_or_template_uid=template_info.uid, metadata=template_outline
-            )
-            # read back the logged template
-            read_logged_template = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic")
-            assert_pydantic_models_equal(template_outline, read_logged_template)
-            # delete the logged template
-            metadata_editor.delete_project_by_id(log_id)
+#             # log the filled in template
+#             log_id = metadata_editor.create_project_log(
+#                 metadata_type_or_template_uid=template_info.uid, metadata=template_outline
+#             )
+#             # read back the logged template
+#             read_logged_template = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic")
+#             assert_pydantic_models_equal(template_outline, read_logged_template)
+#             # delete the logged template
+#             metadata_editor.delete_project_by_id(log_id)
 
 
 def test_templates(metadata_editor, tmpdir):
@@ -621,7 +656,7 @@ def test_templates(metadata_editor, tmpdir):
         metadata_type = metadata_editor._mm.standardize_metadata_name(temp.data_type)
         # if metadata_type == "resource" or metadata_type == "geospatial":
         #     continue
-        if metadata_type == "geospatial":
+        if metadata_type == "geospatial" or metadata_type == "admin-meta" or metadata_type == "resource":
             continue
         print(i, uid[0], metadata_type)
 

@@ -241,6 +241,24 @@ And in terms of templates, you can convert a metadata object from one template t
 ---
 
 
+## <kbd>method</kbd> `copy_collection`
+
+```python
+copy_collection(source_id: int, target_id: int)
+```
+
+Copy projects and users from one collection to another. 
+
+
+
+**Args:**
+ 
+ - <b>`source_id`</b> (int):  The ID of the source collection. 
+ - <b>`target_id`</b> (int):  The ID of the target collection. 
+
+---
+
+
 ## <kbd>method</kbd> `count_projects`
 
 ```python
@@ -320,7 +338,7 @@ Validates and logs metadata which can be a dictionary, a pydantic model or a pat
 **Args:**
  
  - <b>`metadata`</b> (dictionary or BaseModel or str):  If str, it's assumed this is a path to an appropriately  formatted Excel file. 
- - <b>`metadata_type_or_template_uid`</b> (str):  If passing in a simple type then the supported types are:  document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video  In this case we will use the default template for that metadata type.  Alternatively you can pass in the UID of a template. This is required if the metadata is a dictionary  otherwise ignored. 
+ - <b>`metadata_type_or_template_uid`</b> (str):  If passing in a simple type then the supported types are:  document, geospatial, image, indicator, indicators_db, microdata, resource, script, table, video  In this case we will use the default template for that metadata type.  Alternatively you can pass in the UID of a template. This is required if the metadata is a dictionary  otherwise the UID associated with the pydantic model or the Excel file will be used. 
 
 
 
@@ -935,6 +953,24 @@ indicator_pydantic.metadata_information.idno = "my_idno"
 # an outline can also be written to an Excel file
 path_to_indicator_excel_file = me.outline_metadata("indicator", "excel", "indicator_outline_metadata.xlsx")
 ``` 
+
+---
+
+
+## <kbd>method</kbd> `move_collection`
+
+```python
+move_collection(source_id, target_id)
+```
+
+Move source collection to be a sub-collection of the target collection. 
+
+
+
+**Args:**
+ 
+ - <b>`source_id`</b> (int):  The ID of the source collection. 
+ - <b>`target_id`</b> (int):  The ID of the target collection. 
 
 ---
 

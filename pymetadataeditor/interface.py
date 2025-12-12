@@ -702,7 +702,7 @@ class MetadataEditor:
         tokenizer_model="o200k_base",
         max_tokens=128_000,
         llm_base_url: Optional[str] = None,
-        azure_llm_base_url: Optional[str] = None,
+        azure_deployment_name: Optional[str] = None,
     ) -> Union[BaseModel, Dict, str]:
         """Automatically generate *draft* metadata for a project based on local files or web pages.
 
@@ -739,11 +739,13 @@ class MetadataEditor:
             max_tokens (int): The maximum number of tokens to use when sending the content to OpenAI.
                 Defaults to 128_000, which has been the typical maximum for the 4o model.
             llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
-                sends the request to OpenAI. This argument is ignored if an azure_llm_base_url is provided.
-            azure_llm_base_url (Optional[str]): The base URL for the Azure LLM API. Typically used when an organization
-                has its own deployment of an LLM model, possibly for privacy reasons. The Azure endpoint will be used
-                even if a llm_base_url is provided. If None, then the llm_base_url endpoint is used. If
-                that's also None, then OpenAI is used.
+                sends the request to OpenAI. Alternatively, this can be the base URL for a local LLM instance such as
+                Ollama or a private deployment of an LLM model. If using Azure OpenAI, this should be the Azure
+                endpoint URL (eg "https://my-azure-openai-resource.openai.azure.com/") and the azure_deployment_name
+                parameter should also be set.
+            azure_deployment_name (Optional[str]): Used when an organization has its own deployment of an LLM model in
+                Azure, possibly for privacy reasons. Be sure to provide the llm_base_url parameter as well which should
+                be the Azure endpoint URL.
 
         Returns:
             (Union[BaseModel, Dict, str]): If mode == 'dict', a dictionary is returned. If mode == 'pydantic', a
@@ -785,7 +787,8 @@ class MetadataEditor:
             metadata_producer_organization="My Organization",
             filename="output.xlsx",
             title="My Metadata",
-            azure_llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+            llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+            azure_deployment_name="my-llm-deployment"
         )
         ```
         """
@@ -795,10 +798,15 @@ class MetadataEditor:
             metadata_type_or_template_uid, apply_template_rules=False
         )
         enc = tiktoken.get_encoding(tokenizer_model)
-        if azure_llm_base_url is None:
+        if azure_deployment_name is None:
             client = OpenAI(api_key=llm_api_key, base_url=llm_base_url)
         else:
-            client = AzureOpenAI(api_key=llm_api_key, base_url=azure_llm_base_url, api_version="2024-10-01")
+            client = AzureOpenAI(
+                api_key=llm_api_key,
+                azure_endpoint=llm_base_url,
+                azure_deployment=azure_deployment_name,
+                api_version="2024-10-01",
+            )
 
         system_prompt = f"You are an expert on producing {metadata_type} documentation. "
         system_prompt += (
@@ -838,9 +846,7 @@ class MetadataEditor:
                 print(f"Reading {doc}, running token count is {num_tokens}")
         messages += user_message
 
-        endpoint_name = (
-            azure_llm_base_url if azure_llm_base_url is not None else "OpenAI" if llm_base_url is None else llm_base_url
-        )
+        endpoint_name = llm_base_url if llm_base_url is not None else "OpenAI"
         print(f"Sending to {endpoint_name}, this may take a few minutes...")
         try:
             completion = client.beta.chat.completions.parse(
@@ -885,7 +891,7 @@ class MetadataEditor:
         tokenizer_model="o200k_base",
         max_tokens=128_000,
         llm_base_url: Optional[str] = None,
-        azure_llm_base_url: Optional[str] = None,
+        azure_deployment_name: Optional[str] = None,
     ) -> Union[BaseModel, Dict, str]:
         """Augment existing metadata with information from files or web pages.
 
@@ -914,11 +920,13 @@ class MetadataEditor:
             max_tokens (int): The maximum number of tokens to use when sending the content to OpenAI.
                 Defaults to 128_000, which has been the typical maximum for the 4o model.
             llm_base_url (Optional[str]): The base URL for the LLM API. If None, the default URL is used which
-                sends the request to OpenAI.
-            azure_llm_base_url (Optional[str]): The base URL for the Azure LLM API. Typically used when an organization
-                has its own deployment of an LLM model, possibly for privacy reasons. The Azure endpoint will be used
-                even if a llm_base_url is provided. If None, then the llm_base_url endpoint is used. If
-                that's also None, then OpenAI is used.
+                sends the request to OpenAI. Alternatively, this can be the base URL for a local LLM instance such as
+                Ollama or a private deployment of an LLM model. If using Azure OpenAI, this should be the Azure
+                endpoint URL (eg "https://my-azure-openai-resource.openai.azure.com/") and the azure_deployment_name
+                parameter should also be set.
+            azure_deployment_name (Optional[str]): Used when an organization has its own deployment of an LLM model in
+                Azure, possibly for privacy reasons. Be sure to provide the llm_base_url parameter as well which should
+                be the Azure endpoint URL.
 
         Returns:
             Union[BaseModel, Dict, str]: The augmented metadata.
@@ -945,7 +953,8 @@ class MetadataEditor:
             output_mode="pydantic",
             metadata_producer_organization="My Organization",
             prefix="<AI>",
-            azure_llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+            llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+            azure_deployment_name="my-llm-deployment"
         )
         ```
         """
@@ -1017,7 +1026,7 @@ class MetadataEditor:
                 tokenizer_model=tokenizer_model,
                 max_tokens=max_tokens,
                 llm_base_url=llm_base_url,
-                azure_llm_base_url=azure_llm_base_url,
+                azure_deployment_name=azure_deployment_name,
             )
 
         if new_metadata is None or len(new_metadata) == 0:

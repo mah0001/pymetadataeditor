@@ -133,7 +133,7 @@ augment_metadata_from_files(
     tokenizer_model='o200k_base',
     max_tokens=128000,
     llm_base_url: Optional[str] = None,
-    azure_llm_base_url: Optional[str] = None
+    azure_deployment_name: Optional[str] = None
 ) → Union[BaseModel, Dict, str]
 ```
 
@@ -157,8 +157,9 @@ Since the metadata is being augmented, the new metadata can be given a prefix to
  - <b>`llm_model_name`</b> (str):  The OpenAI model to use. Defaults to "gpt-4o". Note any model must accept a response  format (also called structured output). Usually you should leave this to the default value.  The option is provided in case OpenAI deprecated the 4o model. 
  - <b>`tokenizer_model`</b> (str):  The tokenizer model to use. Defaults to "o200k_base". Note this should be the  tokenizer corresponding to the OpenAI model used. Usually you should leave this to the default value.  The option is provided in case OpenAI deprecated the 4o model. 
  - <b>`max_tokens`</b> (int):  The maximum number of tokens to use when sending the content to OpenAI.  Defaults to 128_000, which has been the typical maximum for the 4o model. 
- - <b>`llm_base_url`</b> (Optional[str]):  The base URL for the LLM API. If None, the default URL is used which  sends the request to OpenAI. 
- - <b>`azure_llm_base_url`</b> (Optional[str]):  The base URL for the Azure LLM API. Typically used when an organization  has its own deployment of an LLM model, possibly for privacy reasons. The Azure endpoint will be used  even if a llm_base_url is provided. If None, then the llm_base_url endpoint is used. If  that's also None, then OpenAI is used. 
+ - <b>`llm_base_url`</b> (Optional[str]):  The base URL for the LLM API. If None, the default URL is used which  sends the request to OpenAI. Alternatively, this can be the base URL for a local LLM instance such as  Ollama or a private deployment of an LLM model. If using Azure OpenAI, this should be the Azure 
+ - <b>`endpoint URL (eg "https`</b>: //my-azure-openai-resource.openai.azure.com/") and the azure_deployment_name  parameter should also be set. 
+ - <b>`azure_deployment_name`</b> (Optional[str]):  Used when an organization has its own deployment of an LLM model in   Azure, possibly for privacy reasons. Be sure to provide the llm_base_url parameter as well which should  be the Azure endpoint URL. 
 
 
 
@@ -190,7 +191,8 @@ me.augment_metadata_from_files(
     output_mode="pydantic",
     metadata_producer_organization="My Organization",
     prefix="<AI>",
-    azure_llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+    llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+    azure_deployment_name="my-llm-deployment"
 )
 ``` 
 
@@ -451,7 +453,7 @@ draft_metadata_from_files(
     tokenizer_model='o200k_base',
     max_tokens=128000,
     llm_base_url: Optional[str] = None,
-    azure_llm_base_url: Optional[str] = None
+    azure_deployment_name: Optional[str] = None
 ) → Union[BaseModel, Dict, str]
 ```
 
@@ -486,8 +488,9 @@ In the case of images and audio the files will first be passed to OpenAI for des
  - <b>`llm_model_name`</b> (str):  The model to use. Defaults to "gpt-4o". Note any model must accept a response  format (also called structured output). Usually you should leave this to the default value.  The option is provided in case OpenAI deprecated the 4o model. 
  - <b>`tokenizer_model`</b> (str):  The tokenizer model to use. Defaults to "o200k_base". Note this should be the  tokenizer corresponding to the OpenAI model used. Usually you should leave this to the default value.  The option is provided in case OpenAI deprecated the 4o model. 
  - <b>`max_tokens`</b> (int):  The maximum number of tokens to use when sending the content to OpenAI.  Defaults to 128_000, which has been the typical maximum for the 4o model. 
- - <b>`llm_base_url`</b> (Optional[str]):  The base URL for the LLM API. If None, the default URL is used which  sends the request to OpenAI. This argument is ignored if an azure_llm_base_url is provided. 
- - <b>`azure_llm_base_url`</b> (Optional[str]):  The base URL for the Azure LLM API. Typically used when an organization  has its own deployment of an LLM model, possibly for privacy reasons. The Azure endpoint will be used  even if a llm_base_url is provided. If None, then the llm_base_url endpoint is used. If  that's also None, then OpenAI is used. 
+ - <b>`llm_base_url`</b> (Optional[str]):  The base URL for the LLM API. If None, the default URL is used which  sends the request to OpenAI. Alternatively, this can be the base URL for a local LLM instance such as  Ollama or a private deployment of an LLM model. If using Azure OpenAI, this should be the Azure 
+ - <b>`endpoint URL (eg "https`</b>: //my-azure-openai-resource.openai.azure.com/") and the azure_deployment_name  parameter should also be set. 
+ - <b>`azure_deployment_name`</b> (Optional[str]):  Used when an organization has its own deployment of an LLM model in   Azure, possibly for privacy reasons. Be sure to provide the llm_base_url parameter as well which should  be the Azure endpoint URL. 
 
 
 
@@ -532,7 +535,8 @@ me.draft_metadata_from_files(
     metadata_producer_organization="My Organization",
     filename="output.xlsx",
     title="My Metadata",
-    azure_llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+    llm_base_url="https://my-azure-openai-resource.openai.azure.com/",
+    azure_deployment_name="my-llm-deployment"
 )
 ``` 
 

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pymetadataeditor"
-version = "0.3.1"
+version = "0.3.2"
 description = "Metadata Editor client for python"
 authors = ["Gordon Blackadder <gblackadder@worldbank.org>"]
 readme = "README.md"
@@ -12,7 +12,7 @@ requests = "^2.32.3"
 urllib3 = "^2.2.2"  # earlier versions have known security issues
 pandas = "^2.2.2"
 pydantic = "^2.7.4"
-openai = "^1.59.4"
+openai = "^2.8.0"
 tiktoken = "^0.8.0"
 markitdown = "^0.0.1a3"
 metadataschemas = "^0.1.3"

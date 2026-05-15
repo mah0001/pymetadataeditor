@@ -4,6 +4,10 @@
 ```python
 from pymetadataeditor import MetadataEditor
 import os
+
+# show all columns in pandas
+import pandas as pd
+pd.set_option('display.max_columns', None)
 ```
 
 ## Examples of the interface
@@ -24,49 +28,110 @@ me.list_projects(limit=2)
 
 
 
+
 <table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>type</th>
-      <th>idno</th>
-      <th>study_idno</th>
-      <th>title</th>
-      <th>abbreviation</th>
-      <th>nation</th>
-    </tr>
-    <tr>
-      <th>id</th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>1002</th>
-      <td>survey</td>
-      <td>67890</td>
-      <td>SURVEY_002</td>
-      <td>Sample Survey 2</td>
-      <td>SS2</td>
-      <td>Example Nation</td>
-    </tr>
-    <tr>
-      <th>1001</th>
-      <td>timeseries</td>
-      <td>54321</td>
-      <td>TS_003</td>
-      <td>Time Series 3</td>
-      <td>TS3</td>
-      <td>Another Nation</td>
-    </tr>
-  </tbody>
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>type</th>
+<th>idno</th>
+<th>study_idno</th>
+<th>title</th>
+<th>abbreviation</th>
+<th>nation</th>
+<th>year_start</th>
+<th>year_end</th>
+<th>published</th>
+<th>created</th>
+<th>changed</th>
+<th>varcount</th>
+<th>created_by</th>
+<th>changed_by</th>
+<th>is_shared</th>
+<th>thumbnail</th>
+<th>template_uid</th>
+<th>attributes</th>
+<th>username</th>
+<th>username_cr</th>
+<th>collections</th>
+</tr>
+<tr>
+<th>id</th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>5095</th>
+<td>survey</td>
+<td>6b609e22-e86f-43f8-92c2-d2fd4920b4aa</td>
+<td>zwxL</td>
+<td>sial</td>
+<td>None</td>
+<td>pXmU, PzaQ, iWik...and 2 more</td>
+<td>0</td>
+<td>0</td>
+<td>None</td>
+<td>2025-05-23T19:31:51+00:00</td>
+<td>2025-05-23T19:31:51+00:00</td>
+<td>None</td>
+<td>24</td>
+<td>24</td>
+<td>None</td>
+<td>None</td>
+<td>954e023b790d8b15433544d85eb6431e</td>
+<td>None</td>
+<td>Gordon Blackadder</td>
+<td>Gordon Blackadder</td>
+<td>[]</td>
+</tr>
+<tr>
+<th>5069</th>
+<td>survey</td>
+<td>96d15eb0-520f-4a8f-90a3-34f391b9ab00</td>
+<td>aykI</td>
+<td>WVmB</td>
+<td>None</td>
+<td>pYhT</td>
+<td>0</td>
+<td>0</td>
+<td>None</td>
+<td>2025-05-23T19:27:43+00:00</td>
+<td>2025-05-23T19:27:43+00:00</td>
+<td>None</td>
+<td>24</td>
+<td>24</td>
+<td>None</td>
+<td>None</td>
+<td>954e023b790d8b15433544d85eb6431e</td>
+<td>None</td>
+<td>Gordon Blackadder</td>
+<td>Gordon Blackadder</td>
+<td>[]</td>
+</tr>
+</tbody>
 </table>
-</div>
+
 
 
 
@@ -77,7 +142,7 @@ me.count_projects()
 
 
 
-    1501
+    1789
 
 
 
@@ -118,6 +183,21 @@ me.list_projects(limit=3, sort_by="updated_desc")
 <th>title</th>
 <th>abbreviation</th>
 <th>nation</th>
+<th>year_start</th>
+<th>year_end</th>
+<th>published</th>
+<th>created</th>
+<th>changed</th>
+<th>varcount</th>
+<th>created_by</th>
+<th>changed_by</th>
+<th>is_shared</th>
+<th>thumbnail</th>
+<th>template_uid</th>
+<th>attributes</th>
+<th>username</th>
+<th>username_cr</th>
+<th>collections</th>
 </tr>
 <tr>
 <th>id</th>
@@ -127,36 +207,96 @@ me.list_projects(limit=3, sort_by="updated_desc")
 <th></th>
 <th></th>
 <th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
 </tr>
 </thead>
 <tbody>
-    <tr>
-      <th>4763</th>
-      <td>timeseries</td>
-      <td>158b48c6-c05e-4c66-9cb9-01af645c179f</td>
-      <td>GB20250225_demo</td>
-      <td>Version 1</td>
-      <td>None</td>
-      <td></td>
-    </tr>
-    <tr>
-      <th>1002</th>
-      <td>survey</td>
-      <td>67890</td>
-      <td>SURVEY_002</td>
-      <td>Sample Survey 2</td>
-      <td>SS2</td>
-      <td>Example Nation</td>
-    </tr>
-    <tr>
-      <th>1001</th>
-      <td>timeseries</td>
-      <td>54321</td>
-      <td>TS_003</td>
-      <td>Time Series 3</td>
-      <td>TS3</td>
-      <td>Another Nation</td>
-    </tr>
+<tr>
+<th>5096</th>
+<td>timeseries</td>
+<td>9960d5df-f2f4-477b-98ce-a58e20b829b4</td>
+<td>GB20250225_demo</td>
+<td>Version 1</td>
+<td>None</td>
+<td>None</td>
+<td>0</td>
+<td>0</td>
+<td>None</td>
+<td>2025-05-23T19:35:14+00:00</td>
+<td>2025-05-23T19:35:14+00:00</td>
+<td>None</td>
+<td>24</td>
+<td>24</td>
+<td>None</td>
+<td>None</td>
+<td>timeseries-system-en</td>
+<td>{'database_id': None}</td>
+<td>Gordon Blackadder</td>
+<td>Gordon Blackadder</td>
+<td>[]</td>
+</tr>
+<tr>
+<th>5095</th>
+<td>survey</td>
+<td>6b609e22-e86f-43f8-92c2-d2fd4920b4aa</td>
+<td>zwxL</td>
+<td>sial</td>
+<td>None</td>
+<td>pXmU, PzaQ, iWik...and 2 more</td>
+<td>0</td>
+<td>0</td>
+<td>None</td>
+<td>2025-05-23T19:31:51+00:00</td>
+<td>2025-05-23T19:31:51+00:00</td>
+<td>None</td>
+<td>24</td>
+<td>24</td>
+<td>None</td>
+<td>None</td>
+<td>954e023b790d8b15433544d85eb6431e</td>
+<td>None</td>
+<td>Gordon Blackadder</td>
+<td>Gordon Blackadder</td>
+<td>[]</td>
+</tr>
+<tr>
+<th>5069</th>
+<td>survey</td>
+<td>96d15eb0-520f-4a8f-90a3-34f391b9ab00</td>
+<td>aykI</td>
+<td>WVmB</td>
+<td>None</td>
+<td>pYhT</td>
+<td>0</td>
+<td>0</td>
+<td>None</td>
+<td>2025-05-23T19:27:43+00:00</td>
+<td>2025-05-23T19:27:43+00:00</td>
+<td>None</td>
+<td>24</td>
+<td>24</td>
+<td>None</td>
+<td>None</td>
+<td>954e023b790d8b15433544d85eb6431e</td>
+<td>None</td>
+<td>Gordon Blackadder</td>
+<td>Gordon Blackadder</td>
+<td>[]</td>
+</tr>
 </tbody>
 </table>
 
@@ -170,8 +310,8 @@ me.get_project_by_id(indicator_id)
 
 
 
-    id                                                               4763
-    idno                             158b48c6-c05e-4c66-9cb9-01af645c179f
+    id                                                               5096
+    idno                             9960d5df-f2f4-477b-98ce-a58e20b829b4
     type                                                       timeseries
     title                                                       Version 1
     abbreviation...
@@ -186,7 +326,9 @@ me.get_project_metadata_by_id(indicator_id, output_mode='dict')
 
 
 
-    {'series_description': {'idno': 'GB20250225_demo', 'name': 'Version 1'}}
+    {'series_description': {'idno': 'GB20250225_demo',
+      'name': 'Version 1',
+      'display_name': 'Version 1'}}
 
 
 
@@ -260,7 +402,7 @@ indicator_pydantic
 
 
 
-    IHSN_INDICATOR_1-0_Template_v01_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='', abbr=None, affiliation=None, role=None)], prod_date=None, version_statement=version_statement(version=None, version_date=None, version_notes=None, version_resp=None)), ser...
+    Indicator_Schema_1-0_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='', abbr=None, affiliation=None, role=None)], prod_date=None, version_statement=version_statement(version=None, version_date=None, version_notes=None, version_resp=None)), series_descrip...
 
 
 
@@ -275,7 +417,7 @@ indicator_pydantic
 
 
 
-    IHSN_INDICATOR_1-0_Template_v01_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='example_producer', abbr=None, affiliation=None, role=None)], prod_date=None, version_statement=version_statement(version=None, version_date=None, version_notes=None, version_...
+    Indicator_Schema_1-0_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='example_producer', abbr=None, affiliation=None, role=None)], prod_date=None, version_statement=version_statement(version=None, version_date=None, version_notes=None, version_resp=None))...
 
 
 
@@ -289,7 +431,7 @@ indicator_pydantic.pretty_print()
 ```
 
 
-IHSN_INDICATOR_1-<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">0_Template_v01_EN</span><span style="font-weight: bold">(</span><span style="color: #808000; text-decoration-color: #808000">metadata_information</span>=<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">metadata_information</span><span style="font-weight: bold">(</span><span style="color: #808000; text-decoration-color: #808000">title</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>,
+Indicator_Schema_1-<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">0_EN</span><span style="font-weight: bold">(</span><span style="color: #808000; text-decoration-color: #808000">metadata_information</span>=<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">metadata_information</span><span style="font-weight: bold">(</span><span style="color: #808000; text-decoration-color: #808000">title</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>,
         <span style="color: #808000; text-decoration-color: #808000">idno</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>,
         <span style="color: #808000; text-decoration-color: #808000">producers</span>=<span style="font-weight: bold">[</span><span style="color: #800080; text-decoration-color: #800080; font-weight: bold">Producer</span><span style="font-weight: bold">(</span><span style="color: #808000; text-decoration-color: #808000">name</span>=<span style="color: #008000; text-decoration-color: #008000">'example_producer'</span>, <span style="color: #808000; text-decoration-color: #808000">abbr</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">affiliation</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">role</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span><span style="font-weight: bold">)]</span>,
         <span style="color: #808000; text-decoration-color: #808000">prod_date</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>,
@@ -298,7 +440,7 @@ IHSN_INDICATOR_1-<span style="color: #800080; text-decoration-color: #800080; fo
             <span style="color: #808000; text-decoration-color: #808000">version_notes</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>,
             <span style="color: #808000; text-decoration-color: #808000">version_resp</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span><span style="font-weight: bold">)</span><span style="font-weight: bold">)</span>,
     <span style="color: #808000; text-decoration-color: #808000">series_description</span>=<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">series_description</span><span style="font-weight: bold">(</span><span style="color: #808000; text-decoration-color: #808000">idno</span>=<span style="color: #008000; text-decoration-color: #008000">''</span>,
-        <span style="color: #808000; text-decoration-color: #808000">alternate_identifiers</span>=<span style="font-weight: bold">[</span><span style="color: #800080; text-decoration-color: #800080; font-weight: bold">Alternate_identifier</span><span style="font-weight: bold">(</span><span style="color: #808000; text-decoration-color: #808000">name</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">identifier</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">database</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">uri</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">notes</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span><span style="font-weight: bold">)</span><span style="font-weight: bold">]</span>,
+        <span style="color: #808000; text-decoration-color: #808000">alternate_identifiers</span>=<span style="font-weight: bold">[</span><span style="color: #800080; text-decoration-color: #800080; font-weight: bold">Alternate_identifier</span><span style="font-weight: bold">(</span><span style="color: #808000; text-decoration-color: #808000">type</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">identifier</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">database</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">uri</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span>, <span style="color: #808000; text-decoration-color: #808000">notes</span>=<span style="color: #800080; text-decoration-color: #800080; font-style: italic">None</span><span style="font-weight: bold">)</span><span style="font-weight: bold">]</span>,
         <span style="color: #808000; text-decoration-color: #808000">name</span>=...
 
 
@@ -329,7 +471,7 @@ outline_filename
 
 
 
-    'IHSN_INDICATOR_1-0_Template_v01_EN_metadata.xlsx'
+    'Indicator_Schema_1-0_EN_metadata.xlsx'
 
 
 
@@ -357,7 +499,9 @@ demo_dict
 
 
 
-    {'series_description': {'idno': 'GB20250225_demo', 'name': 'Version 1'}}
+    {'series_description': {'idno': 'GB20250225_demo',
+      'name': 'Version 1',
+      'display_name': 'Version 1'}}
 
 
 
@@ -370,7 +514,7 @@ demo_pydantic
 
 
 
-    IHSN_INDICATOR_1-0_Template_v01_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='', abbr=None, affiliation=None, role=None)], prod_date=None, version_statement=version_statement(version=None, version_date=None, version_notes=None, version_resp=None)), ser...
+    Indicator_Schema_1-0_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='', abbr=None, affiliation=None, role=None)], prod_date=None, version_statement=version_statement(version=None, version_date=None, version_notes=None, version_resp=None)), series_descrip...
 
 
 
@@ -390,6 +534,32 @@ me.get_project_metadata_by_id(indicator_id, output_mode='excel', filename=excel_
 ### Updating an existing project
 
 You can create and update projects with metadata as either dictionaries, pydantic models or in Excel files. 
+
+
+```python
+indicator_id
+```
+
+
+
+
+    5096
+
+
+
+
+```python
+demo_dict
+```
+
+
+
+
+    {'series_description': {'idno': 'GB20250225_demo',
+      'name': 'Version 1',
+      'display_name': 'Version 1'}}
+
+
 
 
 ```python
@@ -448,6 +618,8 @@ me.list_collections().head()
 ```
 
 
+
+
 <table border="1" class="dataframe">
 <thead>
 <tr style="text-align: right;">
@@ -477,44 +649,45 @@ me.list_collections().head()
 </thead>
 <tbody>
 <tr>
-<th>1</th>
-<td>Sample Title 1</td>
-<td>Sample Description 1</td>
-<td>2025-01-01T00:00:00+00:00</td>
-<td>2025-01-02T00:00:00+00:00</td>
-<td>1</td>
+<th>183</th>
+<td>aa</td>
+<td>aa</td>
+<td>2025-03-31T06:59:18+00:00</td>
+<td>2025-03-31T06:59:18+00:00</td>
+<td>39</td>
+<td>39</td>
+<td>3</td>
+<td>None</td>
+<td>outsourcify</td>
+</tr>
+<tr>
+<th>8</th>
+<td>aL-moved</td>
+<td>Collection description Text</td>
+<td>1970-01-01T00:33:43+00:00</td>
+<td>2024-02-06T04:04:35+00:00</td>
+<td>13</td>
+<td>20</td>
+<td>None</td>
+<td>None</td>
+<td>chriskrestel</td>
+</tr>
+<tr>
+<th>18</th>
+<td>CCKP</td>
+<td>World Bank Climate Change Knowledge Platform</td>
+<td>2024-06-05T02:04:21+00:00</td>
+<td>2024-06-05T02:04:21+00:00</td>
+<td>2</td>
 <td>2</td>
 <td>None</td>
 <td>None</td>
-<td>user1</td>
+<td>Olivier Dupriez</td>
 </tr>
-<tr>
-<th>2</th>
-<td>Sample Title 2</td>
-<td>Sample Description 2</td>
-<td>2025-02-01T00:00:00+00:00</td>
-<td>2025-02-02T00:00:00+00:00</td>
-<td>3</td>
-<td>4</td>
-<td>None</td>
-<td>None</td>
-<td>user2</td>
-</tr>
-<tr>
-<th>3</th>
-<td>Sample Title 3</td>
-<td>Sample Description 3</td>
-<td>2025-03-01T00:00:00+00:00</td>
-<td>2025-03-02T00:00:00+00:00</td>
-<td>5</td>
-<td>6</td>
-<td>None</td>
-<td>None</td>
-<td>user3</td>
-</tr>
+
+
 </tbody>
 </table>
-
 
 
 
@@ -531,11 +704,11 @@ me.get_collection_by_id(collection_id)
 
 
 
-    id                                                 179
+    id                                                 213
     title                       GB20250225_demo_collection
     description    An example collection for demonstration
-    created                                     1738874405
-    changed                                     1738874405
+    created                                     1748028923
+    changed                                     1748028923
     created_by...
 
 
@@ -576,6 +749,7 @@ me.list_projects_in_collection(collection=collection_id, limit=5)
 <th>is_shared</th>
 <th>thumbnail</th>
 <th>template_uid</th>
+<th>attributes</th>
 <th>username</th>
 <th>username_cr</th>
 <th>collections</th>
@@ -602,31 +776,33 @@ me.list_projects_in_collection(collection=collection_id, limit=5)
 <th></th>
 <th></th>
 <th></th>
+<th></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<th>4662</th>
+<th>5096</th>
 <td>timeseries</td>
-<td>f6720e01-e634-461a-bf88-5f6e762a1e4b</td>
+<td>9960d5df-f2f4-477b-98ce-a58e20b829b4</td>
 <td>GB20250225_demo</td>
 <td>Version 1</td>
 <td>None</td>
-<td></td>
+<td>None</td>
 <td>0</td>
 <td>0</td>
 <td>None</td>
-<td>2025-02-06T20:39:58+00:00</td>
-<td>2025-02-06T20:40:04+00:00</td>
+<td>2025-05-23T19:35:14+00:00</td>
+<td>2025-05-23T19:35:23+00:00</td>
 <td>None</td>
 <td>24</td>
 <td>24</td>
 <td>None</td>
 <td>None</td>
-<td>8603d94e27bccc2bdad1e00dbbf0fe32en</td>
+<td>timeseries-system-en</td>
+<td>{'database_id': None}</td>
 <td>Gordon Blackadder</td>
 <td>Gordon Blackadder</td>
-<td>[{'id': '179', 'title': 'GB20250225_demo_colle...</td>
+<td>[{'id': '213', 'title': 'GB20250225_demo_colle...</td>
 </tr>
 </tbody>
 </table>
@@ -657,7 +833,6 @@ me.list_templates().head()
 
 
 
-
 <table border="1" class="dataframe">
 <thead>
 <tr style="text-align: right;">
@@ -672,7 +847,13 @@ me.list_templates().head()
 <th>id</th>
 <th>version</th>
 <th>organization</th>
-<th>...</th>
+<th>author</th>
+<th>description</th>
+<th>instructions</th>
+<th>created</th>
+<th>created_by</th>
+<th>changed</th>
+<th>changed_by</th>
 <th>owner_id</th>
 <th>deleted_at</th>
 <th>deleted_by</th>
@@ -688,76 +869,125 @@ me.list_templates().head()
 <tbody>
 <tr>
 <th>0</th>
-<td>dummy-uid-1</td>
+<td>microdata-system-en</td>
 <td>core</td>
-<td>Dummy Template 1</td>
+<td>Microdata DDI 2.5 EN</td>
 <td>survey</td>
 <td>en</td>
-<td>dummy_template_path_1</td>
+<td>metadata_editor/metadata_editor_templates/surv...</td>
 <td>False</td>
 <td>NaN</td>
 <td>NaN</td>
-<td>Dummy Org 1</td>
-<td>...</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
-<td>dummy_user_1</td>
-<td>dummy_email_1@example.com</td>
-<td>dummy_changed_user_1</td>
-<td>dummy_changed_email_1@example.com</td>
-<td>dummy_created_user_1</td>
-<td>dummy_created_email_1@example.com</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
 </tr>
 <tr>
 <th>1</th>
-<td>dummy-uid-2</td>
+<td>232ea3aaece0cdf1db157f797f6b92e5fr</td>
 <td>core</td>
-<td>Dummy Template 2</td>
+<td>IHSN DDI 2.5 Modèle v01 FR</td>
 <td>survey</td>
 <td>fr</td>
-<td>dummy_template_path_2</td>
+<td>metadata_editor/metadata_editor_templates/surv...</td>
 <td>False</td>
 <td>NaN</td>
 <td>NaN</td>
-<td>Dummy Org 2</td>
-<td>...</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
-<td>dummy_user_2</td>
-<td>dummy_email_2@example.com</td>
-<td>dummy_changed_user_2</td>
-<td>dummy_changed_email_2@example.com</td>
-<td>dummy_created_user_2</td>
-<td>dummy_created_email_2@example.com</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
 </tr>
 <tr>
 <th>2</th>
-<td>dummy-uid-3</td>
+<td>6740f5f920502baf3f6cbcaa5c113deeen</td>
 <td>core</td>
-<td>Dummy Template 3</td>
+<td>IHSN DDI 2.5 Template v01 EN</td>
 <td>survey</td>
-<td>es</td>
-<td>dummy_template_path_3</td>
+<td>en</td>
+<td>metadata_editor/metadata_editor_templates/surv...</td>
 <td>False</td>
 <td>NaN</td>
 <td>NaN</td>
-<td>Dummy Org 3</td>
-<td>...</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
 <td>NaN</td>
-<td>dummy_user_3</td>
-<td>dummy_email_3@example.com</td>
-<td>dummy_changed_user_3</td>
-<td>dummy_changed_email_3@example.com</td>
-<td>dummy_created_user_3</td>
-<td>dummy_created_email_3@example.com</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
 </tr>
+<tr>
+<th>3</th>
+<td>timeseries-system-en</td>
+<td>core</td>
+<td>Indicator Schema 1.0 EN</td>
+<td>timeseries</td>
+<td>en</td>
+<td>metadata_editor/metadata_editor_templates/time...</td>
+<td>True</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+</tr>
+
 </tbody>
 </table>
 

@@ -1,6 +1,6 @@
 """A module to handle HTTP requests with specific error handling for SSL and JSON decoding errors.
 
-This module defines a class `RequestsWithSpecificErrors` that provides methods for making GET and POST requests
+This module defines a class `RequestsWithSpecificErrors` that provides methods for making HTTP requests
 to a specified API URL. It includes error handling for SSL errors, HTTP errors, and JSON decoding errors.
 """
 
@@ -41,6 +41,29 @@ class RequestsWithSpecificErrors(BaseModel):
                 "To allow the less secure use of 'http', set allow_http=True"
             )
 
+    _METHODS_WITH_BODY = frozenset({"post", "put"})
+
+    def request(
+        self,
+        method: str,
+        pth: str,
+        json: Optional[Dict] = None,
+        params: Optional[Dict[str, Union[str, List[str]]]] = None,
+        id: Optional[Union[int, str]] = None,
+        data: Optional[Dict[str, str]] = None,
+        files: Optional[Dict[str, BufferedReader]] = None,
+    ) -> Dict:
+        """Perform an HTTP request to the specified URL with the API key in the headers."""
+        return self._request(
+            method=method,
+            pth=pth,
+            json=json,
+            params=params,
+            id=id,
+            data=data,
+            files=files,
+        )
+
     def _request(
         self,
         method: str,
@@ -51,39 +74,27 @@ class RequestsWithSpecificErrors(BaseModel):
         data: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, BufferedReader]] = None,
     ) -> Dict:
-        """Perform a GET or POST request to the specified URL with the API key in the headers.
-
-        Args:
-            method (str): Either post or get
-            pth (str): The path appended to the API_URL to which the GET or POST request is sent.
-            json (optional dict): The JSON data to send with the POST request.
-            params (optional dict): additional parameters to send with the get request such as 'keywords'
-            id (optional int or str): The id of a specific collection or project.
-                                        If not none, then pth should contain '{}' where the id ought to go.
-            data (optional dict): The data to send with the POST request.
-            files (optional dict): The files to send with the POST request.
-
-        Returns:
-            Dict[str, str]: The JSON response from the server, parsed into a dictionary.
-
-        Raises:
-            ValueError: If the URL does not start with 'https'.
-            PermissionError: If the response status code is 403, indicating that access is denied.
-            Exception: If the request fails due to other HTTP errors, with details of the status code and response text.
-            Exception: If any other unexpected error occurs during the request.
-        """
+        """Internal HTTP dispatch with shared error handling."""
         method = method.lower()
-        assert method in ["get", "post"], f"unknown method {method}"
-        request_kwargs = {}
-        if method == "post":
-            assert params is None, "when using post, pass json not params"
+        allowed = ("get", "post", "put", "delete")
+        if method not in allowed:
+            raise ValueError(f"unknown method {method!r}, must be one of {allowed}")
+
+        request_kwargs: Dict[str, Any] = {}
+        if method in self._METHODS_WITH_BODY:
             request_kwargs["json"] = json
+            if params is not None:
+                request_kwargs["params"] = params
             if data is not None:
                 request_kwargs["data"] = data
             if files is not None:
                 request_kwargs["files"] = files
-        if method == "get" and params is not None:
-            assert json is None, "when using get, pass params not json"
+        elif method == "get":
+            if params is not None:
+                if json is not None:
+                    raise ValueError("when using get, pass params not json")
+                request_kwargs["params"] = params
+        elif method == "delete" and params is not None:
             request_kwargs["params"] = params
 
         if "{" in pth:
@@ -149,7 +160,7 @@ class RequestsWithSpecificErrors(BaseModel):
         Returns:
             Dict[str, str]: The JSON response from the server, parsed into a dictionary.
         """
-        return self._request("get", pth=pth, id=id, params=params)
+        return self.request("get", pth=pth, id=id, params=params)
 
     def post_request(
         self,
@@ -158,6 +169,7 @@ class RequestsWithSpecificErrors(BaseModel):
         id: Optional[Union[int, str]] = None,
         data: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, BufferedReader]] = None,
+        params: Optional[Dict[str, Union[str, List[str]]]] = None,
     ):
         """Performs a POST request to the specified URL with the API key in the headers and returns the JSON response.
 
@@ -172,4 +184,25 @@ class RequestsWithSpecificErrors(BaseModel):
         Returns:
             Dict[str, str]: The JSON response from the server, parsed into a dictionary.
         """
-        return self._request("post", pth=pth, id=id, json=json, data=data, files=files)
+        return self.request("post", pth=pth, id=id, json=json, data=data, files=files, params=params)
+
+    def put_request(
+        self,
+        pth: str,
+        json: Optional[Dict] = None,
+        id: Optional[Union[int, str]] = None,
+        data: Optional[Dict[str, str]] = None,
+        files: Optional[Dict[str, BufferedReader]] = None,
+        params: Optional[Dict[str, Union[str, List[str]]]] = None,
+    ) -> Dict:
+        """Performs a PUT request to the specified URL with the API key in the headers."""
+        return self.request("put", pth=pth, id=id, json=json, data=data, files=files, params=params)
+
+    def delete_request(
+        self,
+        pth: str,
+        id: Optional[Union[int, str]] = None,
+        params: Optional[Dict[str, Union[str, List[str]]]] = None,
+    ) -> Dict:
+        """Performs a DELETE request to the specified URL with the API key in the headers."""
+        return self.request("delete", pth=pth, id=id, params=params)

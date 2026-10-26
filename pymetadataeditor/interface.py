@@ -26,13 +26,19 @@ from pymetadataeditor.llm_helpers import (
     json_to_markdown,
 )
 from pymetadataeditor.api_client import ApiClient
+from pymetadataeditor.codelists import CodelistsClient
 from pymetadataeditor.collections import CollectionsClient
+from pymetadataeditor.data_structures import DataStructuresClient
+from pymetadataeditor.indicators import IndicatorsClient
+from pymetadataeditor.jobs import JobsClient
 from pymetadataeditor.metadata_workflows import MetadataWorkflowsClient
 from pymetadataeditor.projects import ProjectsClient
+from pymetadataeditor.publish import PublishClient
 from pymetadataeditor.requester import RequestsWithSpecificErrors
 from pymetadataeditor.resources import ResourcesClient
 from pymetadataeditor.templates import pydantic_from_template
 from pymetadataeditor.templates_client import TemplatesClient
+from pymetadataeditor.uploads import UploadsClient
 
 from .constants import DICT_MODES, EXCEL_MODES, PYDANTIC_MODES
 from .exceptions import TemplateError
@@ -106,7 +112,14 @@ class MetadataEditor:
     ```
     """
 
-    def __init__(self, api_url: str, api_key: str, allow_http: bool = False, verify_ssl: bool = True):
+    def __init__(
+        self,
+        api_url: str,
+        api_key: str,
+        allow_http: bool = False,
+        verify_ssl: bool = True,
+        timeout: Optional[float] = None,
+    ):
         """Create a new MetadataEditor object connected to an instance of a Metadata Editor database.
 
         Args:
@@ -116,6 +129,8 @@ class MetadataEditor:
                 more secure "https". Defaults to False.
             verify_ssl (bool): Although it is good practice for API requests to verify SSL, some systems do not allow
                 this so setting verify_ssl=False may be required. Defaults to True.
+            timeout (float): default request timeout in seconds (None waits indefinitely). Long calls such as data
+                import and publishing accept their own ``timeout``.
 
         Example:
         ```python
@@ -128,7 +143,7 @@ class MetadataEditor:
         ```
         """
         self._apinterface = RequestsWithSpecificErrors(
-            api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl
+            api_url=api_url, api_key=api_key, allow_http=allow_http, verify_ssl=verify_ssl, timeout=timeout
         )
         self._mm = MetadataManager()
         self._templates = {}
@@ -138,6 +153,14 @@ class MetadataEditor:
         self.collections = CollectionsClient(self._apinterface)
         self.templates = TemplatesClient(self._apinterface, template_cache=self._templates)
         self.resources = ResourcesClient(self._apinterface)
+        self.publish = PublishClient(self._apinterface)
+        self.jobs = JobsClient(self._apinterface)
+        self.uploads = UploadsClient(self._apinterface)
+        self.data_structures = DataStructuresClient(self._apinterface)
+        self.codelists = CodelistsClient(self._apinterface)
+        self.indicators = IndicatorsClient(
+            self._apinterface, projects=self.projects, uploads=self.uploads, publish=self.publish
+        )
         self.metadata = MetadataWorkflowsClient(self)
 
     ####################################################################################################################

@@ -13,6 +13,8 @@ import requests
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, SecretStr, model_validator
 from requests.exceptions import HTTPError, SSLError
 
+from .exceptions import ApiError
+
 
 class RequestsWithSpecificErrors(BaseModel):
     """A class to handle HTTP requests with specific error handling for SSL and JSON decoding errors."""
@@ -29,6 +31,10 @@ class RequestsWithSpecificErrors(BaseModel):
         default=True,
         description="Calls to the API are authenticated with an SSL certificate. "
         "Set verify_ssl=False to remove this requirement",
+    )
+    timeout: Optional[float] = Field(
+        default=None,
+        description="Default request timeout in seconds (None waits indefinitely). Can be overridden per call.",
     )
 
     @model_validator(mode="after")
@@ -52,8 +58,15 @@ class RequestsWithSpecificErrors(BaseModel):
         id: Optional[Union[int, str]] = None,
         data: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, BufferedReader]] = None,
-    ) -> Dict:
-        """Perform an HTTP request to the specified URL with the API key in the headers."""
+        timeout: Optional[float] = None,
+        raw: bool = False,
+    ) -> Any:
+        """Perform an HTTP request to the specified URL with the API key in the headers.
+
+        Args:
+            timeout: seconds for this call (defaults to ``self.timeout``).
+            raw: return the ``requests.Response`` (streamed) instead of parsed JSON, e.g. for CSV downloads.
+        """
         return self._request(
             method=method,
             pth=pth,
@@ -62,6 +75,8 @@ class RequestsWithSpecificErrors(BaseModel):
             id=id,
             data=data,
             files=files,
+            timeout=timeout,
+            raw=raw,
         )
 
     def _request(
@@ -73,7 +88,9 @@ class RequestsWithSpecificErrors(BaseModel):
         id: Optional[Union[int, str]] = None,
         data: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, BufferedReader]] = None,
-    ) -> Dict:
+        timeout: Optional[float] = None,
+        raw: bool = False,
+    ) -> Any:
         """Internal HTTP dispatch with shared error handling."""
         method = method.lower()
         allowed = ("get", "post", "put", "delete")
@@ -108,6 +125,8 @@ class RequestsWithSpecificErrors(BaseModel):
                 url,
                 verify=self.verify_ssl,
                 headers={"x-api-key": self.api_key.get_secret_value()},
+                timeout=timeout if timeout is not None else self.timeout,
+                stream=raw,
                 **request_kwargs,
             )
             response.raise_for_status()
@@ -118,24 +137,24 @@ class RequestsWithSpecificErrors(BaseModel):
             ) from None
         except HTTPError as e:
             if response is None or response.status_code == 404:
+                body_preview = ""
+                if response is not None and response.text:
+                    body_preview = response.text[:1000]
                 error_msg = (
-                    f"Page not found. Try checking the URL.\nGenerally the required URL looks like "
-                    f"'https://<name_of_your_metadata_database>.org/index.php/api', but the URL that was passed "
-                    f"was '{self.api_url}'"
+                    f"HTTP 404 Not Found for {url}\n"
+                    f"API base URL: {self.api_url}\n"
+                    f"Response: {body_preview or '(empty)'}\n"
+                    "Check that METADATA_API_URL ends with /index.php/api (or your site's equivalent API prefix)."
                 )
-                raise HTTPError(error_msg) from None
+                raise HTTPError(error_msg, response=response) from e
             elif response.status_code == 403:
                 raise PermissionError(
                     f"Access to that URL is denied for {url} Check that the API key is correct"
                 ) from e
-            # elif response.status_code == 400 and "message" in response.text:
-            #     if isinstance(response.text, dict):
-            #         error_message = response.text["message"]
-            #     else:
-            #         error_message = response.text
-            #     raise PermissionError(error_message) from e
             else:
-                raise HTTPError(f"Status Code: {response.status_code}, Response: {response.text}") from e
+                raise ApiError.from_response(response, url=url) from e
+        if raw:
+            return response
         try:
             json_response = response.json()
         except (JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
@@ -147,8 +166,13 @@ class RequestsWithSpecificErrors(BaseModel):
         return json_response
 
     def get_request(
-        self, pth: str, id: Optional[Union[int, str]] = None, params: Optional[Dict[str, Union[str, List[str]]]] = None
-    ) -> Dict:
+        self,
+        pth: str,
+        id: Optional[Union[int, str]] = None,
+        params: Optional[Dict[str, Union[str, List[str]]]] = None,
+        timeout: Optional[float] = None,
+        raw: bool = False,
+    ) -> Any:
         """Performs a GET request to the specified URL with the API key in the headers and returns the JSON response.
 
         Args:
@@ -160,7 +184,7 @@ class RequestsWithSpecificErrors(BaseModel):
         Returns:
             Dict[str, str]: The JSON response from the server, parsed into a dictionary.
         """
-        return self.request("get", pth=pth, id=id, params=params)
+        return self.request("get", pth=pth, id=id, params=params, timeout=timeout, raw=raw)
 
     def post_request(
         self,
@@ -170,6 +194,7 @@ class RequestsWithSpecificErrors(BaseModel):
         data: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, BufferedReader]] = None,
         params: Optional[Dict[str, Union[str, List[str]]]] = None,
+        timeout: Optional[float] = None,
     ):
         """Performs a POST request to the specified URL with the API key in the headers and returns the JSON response.
 
@@ -184,7 +209,7 @@ class RequestsWithSpecificErrors(BaseModel):
         Returns:
             Dict[str, str]: The JSON response from the server, parsed into a dictionary.
         """
-        return self.request("post", pth=pth, id=id, json=json, data=data, files=files, params=params)
+        return self.request("post", pth=pth, id=id, json=json, data=data, files=files, params=params, timeout=timeout)
 
     def put_request(
         self,

@@ -76,7 +76,15 @@ Thin clients return **raw API JSON** (`dict`). Workflow helpers on `me.metadata`
 | `me.collections` | Collections and membership |
 | `me.templates` | Template CRUD |
 | `me.resources` | External resources (reports, questionnaires, files) |
+| `me.jobs` | Background jobs (publish to NADA, indicator data import, poll, list) |
+| `me.publish` | Publish metadata and indicator DSD/data to NADA (synchronous) |
+| `me.uploads` | Resumable (chunked) file uploads |
+| `me.data_structures` | Data structure (DSD) registry: structures, components, CSV/JSON/SDMX import, export |
+| `me.codelists` | Codelist registry: codelists, codes, translations, import/export |
+| `me.indicators` | Indicator projects: bind a DSD, load/export data, chart data, `notes`, publish |
 | `me.api` | Generic `get` / `post` / `put` / `delete` for any path |
+
+API errors raise `ApiError` (`status_code`, `message`, `errors`), a subclass of `requests` `HTTPError`.
 
 Methods still on `me` directly include `make_metadata_outline`, `read_metadata_from_excel`, `draft_metadata_from_files`, and related helpers.
 
@@ -99,8 +107,31 @@ POST body styles:
 
 Many deletes use **POST** in restricted networks (e.g. `me.projects.delete`, `me.collections.delete`), not HTTP DELETE.
 
+### Publish to NADA (background job)
+
+```python
+job = me.jobs.publish_to_nada(
+    project_id=123,
+    catalog_connection_id=1,
+    publish_thumbnail=False,
+    publish_resources=False,
+    options={
+        "overwrite": "yes",
+        "published": 1,
+        "access_policy": "licensed",
+        "repositoryid": "MY_COLLECTION",
+    },
+)
+result = me.jobs.wait(job["uuid"], timeout_seconds=3600)
+```
+
+For a single blocking call, use `me.jobs.publish_to_nada_and_wait(...)`.
+
+Step-by-step notebook: [`demo/publish_to_nada_jobs.ipynb`](demo/publish_to_nada_jobs.ipynb).
+
 ## Guides
 
+- [Indicators](docs/indicators.md) — data structures, loading data, notes, publishing to NADA, pandas helpers
 - [Metadata workflows](docs/metadata-workflows.md) — outlines, [Pydantic](docs/metadata-workflows.md#pydantic), [Excel](docs/metadata-workflows.md#excel), [retrieving metadata](docs/metadata-workflows.md#retrieving-existing-metadata)
 - [LLM-assisted metadata](docs/llm-assisted-metadata.md) — draft and augment from documents and URLs
 - [API examples](docs/examples.md) — collections, copying projects, and common tasks

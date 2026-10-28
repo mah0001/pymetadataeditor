@@ -22,7 +22,7 @@ me = MetadataEditor(api_url=api_url, api_key=your_api_key, verify_ssl=False)
 
 
 ```python
-me.list_projects(limit=1)
+me.list_projects(limit=2)
 ```
 
 
@@ -37,9 +37,39 @@ me.list_projects(limit=1)
 <th>study_idno</th>
 <th>title</th>
 <th>abbreviation</th>
+<th>nation</th>
+<th>year_start</th>
+<th>year_end</th>
+<th>published</th>
+<th>created</th>
+<th>changed</th>
+<th>varcount</th>
+<th>created_by</th>
+<th>changed_by</th>
+<th>is_shared</th>
+<th>thumbnail</th>
+<th>template_uid</th>
+<th>username</th>
+<th>username_cr</th>
+<th>collections</th>
 </tr>
 <tr>
 <th>id</th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
 <th></th>
 <th></th>
 <th></th>
@@ -49,12 +79,50 @@ me.list_projects(limit=1)
 </thead>
 <tbody>
 <tr>
+<th>4363</th>
+<td>timeseries</td>
+<td>942d99c2-6ac3-4d87-bc33-d4239d889457</td>
+<td>NY.GDP.MKTP.CD</td>
+<td>GDP (current US$)</td>
+<td>None</td>
+<td></td>
+<td>0</td>
+<td>0</td>
+<td>None</td>
+<td>2025-01-31T13:40:27+00:00</td>
+<td>2025-02-20T18:46:39+00:00</td>
+<td>None</td>
+<td>24</td>
+<td>24</td>
+<td>None</td>
+<td>None</td>
+<td>8603d94e27bccc2bdad1e00dbbf0fe32en</td>
+<td>Gordon Blackadder</td>
+<td>Gordon Blackadder</td>
+<td>[]</td>
+</tr>
+<tr>
 <th>2202</th>
 <td>document</td>
 <td>644e84d5-9a0c-4dd2-8a66-ec27808a26e4</td>
 <td>DEMO_DOC_001</td>
 <td>The Analysis of Household Surveys: A Microecon...</td>
 <td>None</td>
+<td></td>
+<td>0</td>
+<td>0</td>
+<td>None</td>
+<td>2024-10-01T16:09:09+00:00</td>
+<td>2025-01-04T01:17:32+00:00</td>
+<td>None</td>
+<td>25</td>
+<td>25</td>
+<td>None</td>
+<td>thumbnail-2202.png</td>
+<td>2f62a6b2716ab55b4426005abdbe1600</td>
+<td>vmascarinas</td>
+<td>vmascarinas</td>
+<td>[{'id': '85', 'title': 'Demo Collection', 'sid...</td>
 </tr>
 </tbody>
 </table>
@@ -299,18 +367,18 @@ It's important to remember that usually models that are small enough to run loca
 ```python
 docs = ['https://data.worldbank.org/indicator/NY.GDP.MKTP.CD']
 
-example_gdp = me.draft_metadata_from_files(llm_api_key="ollama",  # pragma: allowlist secret
+example_gdp = me.draft_metadata_from_files(llm_api_key="ollama", 
                                        files=docs, 
                                        metadata_type_or_template_uid='indicator',
                                        output_mode='pydantic',
                                        metadata_producer_organization="The World Bank Group, DEC - Development Data Group",
                                        llm_base_url='http://localhost:11434/v1',
-                                       llm_model_name='llama3.1'
+                                       llm_model_name='llama3.1:8b-instruct-q8_0'
                                        )
 example_gdp.pretty_print()
 ```
 
-    Read in https://data.worldbank.org/indicator/NY.GDP.MKTP.CD, running token count is 1839
+    Reading https://data.worldbank.org/indicator/NY.GDP.MKTP.CD, running token count is 1839
     Sending to http://localhost:11434/v1, this may take a few minutes...
 
 

@@ -6,7 +6,7 @@ Code can be written by a Large Language Model such as ChatGPT. For this we recom
 
 An example of using an LLM to write pyMetadataEditor code is here:
 
-![Upload the API_reference and then ask ChatGPT to write python code, in this case the create a new collection and copy all the indicators from another collection into it.](<../docs/images/llm_example.png>)
+![Upload the API_reference and then ask ChatGPT to write python code, in this case the create a new collection and copy all the indicators from another collection into it.](<../docs/images/LLM_example.png>)
 
 ## Examples
 

@@ -1,36 +1,27 @@
-"""This script contains a function to make the documentation for the package.
-
-It converts the notebooks in the demo folder to markdown files.
-It also creates an API reference based on the docstrings of pymetadataeditor/interface.py.
-To use this script, run `python make_docs.py` in the terminal.
-"""
+"""Generate documentation: demo notebooks → markdown, and API reference for v2 clients."""
 
 import os
 import subprocess
+import sys
 
 import nbformat
 from bs4 import BeautifulSoup
 from nbconvert import MarkdownExporter
 
-# # Filter out cells with warnings
-# for cell in notebook.cells:
-#     if cell.cell_type == "code":
-#         cell.outputs = [output for output in cell.get("outputs", []) if output.get("name") != "stderr"]
-# filtered_cells = notebook.cells
+# Classes documented in docs/API_Reference.md (v2 surface)
+API_REFERENCE_CLASSES = [
+    "pymetadataeditor.interface.MetadataEditor",
+    "pymetadataeditor.projects.ProjectsClient",
+    "pymetadataeditor.metadata_workflows.MetadataWorkflowsClient",
+    "pymetadataeditor.collections.CollectionsClient",
+    "pymetadataeditor.templates_client.TemplatesClient",
+    "pymetadataeditor.resources.ResourcesClient",
+    "pymetadataeditor.api_client.ApiClient",
+]
 
 
 def extract_first_elements(soup, num_elements):
-    """Extracts the first `num_elements` elements from a BeautifulSoup object, with handling for tables and styles.
-
-    Args:
-        soup (BeautifulSoup or Tag or NavigableString): The BeautifulSoup object or tag to extract elements from.
-        num_elements (int): The number of elements to extract.
-
-    Returns:
-        str: A string representation of the first `num_elements` elements,
-             with tables truncated to 3 rows and styles excluded. If `soup`
-             does not have contents, returns the string representation of `soup`.
-    """
+    """Extract the first `num_elements` elements from a BeautifulSoup object."""
     elements = []
     count = 0
     if not hasattr(soup, "contents"):
@@ -44,48 +35,21 @@ def extract_first_elements(soup, num_elements):
         elif element.name == "style":
             continue
         elif element.name == "table":
-            # truncate the table to 3 rows
             rows = element.find_all("tr")
             for row in rows[5:]:
                 row.decompose()
-        # if isinstance(element, str):
-        #     continue
-        # if hasattr(element, 'children'):
-        #     s = ""
-        #     for i, elem in enumerate(element.children):
-        #         if i >= num_elements:
-        #             s += "..."
-        #             break
-
-        #         s += extract_first_elements(elem, num_elements)
-        #     elements.append(s)
-        # else:
         elements.append(str(element))
         count += 1
     return "".join(elements)
 
 
-# Filter out cells with warnings and truncate long outputs
 def simplify_notebook_outputs(notebook):
-    """Simplifies the outputs of code cells in a Jupyter notebook.
-
-    This function processes each cell in the provided notebook and modifies the outputs of code cells by:
-    - Removing the 'traceback' key from the output, keeping only the last entry if it exists.
-    - Truncating the 'text/plain' data to a maximum of 300 characters, appending '...' if truncated.
-    - Simplifying the 'text/html' data by extracting the first 100 elements.
-
-    Args:
-        notebook (nbformat.NotebookNode): The Jupyter notebook object to be simplified.
-
-    Returns:
-        nbformat.NotebookNode: The simplified Jupyter notebook object.
-    """
+    """Simplify notebook code cell outputs for markdown export."""
     for cell in notebook.cells:
         if cell.cell_type == "code":
             new_outputs = []
             for output in cell.get("outputs", []):
                 if output.get("name") != "stderr":
-                    # remove the 'traceback' key from the output
                     if "traceback" in output:
                         output["traceback"] = [output["traceback"][-1]]
                     if (
@@ -100,56 +64,67 @@ def simplify_notebook_outputs(notebook):
                         output["data"]["text/html"] = extract_first_elements(next(soup.children), 100)
                     new_outputs.append(output)
             cell.outputs = new_outputs
-    filtered_cells = notebook.cells
-
-    notebook.cells = filtered_cells
-
     return notebook
 
 
-if __name__ == "__main__":
-    """Converts the notebooks in the demo folder to markdown files and creates an API reference."""
-    # list every file in the demo folder ending in .ipynb, using os
-    filenames = [f for f in os.listdir("demo") if f.endswith(".ipynb")]
-    # exclude the file extension
-    filenames = [f.split(".")[0] for f in filenames]
-    for filename in filenames:
-        # Load the notebook
-        with open(f"demo/{filename}.ipynb") as f:
-            notebook = nbformat.read(f, as_version=4)
+def generate_api_reference(docs_dir: str = "docs") -> None:
+    """Generate a single API_Reference.md from all v2 client classes."""
+    staging = os.path.join(docs_dir, "_api_reference_staging")
+    os.makedirs(staging, exist_ok=True)
 
-        simplify_notebook_outputs(notebook)
-
-        # Create a Markdown exporter
-        markdown_exporter = MarkdownExporter()
-
-        # Convert the notebook to Markdown
-        (body, resources) = markdown_exporter.from_notebook_node(notebook)
-
-        # Save the Markdown to a file
-        with open(f"docs/{filename}.md", "w") as f:
-            f.write(body)
-
+    lazydocs = os.path.join(os.path.dirname(sys.executable), "lazydocs")
     command = [
-        "lazydocs",
-        "pymetadataeditor.interface.MetadataEditor",
+        lazydocs,
+        *API_REFERENCE_CLASSES,
         "--no-watermark",
         "--src-base-url",
         "https://github.com/mah0001/pymetadataeditor/blob/main/",
         "--output-path",
-        "docs",
+        staging,
     ]
-
-    # Run the command
     subprocess.run(command, check=True)
 
-    # rename the file docs/pymetadataeditor.interface.MetadataEditor.md to docs/API_Reference.md using os
-    os.rename("docs/pymetadataeditor.interface.MetadataEditor.md", "docs/API_Reference.md")
+    out_path = os.path.join(docs_dir, "API_Reference.md")
+    with open(out_path, "w") as out:
+        out.write("# pyMetadataEditor API reference (v2)\n\n")
+        out.write("Generated by `python make_docs.py`. See [legacy-migration.MD](../legacy-migration.MD) for v1 → v2 renames.\n\n")
+        out.write("## Clients\n\n")
+        out.write("| Client | Access |\n")
+        out.write("|--------|--------|\n")
+        out.write("| `MetadataEditor` | `me = MetadataEditor(...)` |\n")
+        out.write("| `ProjectsClient` | `me.projects` |\n")
+        out.write("| `MetadataWorkflowsClient` | `me.metadata` |\n")
+        out.write("| `CollectionsClient` | `me.collections` |\n")
+        out.write("| `TemplatesClient` | `me.templates` |\n")
+        out.write("| `ResourcesClient` | `me.resources` |\n")
+        out.write("| `ApiClient` | `me.api` |\n\n")
 
-    # remove source links until the repo is public
-    with open("docs/API_Reference.md", "r") as f:
-        lines = f.readlines()
-    with open("docs/API_Reference.md", "w") as f:
-        for line in lines:
-            if not line.startswith("<a href"):
-                f.write(line)
+        for import_path in API_REFERENCE_CLASSES:
+            fragment_path = os.path.join(staging, f"{import_path}.md")
+            if not os.path.isfile(fragment_path):
+                continue
+            with open(fragment_path) as fragment:
+                lines = fragment.readlines()
+            with open(out_path, "a") as out:
+                for line in lines:
+                    if not line.startswith("<a href"):
+                        out.write(line)
+
+    for name in os.listdir(staging):
+        os.remove(os.path.join(staging, name))
+    os.rmdir(staging)
+
+
+if __name__ == "__main__":
+    filenames = [f.split(".")[0] for f in os.listdir("demo") if f.endswith(".ipynb")]
+    markdown_exporter = MarkdownExporter()
+
+    for filename in filenames:
+        with open(f"demo/{filename}.ipynb") as f:
+            notebook = nbformat.read(f, as_version=4)
+        simplify_notebook_outputs(notebook)
+        body, _resources = markdown_exporter.from_notebook_node(notebook)
+        with open(f"docs/{filename}.md", "w") as f:
+            f.write(body)
+
+    generate_api_reference()

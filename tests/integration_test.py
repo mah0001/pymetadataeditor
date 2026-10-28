@@ -23,12 +23,16 @@ def metadata_editor():
 
 def test_projects_integration(tmpdir, metadata_editor):
     """Do not use pytest.mark.parametrize since parallel runs cause the counts of projects to be off."""
-    projects = metadata_editor.list_projects(limit="all")
-    num_original_projects = len(projects)
-    assert min(10, num_original_projects) == len(metadata_editor.list_projects(limit=10))
-    assert num_original_projects - 1 == len(metadata_editor.list_projects(limit="all", offset=1))
-    assert num_original_projects >= len(metadata_editor.list_projects(limit="all", metadata_type="indicator"))
-    assert num_original_projects == len(metadata_editor.list_projects(limit="all", sort_by="updated_asc"))
+    projects = metadata_editor.projects.list_all()
+    num_original_projects = len(projects["projects"])
+    assert min(10, num_original_projects) == len(metadata_editor.projects.list(limit=10)["projects"])
+    assert num_original_projects - 1 <= len(metadata_editor.projects.list(limit=10, offset=1)["projects"])
+    assert num_original_projects >= len(
+        metadata_editor.projects.list_all(metadata_type="indicator")["projects"]
+    )
+    assert num_original_projects == len(
+        metadata_editor.projects.list_all(sort_by="updated_asc")["projects"]
+    )
 
     # Good: "document", "microdata", "table", "indicator", "indicators_db", "video"
     # fail due to not searchable: "geospatial", "image", "script"
@@ -232,46 +236,46 @@ def test_projects_integration(tmpdir, metadata_editor):
     for metadata_type in metadata_types:
         print(f"looking at {metadata_type} with creation data {creation_data[metadata_type]}")
         # create project
-        project_id = metadata_editor.create_project_log(
+        project_id = metadata_editor.metadata.create(
             metadata=creation_data[metadata_type], metadata_type_or_template_uid=metadata_type
         )
-        metadata_editor.delete_project_by_id(project_id)
+        metadata_editor.projects.delete(project_id)
         pydantic_model = metadata_editor.get_metadata_class(metadata_type)(**creation_data[metadata_type])
-        project_id = metadata_editor.create_project_log(metadata=pydantic_model)
-        metadata_editor.delete_project_by_id(project_id)
+        project_id = metadata_editor.metadata.create(metadata=pydantic_model)
+        metadata_editor.projects.delete(project_id)
         filename = os.path.join(tmpdir, f"{metadata_type}.xlsx")
         metadata_editor.save_metadata_to_excel(pydantic_model, filename=filename)
-        project_id = metadata_editor.create_project_log(filename, metadata_type_or_template_uid=metadata_type)
+        project_id = metadata_editor.metadata.create(filename, metadata_type_or_template_uid=metadata_type)
 
         try:
-            assert len(metadata_editor.list_projects(limit="all")) == num_original_projects + 1
+            assert len(metadata_editor.projects.list_all()["projects"]) == num_original_projects + 1
 
             # # get project
-            # project_metadata = metadata_editor.get_project_by_id(project_id).metadata
+            # project_metadata = metadata_editor.projects.get(project_id).metadata
             # for k, v in creation_data[metadata_type].items():
             #     assert k in project_metadata, project_metadata
             #     assert project_metadata[k] == v, project_metadata
 
-            project_metadata = metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict")
+            project_metadata = metadata_editor.metadata.get_for_project(project_id, output_mode="dict")
             for k, v in creation_data[metadata_type].items():
                 assert k in project_metadata, project_metadata
                 assert project_metadata[k] == v, project_metadata
 
             # update project
             print(f"updating project {project_id} with {update_data[metadata_type]}")
-            metadata_editor.update_project_log_by_id(project_id, new_metadata=update_data[metadata_type])
-            project_metadata_updated = metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict")
+            metadata_editor.metadata.update(project_id, new_metadata=update_data[metadata_type])
+            project_metadata_updated = metadata_editor.metadata.get_for_project(project_id, output_mode="dict")
             for k, v in update_data[metadata_type].items():
                 assert project_metadata_updated[k] == v, project_metadata_updated
 
             # # check project is searchable and updated
-            # title_contains_updated = metadata_editor.list_projects(
+            # title_contains_updated = metadata_editor.projects.list(
             #     limit="all", keywords="updated", metadata_type=metadata_type
             # )
             # assert (
             #     project_id in title_contains_updated.index or str(project_id) in title_contains_updated.index
             # ), title_contains_updated
-            # title_contains_bogus = metadata_editor.list_projects(
+            # title_contains_bogus = metadata_editor.projects.list(
             #     limit="all", keywords="bogus", metadata_type=metadata_type
             # )
             # assert (
@@ -279,18 +283,18 @@ def test_projects_integration(tmpdir, metadata_editor):
             # ), title_contains_bogus
 
             # patch update
-            title_contains_updated = metadata_editor.list_projects(
-                limit="all", keywords="patched", metadata_type=metadata_type
-            )
-            assert project_id not in title_contains_updated.index or str(project_id) in title_contains_updated.index, (
-                title_contains_updated
-            )
             print(f"patching project {project_id} with {patch_update_data[metadata_type]}")
             for p in patch_update_data[metadata_type]:
                 print(f"patching with {p}")
-                metadata_editor.patch_update_project_log_by_id(project_id, **p)
+                metadata_editor.projects.patch_one(
+                    project_id,
+                    metadata_type,
+                    op=p["op"],
+                    path=p["path"],
+                    value=p.get("value"),
+                )
 
-            # title_contains_updated = metadata_editor.list_projects(
+            # title_contains_updated = metadata_editor.projects.list(
             #     limit="all", keywords="patched", metadata_type=metadata_type
             # )
             # assert (
@@ -299,10 +303,10 @@ def test_projects_integration(tmpdir, metadata_editor):
 
             filename = f"{metadata_type}_{project_id}.xlsx"
             filename = os.path.join(tmpdir, filename)
-            metadata_editor.get_project_metadata_by_id(project_id, output_mode="excel", filename=filename)
-            metadata_editor.update_project_log_by_id(project_id, filename)
+            metadata_editor.metadata.get_for_project(project_id, output_mode="excel", filename=filename)
+            metadata_editor.metadata.update(project_id, filename)
         finally:
-            metadata_editor.delete_project_by_id(project_id)
+            metadata_editor.projects.delete(project_id)
 
 
 @pytest.mark.parametrize(
@@ -315,7 +319,7 @@ def test_get_class(metadata_editor, metadata_type):
         metadata_type, apply_template_rules=False
     )
 
-    temps = metadata_editor.list_templates()
+    temps = metadata_editor._refresh_default_templates_cache()
     temps = temps[temps["data_type"] == metadata_type]
     for i, temp in temps.iterrows():
         klass = metadata_editor.get_metadata_class(temp["uid"])
@@ -334,43 +338,37 @@ def test_get_class(metadata_editor, metadata_type):
 
 
 def test_project_download_and_read(metadata_editor, tmpdir):
-    projects = metadata_editor.list_projects(limit="all")
+    projects = metadata_editor.projects.list_all()["projects"]
     i = 0
     template_errors = set()
     default_validation_errors = {}
     dict_validation_errors = {}
     pydantic_validation_errors = {}
     excel_validation_errors = {}
-    for project_id, project_info in projects.iterrows():
-        if i >= 50:
-            break
-        i += 1
-        # if project_info.type == "geospatial":
-        #     continue
-        # print(f"test_project_download_and_read: project_id = {project_id}")
-        # print(project_info)
-        metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict", template_uid="none")
-        if project_info.template_uid is not None:
+    for project in projects[:50]:
+        project_id = project["id"]
+        metadata_editor.metadata.get_for_project(project_id, output_mode="dict", template_uid="none")
+        if project.get("template_uid"):
             try:
-                metadata_editor.get_metadata_class(project_info.template_uid)
+                metadata_editor.get_metadata_class(project["template_uid"])
             except TemplateError as e:
                 template_errors.add(e)
                 continue
         else:
-            metadata_editor.get_metadata_class(project_info.type)
+            metadata_editor.get_metadata_class(project["type"])
 
         try:
-            metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict", template_uid="default")
+            metadata_editor.metadata.get_for_project(project_id, output_mode="dict", template_uid="default")
         except (ValidationError, TemplateError) as e:
             default_validation_errors[project_id] = e
 
         try:
-            metadata_editor.get_project_metadata_by_id(project_id, output_mode="dict")
+            metadata_editor.metadata.get_for_project(project_id, output_mode="dict")
         except (ValidationError, TemplateError) as e:
             dict_validation_errors[project_id] = e
             continue
         try:
-            pydantic_obj = metadata_editor.get_project_metadata_by_id(project_id, output_mode="pydantic")
+            pydantic_obj = metadata_editor.metadata.get_for_project(project_id, output_mode="pydantic")
         except (ValidationError, TemplateError) as e:
             pydantic_validation_errors[project_id] = e
             continue
@@ -378,7 +376,7 @@ def test_project_download_and_read(metadata_editor, tmpdir):
         filename = os.path.join(tmpdir, f"test_project_download_and_read_{project_id}.xlsx")
         # filename = f"test_project_download_and_read_{project_id}.xlsx"
         try:
-            filename = metadata_editor.get_project_metadata_by_id(
+            filename = metadata_editor.metadata.get_for_project(
                 project_id, output_mode="excel", filename=filename, debug=False
             )
         except (ValidationError, TemplateError) as e:
@@ -431,130 +429,118 @@ def test_project_download_and_read(metadata_editor, tmpdir):
 
 def test_collections_integration(metadata_editor):
     # list collections
-    original_collections = metadata_editor.list_collections()
+    original_collections = metadata_editor.collections.list().get("collections", [])
     num_original_collections = len(original_collections)
 
-    # create collection
     collection_title = "integration_test_collection"
     collection_description = "integration_test_collection"
-    collection_id = metadata_editor.create_collection(title=collection_title, description=collection_description)
-    assert len(metadata_editor.list_collections()) == num_original_collections + 1
+    collection_id = metadata_editor.collections.create(
+        title=collection_title, description=collection_description
+    )["collection"]
+    assert len(metadata_editor.collections.list().get("collections", [])) == num_original_collections + 1
 
     try:
         # get collection
-        new_collection = metadata_editor.get_collection_by_id(collection_id)
-        new_collection.title = collection_title
-        new_collection.description = collection_description
+        new_collection = metadata_editor.collections.get(collection_id)["collection"]
+        assert new_collection["title"] == collection_title
+        assert new_collection["description"] == collection_description
 
-        # update_collection
         collection_title_updated = "integration_test_collection_updated"
-        metadata_editor.update_collection(id=collection_id, title=collection_title_updated)
-        updated_collection = metadata_editor.get_collection_by_id(collection_id)
-        updated_collection.title = collection_title_updated
-        updated_collection.description = collection_description
+        metadata_editor.collections.update(id=collection_id, title=collection_title_updated)
+        updated_collection = metadata_editor.collections.get(collection_id)["collection"]
+        assert updated_collection["title"] == collection_title_updated
+        assert updated_collection["description"] == collection_description
 
         collection_description_updated = "integration_test_collection_updated"
-        metadata_editor.update_collection(id=collection_id, description=collection_description_updated)
-        updated_collection = metadata_editor.get_collection_by_id(collection_id)
-        updated_collection.title = collection_title_updated
-        updated_collection.description = collection_description_updated
+        metadata_editor.collections.update(id=collection_id, description=collection_description_updated)
+        updated_collection = metadata_editor.collections.get(collection_id)["collection"]
+        assert updated_collection["title"] == collection_title_updated
+        assert updated_collection["description"] == collection_description_updated
 
-        # count projects in collection (should be zero)
-        initial_projects_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
-        assert len(initial_projects_collection) == 0, f"expected zero projects but got {initial_projects_collection}"
+        initial_projects_collection = metadata_editor.collections.list_projects_all(collection_id)
+        assert len(initial_projects_collection["projects"]) == 0
 
         # create a project and add it to the collection by id
         project_idno = "project for collection integration test"
         project_name = "project for collection integration test"
-        project_id = metadata_editor.create_project_log(
+        project_id = metadata_editor.metadata.create(
             metadata_type_or_template_uid="indicator",
             metadata={"series_description": {"idno": project_idno, "name": project_name}},
         )
         try:
-            metadata_editor.add_projects_to_collection(collection_id, "id", project_id)
+            metadata_editor.collections.add_projects(collection_id, "id", project_id)
 
-            # check the project can be found
-            oneproject_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
-            assert len(oneproject_collection) == 1
-            assert oneproject_collection.iloc[0].study_idno == project_idno, oneproject_collection.iloc[0].keys()
-            good_search = metadata_editor.list_projects_in_collection(
-                collection_id, keywords="integration", limit="all"
+            oneproject_collection = metadata_editor.collections.list_projects_all(collection_id)
+            assert len(oneproject_collection["projects"]) == 1
+            assert oneproject_collection["projects"][0]["study_idno"] == project_idno
+            good_search = metadata_editor.collections.list_projects_all(collection_id, keywords="integration")
+            assert len(good_search["projects"]) == 1
+            good_search = metadata_editor.collections.list_projects_all(
+                collection_id, keywords=["project", "integration"]
             )
-            assert len(good_search) == 1
-            good_search = metadata_editor.list_projects_in_collection(
-                collection_id, keywords=["project", "integration"], limit="all"
+            assert len(good_search["projects"]) == 1
+            good_search = metadata_editor.collections.list_projects_all(
+                collection_id, keywords="project integration"
             )
-            assert len(good_search) == 1
-            good_search = metadata_editor.list_projects_in_collection(
-                collection_id, keywords="project integration", limit="all"
-            )
-            assert len(good_search) == 1
-            assert good_search.iloc[0].study_idno == project_idno
-            bad_search = metadata_editor.list_projects_in_collection(collection_id, keywords="bogus", limit="all")
-            assert len(bad_search) == 0
-            good_search = metadata_editor.list_projects_in_collection(collection_id, limit="all")
-            assert len(good_search) == 1
-            good_search = metadata_editor.list_projects_in_collection(collection_id, limit=10)
-            assert len(good_search) == 1
-            good_search = metadata_editor.list_projects_in_collection(collection_id, offset=1, limit="all")
-            assert len(good_search) == 0
-            good_search = metadata_editor.list_projects_in_collection(collection_id, sort_by="updated_asc", limit="all")
-            assert len(good_search) == 1
+            assert len(good_search["projects"]) == 1
+            assert good_search["projects"][0]["study_idno"] == project_idno
+            bad_search = metadata_editor.collections.list_projects_all(collection_id, keywords="bogus")
+            assert len(bad_search["projects"]) == 0
+            good_search = metadata_editor.collections.list_projects_all(collection_id)
+            assert len(good_search["projects"]) == 1
+            good_search = metadata_editor.collections.list_projects_via_editor(collection_id, limit=10)
+            assert len(good_search["projects"]) == 1
+            good_search = metadata_editor.collections.list_projects_via_editor(collection_id, offset=1, limit=500)
+            assert len(good_search["projects"]) == 0
+            good_search = metadata_editor.collections.list_projects_all(collection_id, sort_by="updated_asc")
+            assert len(good_search["projects"]) == 1
 
-            # remove that project by idno
-            metadata_editor.remove_projects_from_collection(collection_id, "id", project_id)
-            final_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
-            assert len(final_collection) == 0
+            metadata_editor.collections.remove_projects(collection_id, "id", project_id)
+            final_collection = metadata_editor.collections.list_projects_all(collection_id)
+            assert len(final_collection["projects"]) == 0
 
-            # add the project back to the collection by idno
-            metadata_editor.add_projects_to_collection(collection_id, "id", project_id)
-            # check the project can be found
-            oneproject_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
-            assert len(oneproject_collection) == 1
-            assert oneproject_collection.iloc[0].study_idno == project_idno, oneproject_collection.iloc[0].keys()
+            metadata_editor.collections.add_projects(collection_id, "id", project_id)
+            oneproject_collection = metadata_editor.collections.list_projects_all(collection_id)
+            assert len(oneproject_collection["projects"]) == 1
+            assert oneproject_collection["projects"][0]["study_idno"] == project_idno
 
-            # make a second collection, first copy the first collection into and check that the project is there
-            collection_id2 = metadata_editor.create_collection(
+            collection_id2 = metadata_editor.collections.create(
                 title="integration_test_collection2", description="integration_test_collection2"
-            )
-            metadata_editor.copy_collection(collection_id, collection_id2)
-            copied_collection = metadata_editor.list_projects_in_collection(collection_id2, limit="all")
-            assert len(copied_collection) == 1
-            assert copied_collection.iloc[0].study_idno == project_idno, copied_collection.iloc[0].keys()
-            # check that the project is still in the first collection
-            original_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
-            assert len(original_collection) == 1
-            assert original_collection.iloc[0].study_idno == project_idno, original_collection.iloc[0].keys()
-            # remove the project from the second collection
-            metadata_editor.remove_projects_from_collection(collection_id2, "id", project_id)
-            final_collection = metadata_editor.list_projects_in_collection(collection_id2, limit="all")
-            assert len(final_collection) == 0
+            )["collection"]
+            metadata_editor.collections.copy(collection_id, collection_id2)
+            copied_collection = metadata_editor.collections.list_projects_all(collection_id2)
+            assert len(copied_collection["projects"]) == 1
+            assert copied_collection["projects"][0]["study_idno"] == project_idno
+            original_collection = metadata_editor.collections.list_projects_all(collection_id)
+            assert len(original_collection["projects"]) == 1
+            assert original_collection["projects"][0]["study_idno"] == project_idno
+            metadata_editor.collections.remove_projects(collection_id2, "id", project_id)
+            final_collection = metadata_editor.collections.list_projects_all(collection_id2)
+            assert len(final_collection["projects"]) == 0
 
-            # now move the project from the first collection to the second collection and check
-            metadata_editor.move_collection(collection_id, collection_id2)
-            moved_collection = metadata_editor.list_projects_in_collection(collection_id2, limit="all")
-            assert len(moved_collection) == 0
-            original_collection = metadata_editor.list_projects_in_collection(collection_id, limit="all")
-            assert len(original_collection) == 1
-            assert original_collection.iloc[0].study_idno == project_idno, original_collection.iloc[0].keys()
+            metadata_editor.collections.move(collection_id, collection_id2)
+            moved_collection = metadata_editor.collections.list_projects_all(collection_id2)
+            assert len(moved_collection["projects"]) == 0
+            original_collection = metadata_editor.collections.list_projects_all(collection_id)
+            assert len(original_collection["projects"]) == 1
+            assert original_collection["projects"][0]["study_idno"] == project_idno
 
         except Exception as e:
-            metadata_editor.delete_project_by_id(project_id)
+            metadata_editor.projects.delete(project_id)
             raise e
-        metadata_editor.delete_project_by_id(project_id)
+        metadata_editor.projects.delete(project_id)
     except Exception as e:
-        metadata_editor.delete_collection_by_id(collection_id)
-        metadata_editor.delete_collection_by_id(collection_id2)
+        metadata_editor.collections.delete(collection_id)
+        metadata_editor.collections.delete(collection_id2)
         raise e
 
-    # delete collection
-    metadata_editor.delete_collection_by_id(collection_id)
-    metadata_editor.delete_collection_by_id(collection_id2)
-    assert len(metadata_editor.list_collections()) == num_original_collections
+    metadata_editor.collections.delete(collection_id)
+    metadata_editor.collections.delete(collection_id2)
+    assert len(metadata_editor.collections.list().get("collections", [])) == num_original_collections
 
 
 def test_resources_integration(metadata_editor, tmpdir):
-    project_id = metadata_editor.create_project_log(
+    project_id = metadata_editor.metadata.create(
         {
             "idno": "resources_integration_test",
             "series_description": {"idno": "resources_integration_test", "name": "integration_test_of_resources"},
@@ -562,8 +548,7 @@ def test_resources_integration(metadata_editor, tmpdir):
         "indicator",
     )
     try:
-        initial_resources = metadata_editor.get_resources_by_id(project_id)
-        assert isinstance(initial_resources, pd.DataFrame)
+        initial_resources = metadata_editor.resources.list(project_id).get("resources", [])
         assert len(initial_resources) == 0
 
         filename = "resources_integration.txt"
@@ -571,37 +556,39 @@ def test_resources_integration(metadata_editor, tmpdir):
         temp_file.write("dummy content")
         filename = str(temp_file)
 
-        resource_id = metadata_editor.log_resource(
-            project_id, dctype="txt", title="resources_integration", filename=filename
+        resource_id = int(
+            metadata_editor.resources.create(
+                project_id, dctype="txt", title="resources_integration", file_path=filename
+            )["resource"]["id"]
         )
         try:
-            resources = metadata_editor.get_resources_by_id(project_id)
-            assert isinstance(resources, pd.DataFrame)
+            resources = metadata_editor.resources.list(project_id)["resources"]
             assert len(resources) == 1
-            resources.iloc[0].title = "resources_integration"
+            assert resources[0]["title"] == "resources_integration"
 
-            metadata_editor.update_resource(
-                project_id=project_id, resource_id=resource_id, dctype="txt", title="updated_resources_integration"
+            metadata_editor.resources.update(
+                project_id=project_id,
+                resource_id=resource_id,
+                dctype="txt",
+                title="updated_resources_integration",
             )
-            resources = metadata_editor.get_resources_by_id(project_id)
-            assert isinstance(resources, pd.DataFrame)
+            resources = metadata_editor.resources.list(project_id)["resources"]
             assert len(resources) == 1
-            resources.iloc[0].title = "updated_resources_integration"
+            assert resources[0]["title"] == "updated_resources_integration"
 
         except Exception as e:
-            metadata_editor.delete_resource_by_id(project_id=project_id, resource_id=resource_id)
+            metadata_editor.resources.delete(project_id=project_id, resource_id=resource_id)
             raise e
         else:
-            metadata_editor.delete_resource_by_id(project_id=project_id, resource_id=resource_id)
-            final_resources = metadata_editor.get_resources_by_id(project_id)
-            assert isinstance(final_resources, pd.DataFrame)
+            metadata_editor.resources.delete(project_id=project_id, resource_id=resource_id)
+            final_resources = metadata_editor.resources.list(project_id).get("resources", [])
             assert len(final_resources) == 0
 
     except Exception as e:
-        metadata_editor.delete_project_by_id(project_id)
+        metadata_editor.projects.delete(project_id)
         raise e
     else:
-        metadata_editor.delete_project_by_id(project_id)
+        metadata_editor.projects.delete(project_id)
 
 
 # def test_templates_without_metadata_schemas(metadata_editor, tmpdir):
@@ -638,21 +625,21 @@ def test_resources_integration(metadata_editor, tmpdir):
 #             assert_pydantic_models_equal(template_outline, read_filled_template)
 
 #             # log the filled in template
-#             log_id = metadata_editor.create_project_log(
+#             log_id = metadata_editor.metadata.create(
 #                 metadata_type_or_template_uid=template_info.uid, metadata=template_outline
 #             )
 #             # read back the logged template
-#             read_logged_template = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic")
+#             read_logged_template = metadata_editor.metadata.get_for_project(log_id, output_mode="pydantic")
 #             assert_pydantic_models_equal(template_outline, read_logged_template)
 #             # delete the logged template
-#             metadata_editor.delete_project_by_id(log_id)
+#             metadata_editor.projects.delete(log_id)
 
 
 def test_templates(metadata_editor, tmpdir):
-    templates = metadata_editor.list_templates().drop_duplicates(["uid"])
+    templates = metadata_editor._refresh_default_templates_cache().drop_duplicates(["uid"])
     default_templates = templates[templates["default"]]
     for i, uid in enumerate(default_templates[["uid"]].values):
-        temp = metadata_editor.get_template_by_uid(uid[0])
+        temp = metadata_editor._ensure_template_cached(uid[0])
         metadata_type = metadata_editor._mm.standardize_metadata_name(temp.data_type)
         # if metadata_type == "resource" or metadata_type == "geospatial":
         #     continue
@@ -694,15 +681,15 @@ def test_templates(metadata_editor, tmpdir):
         )
         assert skeleton._template_name__ is not None
         # log skeleton
-        log_id = metadata_editor.create_project_log(metadata_type_or_template_uid=uid[0], metadata=skeleton)
+        log_id = metadata_editor.metadata.create(metadata_type_or_template_uid=uid[0], metadata=skeleton)
         try:
-            expected = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic")
+            expected = metadata_editor.metadata.get_for_project(log_id, output_mode="pydantic")
             assert_pydantic_models_equal(skeleton, expected)
 
             filename1 = tmpdir.join(f"test_skeleton_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx")
             # filename1 = f"test_skeleton_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx"
             print(f"logging skeleton to {filename1}")
-            metadata_editor.get_project_metadata_by_id(log_id, output_mode="excel", filename=filename1)
+            metadata_editor.metadata.get_for_project(log_id, output_mode="excel", filename=filename1)
             # actual = metadata_editor._mm.read_metadata_from_excel(filename1, class_def)
             actual = metadata_editor.read_metadata_from_excel(filename1)
             assert (
@@ -719,7 +706,7 @@ def test_templates(metadata_editor, tmpdir):
             assert actual._template_name__ is not None
             assert_pydantic_models_equal(skeleton, actual)
         finally:
-            metadata_editor.delete_project_by_id(log_id)
+            metadata_editor.projects.delete(log_id)
 
         # fill in metadata then save and read back
         for i in range(3):
@@ -753,9 +740,9 @@ def test_templates(metadata_editor, tmpdir):
         # log filled in metadata
         print("logging filled in metadata")
         print(f"{modl}\n\n")
-        log_id = metadata_editor.create_project_log(metadata_type_or_template_uid=uid[0], metadata=modl)
+        log_id = metadata_editor.metadata.create(metadata_type_or_template_uid=uid[0], metadata=modl)
         try:
-            actual = metadata_editor.get_project_metadata_by_id(log_id, output_mode="pydantic", debug=True)
+            actual = metadata_editor.metadata.get_for_project(log_id, output_mode="pydantic", debug=True)
             print("actual from log direct")
             print(f"{actual}\n\n")
             assert (
@@ -775,7 +762,7 @@ def test_templates(metadata_editor, tmpdir):
             filename3 = tmpdir.join(f"test_filledin_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx")
             # filename3 = f"test_filledin_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx"
             print(f"logging filled in metadata to {filename3}")
-            metadata_editor.get_project_metadata_by_id(log_id, output_mode="excel", filename=filename3)
+            metadata_editor.metadata.get_for_project(log_id, output_mode="excel", filename=filename3)
             # actual = metadata_editor._mm.read_metadata_from_excel(filename3, class_def)
             actual = metadata_editor.read_metadata_from_excel(filename3)
             print("actual from log via excel")
@@ -794,7 +781,7 @@ def test_templates(metadata_editor, tmpdir):
             assert actual._template_name__ is not None
             assert_pydantic_models_equal(modl, actual)
         finally:
-            metadata_editor.delete_project_by_id(log_id)
+            metadata_editor.projects.delete(log_id)
 
 
 def test_change_mode_or_template(metadata_editor, tmpdir):

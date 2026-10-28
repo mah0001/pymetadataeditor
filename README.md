@@ -12,6 +12,8 @@ cd pymetadataeditor
 poetry install
 ```
 
+The LLM-assisted metadata features (OpenAI, `tiktoken`, `markitdown`) are optional: `poetry install --extras llm`, or `pip install "pymetadataeditor[llm]"`.
+
 For development (pytest, pre-commit):
 
 ```bash

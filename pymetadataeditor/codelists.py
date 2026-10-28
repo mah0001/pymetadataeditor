@@ -92,12 +92,31 @@ class CodelistsClient:
             params["language"] = language
         return self._api.get_request(pth=f"codelists/codes/{int(codelist_id)}", params=params)
 
-    def add_code(self, codelist_id: int, code: str, label: Optional[str] = None, **fields: Any) -> Dict:
-        """Add a code (``label``, ``labels``, ``sort_order``, ``parent_id`` ... as keyword fields)."""
-        body: Dict[str, Any] = {"code": code, **fields}
+    def add_code(
+        self,
+        codelist_id: int,
+        code: str,
+        label: Optional[str] = None,
+        language: str = "en",
+        description: Optional[str] = None,
+        **fields: Any,
+    ) -> Dict:
+        """Add a code (``sort_order``, ``parent_id`` ... as keyword fields).
+
+        ``label`` (and ``description``) are stored as the code's label in ``language``, which must be
+        enabled on the codelist (see :meth:`set_translation`; the title's language is enabled on create).
+        """
+        response = self._api.post_request(pth=f"codelists/codes/{int(codelist_id)}", json={"code": code, **fields})
         if label is not None:
-            body["label"] = label
-        return self._api.post_request(pth=f"codelists/codes/{int(codelist_id)}", json=body)
+            self.set_label(int(response["id"]), label, language=language, description=description)
+        return response
+
+    def set_label(self, code_id: int, label: str, language: str = "en", description: Optional[str] = None) -> Dict:
+        """Set the label of a code in one language."""
+        body: Dict[str, Any] = {"language": language, "label": label}
+        if description is not None:
+            body["description"] = description
+        return self._api.post_request(pth=f"codelists/code_label/{int(code_id)}", json=body)
 
     def add_codes(self, codelist_id: int, codes: List[Dict[str, Any]]) -> List[Dict]:
         """Add several codes (each ``{"code", "label"?, ...}``); one request per code."""

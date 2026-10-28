@@ -7,14 +7,11 @@ from tempfile import NamedTemporaryFile
 from typing import Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import pandas as pd
-import tiktoken
-from markitdown import MarkItDown
 from metadataschemas.metadata_manager import MetadataManager
 from metadataschemas.utils.schema_base_model import SchemaBaseModel
 
 # from metadataschemas.utils.quick_start import make_skeleton
 from metadataschemas.utils.utils import merge_dicts, standardize_keys_in_dict
-from openai import AzureOpenAI, OpenAI
 from pydantic import BaseModel, ValidationError
 from urllib3.exceptions import InsecureRequestWarning
 
@@ -589,6 +586,14 @@ class MetadataEditor:
         metadata_class_no_rules, metadata_type, _ = self._get_metadata_class_and_type_and_UID(
             metadata_type_or_template_uid, apply_template_rules=False
         )
+        try:
+            import tiktoken
+            from markitdown import MarkItDown
+            from openai import AzureOpenAI, OpenAI
+        except ImportError as e:
+            raise ImportError(
+                "LLM-assisted metadata needs the optional dependencies: pip install 'pymetadataeditor[llm]'"
+            ) from e
         enc = tiktoken.get_encoding(tokenizer_model)
         if azure_deployment_name is None:
             client = OpenAI(api_key=llm_api_key, base_url=llm_base_url)

@@ -101,8 +101,8 @@ me.list_projects(limit=2)
 <td>None</td>
 <td>954e023b790d8b15433544d85eb6431e</td>
 <td>None</td>
-<td>Gordon Blackadder</td>
-<td>Gordon Blackadder</td>
+<td>example_user</td>
+<td>example_user</td>
 <td>[]</td>
 </tr>
 <tr>
@@ -125,8 +125,8 @@ me.list_projects(limit=2)
 <td>None</td>
 <td>954e023b790d8b15433544d85eb6431e</td>
 <td>None</td>
-<td>Gordon Blackadder</td>
-<td>Gordon Blackadder</td>
+<td>example_user</td>
+<td>example_user</td>
 <td>[]</td>
 </tr>
 </tbody>
@@ -245,8 +245,8 @@ me.list_projects(limit=3, sort_by="updated_desc")
 <td>None</td>
 <td>timeseries-system-en</td>
 <td>{'database_id': None}</td>
-<td>Gordon Blackadder</td>
-<td>Gordon Blackadder</td>
+<td>example_user</td>
+<td>example_user</td>
 <td>[]</td>
 </tr>
 <tr>
@@ -269,8 +269,8 @@ me.list_projects(limit=3, sort_by="updated_desc")
 <td>None</td>
 <td>954e023b790d8b15433544d85eb6431e</td>
 <td>None</td>
-<td>Gordon Blackadder</td>
-<td>Gordon Blackadder</td>
+<td>example_user</td>
+<td>example_user</td>
 <td>[]</td>
 </tr>
 <tr>
@@ -293,8 +293,8 @@ me.list_projects(limit=3, sort_by="updated_desc")
 <td>None</td>
 <td>954e023b790d8b15433544d85eb6431e</td>
 <td>None</td>
-<td>Gordon Blackadder</td>
-<td>Gordon Blackadder</td>
+<td>example_user</td>
+<td>example_user</td>
 <td>[]</td>
 </tr>
 </tbody>
@@ -800,8 +800,8 @@ me.list_projects_in_collection(collection=collection_id, limit=5)
 <td>None</td>
 <td>timeseries-system-en</td>
 <td>{'database_id': None}</td>
-<td>Gordon Blackadder</td>
-<td>Gordon Blackadder</td>
+<td>example_user</td>
+<td>example_user</td>
 <td>[{'id': '213', 'title': 'GB20250225_demo_colle...</td>
 </tr>
 </tbody>

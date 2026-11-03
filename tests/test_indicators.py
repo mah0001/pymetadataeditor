@@ -208,7 +208,7 @@ def test_publish_resolves_numeric_id_and_steps(me, calls):
     ])
     out = me.indicators.publish("TRN_NOTES_TEST_LIT", 2, metadata_options={"published": 1})
     paths = [_path(c) for c in calls]
-    assert paths == ["editor/TRN_NOTES_TEST_LIT", "publish/9/2", "publish/indicator/9/2", "publish/indicator/9/2"]
+    assert paths == ["editor/basic_info/TRN_NOTES_TEST_LIT", "publish/9/2", "publish/indicator/9/2", "publish/indicator/9/2"]
     assert calls[1]["json"] == {"overwrite": "yes", "published": 1}
     assert calls[2]["json"]["publish_dsd"] is True and calls[2]["json"]["dsd_force"] is False
     assert calls[3]["json"]["publish_indicator_data"] is True
@@ -266,3 +266,64 @@ def test_wide_to_long_labels_and_key_check(tmp_path):
     table = tidy.write_notes_csv({"N01": "A note"}, str(tmp_path / "n.csv"), indicator_id="X")
     assert table.to_dict("records") == [{"note_id": "N01", "indicator_id": "X", "scope": "cell", "column": "NOTE_ID",
                                          "note": "A note"}]
+
+
+# ── paging ───────────────────────────────────────────────────────────────────
+
+
+def test_codelists_list_uses_page_params(me, calls):
+    me.codelists.list(search="sex", page=2, per_page=10, flat=True, exclude_archived=True)
+    params = calls[0]["params"]
+    assert params["page"] == 2 and params["per_page"] == 10
+    assert params["flat"] == "1" and params["exclude_archived"] == "1"
+    assert "limit" not in params and "offset" not in params
+
+
+def test_codelists_iter_all_stops_at_total(me, calls):
+    calls.queue.extend([
+        FakeResponse(body={"codelists": [{"id": 1}, {"id": 2}], "total": 3}),
+        FakeResponse(body={"codelists": [{"id": 3}], "total": 3}),
+    ])
+    assert [c["id"] for c in me.codelists.iter_all(per_page=2)] == [1, 2, 3]
+    assert [c["params"]["page"] for c in calls] == [1, 2]
+
+
+def test_codelists_iter_codes(me, calls):
+    calls.queue.extend([
+        FakeResponse(body={"codes": [{"id": 1}, {"id": 2}], "total": 3}),
+        FakeResponse(body={"codes": [{"id": 3}], "total": 3}),
+    ])
+    assert [c["id"] for c in me.codelists.iter_codes(5, page_size=2, compact=True)] == [1, 2, 3]
+    assert calls[1]["params"]["offset"] == 2 and calls[1]["params"]["compact"] == "1"
+
+
+def test_jobs_list_limit_and_iter_all(me, calls):
+    with pytest.raises(ValueError):
+        me.jobs.list(limit=500)
+    with pytest.raises(ValueError):
+        me.jobs.list(project_id="MY-IDNO")
+    calls.queue.extend([
+        FakeResponse(body={"jobs": [{"uuid": str(i)} for i in range(100)], "total": 101}),
+        FakeResponse(body={"jobs": [{"uuid": "100"}], "total": 101}),
+    ])
+    jobs = list(me.jobs.iter_all(status="completed", created_from="2026-01-01"))
+    assert len(jobs) == 101
+    assert calls[0]["params"]["limit"] == 100 and calls[1]["params"]["offset"] == 100
+    assert calls[0]["params"]["created_from"] == "2026-01-01"
+
+
+def test_indicator_iter_data_rows(me, calls):
+    with pytest.raises(ValueError):
+        me.indicators.data_rows(9, limit=1000)
+    calls.queue.extend([
+        FakeResponse(body={"status": "success", "data": {"rows": [{"v": i} for i in range(200)], "total_row_count": 201}}),
+        FakeResponse(body={"status": "success", "data": {"rows": [{"v": 200}], "total_row_count": 201}}),
+    ])
+    rows = list(me.indicators.iter_data_rows(9, filters={"SEX": ["F"]}))
+    assert len(rows) == 201
+    assert calls[1]["params"]["offset"] == 200
+
+
+def test_indicator_get_dsd_options(me, calls):
+    me.indicators.get_dsd(9, detailed=True, resolve_codelists=True)
+    assert calls[0]["params"] == {"detailed": 1, "resolve_codelists": 1}

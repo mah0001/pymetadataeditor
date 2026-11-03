@@ -75,7 +75,9 @@ Check references: `me.indicators.notes.check(project)`. An unknown ID is an erro
 ## 4. Look at the data
 
 ```python
-me.indicators.data_rows(project_id, limit=20, filters={"REF_AREA": ["XAL"]})
+me.indicators.data_rows(project_id, limit=20, filters={"REF_AREA": ["XAL"]})   # one page, up to 200 rows
+for row in me.indicators.iter_data_rows(project_id, filters={"REF_AREA": ["XAL"]}):
+    ...
 me.indicators.chart_data(project_id, geography=["XAL", "XBO"], dimensions={"SEX": ["_T"]})  # with notes
 me.indicators.export_data(project_id, "export.csv")   # DSD columns, DSD order
 ```

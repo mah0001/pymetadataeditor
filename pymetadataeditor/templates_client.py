@@ -17,12 +17,16 @@ class TemplatesClient:
         return self._api.get_request(pth="/templates")
 
     def get(self, uid: str) -> Dict:
-        """Get a template by UID."""
+        """Get a template by UID: ``{uid, name, data_type, template_type, lang, template, ...}``."""
         return self._api.get_request(pth="/templates/{}", id=uid)
+
+    def defaults(self) -> Dict:
+        """Default template UID for each project type: ``{"result": [...]}``."""
+        return self._api.get_request(pth="/templates/defaults")
 
     def create(self, template: Dict) -> Dict:
         """Create a template."""
-        return self._api.post_request(pth="/templates", json=template)
+        return self._api.post_request(pth="/templates/create", json=template)
 
     def update(self, uid: str, template: Dict) -> Dict:
         """Update a template by UID."""

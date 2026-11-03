@@ -147,7 +147,7 @@ class MetadataEditor:
         self._default_templates = None
         self.api = ApiClient(self._apinterface)
         self.projects = ProjectsClient(self._apinterface)
-        self.collections = CollectionsClient(self._apinterface)
+        self.collections = CollectionsClient(self._apinterface, projects=self.projects)
         self.templates = TemplatesClient(self._apinterface, template_cache=self._templates)
         self.resources = ResourcesClient(self._apinterface)
         self.publish = PublishClient(self._apinterface)
@@ -896,10 +896,10 @@ class MetadataEditor:
         if uid in self._templates:
             return self._templates[uid]["template"]
         response = self.templates.get(uid)
-        if "result" not in response:
-            raise KeyError(f"No result returned.\nResponse: {response}")
+        if not isinstance(response, dict) or "template" not in response or "name" not in response:
+            raise KeyError(f"No template returned for UID '{uid}'.\nResponse: {response}")
 
-        temp = pd.Series(response["result"], name=response["result"]["name"])
+        temp = pd.Series(response, name=response["name"])
         try:
             standard_type_name = self._mm.standardize_metadata_name(temp.data_type)
         except ValueError:

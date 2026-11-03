@@ -2,9 +2,10 @@
 
 import csv
 import json
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Union
 from urllib.parse import quote
 
+from .paging import iter_numbered_pages
 from .requester import RequestsWithSpecificErrors
 
 ComponentSpec = Dict[str, Any]
@@ -102,15 +103,34 @@ class DataStructuresClient:
     # ── structures ────────────────────────────────────────────────────────────
 
     def list(
-        self, search: Optional[str] = None, status: Optional[str] = None, page: int = 1, per_page: int = 50
+        self,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 50,
+        flat: bool = False,
     ) -> Dict:
-        """List data structures (paged)."""
+        """List one page of data structures: ``{data_structures, total, page, per_page}``.
+
+        By default versions are collapsed into one row; ``flat=True`` lists every version.
+        """
         params: Dict[str, Union[int, str]] = {"page": page, "per_page": per_page}
         if search:
             params["search"] = search
         if status:
             params["status"] = status
+        if flat:
+            params["flat"] = "1"
         return self._api.get_request(pth="data_structures", params=params)
+
+    def iter_all(self, per_page: int = 200, max_items: Optional[int] = None, **filters: Any) -> Iterator[Dict]:
+        """Yield data structures one at a time (accepts the filters of :meth:`list`)."""
+        return iter_numbered_pages(
+            lambda page, size: self.list(page=page, per_page=size, **filters),
+            items_key="data_structures",
+            per_page=per_page,
+            max_items=max_items,
+        )
 
     def get(self, structure: Union[int, str], with_components: bool = True) -> Dict:
         """Get a data structure by id, with its components."""

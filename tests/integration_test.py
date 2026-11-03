@@ -17,7 +17,9 @@ def metadata_editor():
     # instantiate
     your_api_key = os.getenv("API_KEY")
     api_url = os.getenv("API_URL")
-    me = MetadataEditor(api_url=api_url, api_key=your_api_key, verify_ssl=False)
+    me = MetadataEditor(
+        api_url=api_url, api_key=your_api_key, allow_http=str(api_url).startswith("http:"), verify_ssl=False
+    )
     return me
 
 
@@ -26,7 +28,7 @@ def test_projects_integration(tmpdir, metadata_editor):
     projects = metadata_editor.projects.list_all()
     num_original_projects = len(projects["projects"])
     assert min(10, num_original_projects) == len(metadata_editor.projects.list(limit=10)["projects"])
-    assert num_original_projects - 1 <= len(metadata_editor.projects.list(limit=10, offset=1)["projects"])
+    assert min(10, num_original_projects - 1) == len(metadata_editor.projects.list(limit=10, offset=1)["projects"])
     assert num_original_projects >= len(
         metadata_editor.projects.list_all(metadata_type="indicator")["projects"]
     )
@@ -635,12 +637,40 @@ def test_resources_integration(metadata_editor, tmpdir):
 #             metadata_editor.projects.delete(log_id)
 
 
+def empty_blank_string_lists(model):
+    """Outlines use [""] for lists of strings, which fill_in_pydantic_outline only fills when empty."""
+    for field_name, value in model.__dict__.items():
+        if isinstance(value, list) and value and all(v == "" for v in value):
+            setattr(model, field_name, [])
+        elif isinstance(value, list):
+            for item in value:
+                if hasattr(item, "__dict__"):
+                    empty_blank_string_lists(item)
+        elif hasattr(value, "__dict__") and hasattr(value, "model_fields_set"):
+            empty_blank_string_lists(value)
+
+
+def clear_server_managed_tables(model):
+    """Drop microdata data files, variables and variable groups.
+
+    The editor stores these in its own tables (file ids renumbered F1, F2, ..., var_count computed, file_type not
+    stored), so they cannot round-trip field by field; see test_microdata_data_files_round_trip.
+    """
+    for key in ("data_files", "variables", "variable_groups"):
+        if getattr(model, key, None):
+            setattr(model, key, None)
+
+
 def test_templates(metadata_editor, tmpdir):
     templates = metadata_editor._refresh_default_templates_cache().drop_duplicates(["uid"])
     default_templates = templates[templates["default"]]
     for i, uid in enumerate(default_templates[["uid"]].values):
         temp = metadata_editor._ensure_template_cached(uid[0])
-        metadata_type = metadata_editor._mm.standardize_metadata_name(temp.data_type)
+        try:
+            metadata_type = metadata_editor._mm.standardize_metadata_name(temp.data_type)
+        except ValueError:
+            # project types without a python schema (e.g. admin_meta, custom)
+            continue
         # if metadata_type == "resource" or metadata_type == "geospatial":
         #     continue
         if metadata_type == "geospatial" or metadata_type == "admin-meta" or metadata_type == "resource":
@@ -711,6 +741,7 @@ def test_templates(metadata_editor, tmpdir):
         # fill in metadata then save and read back
         for i in range(3):
             modl = metadata_editor.make_metadata_outline(uid[0], output_mode="pydantic")
+            empty_blank_string_lists(modl)
             fill_in_pydantic_outline(modl)
 
             # Write filled in metadata
@@ -738,6 +769,7 @@ def test_templates(metadata_editor, tmpdir):
             assert_pydantic_models_equal(modl, actual)
 
         # log filled in metadata
+        clear_server_managed_tables(modl)
         print("logging filled in metadata")
         print(f"{modl}\n\n")
         log_id = metadata_editor.metadata.create(metadata_type_or_template_uid=uid[0], metadata=modl)
@@ -782,6 +814,28 @@ def test_templates(metadata_editor, tmpdir):
             assert_pydantic_models_equal(modl, actual)
         finally:
             metadata_editor.projects.delete(log_id)
+
+
+def test_microdata_data_files_round_trip(metadata_editor):
+    data_files = [
+        {"file_id": "x", "file_name": "zeta", "description": "household roster"},
+        {"file_id": "y", "file_name": "Alpha", "description": "individuals"},
+    ]
+    project_id = metadata_editor.metadata.create(
+        {"study_desc": {"title_statement": {"idno": "PY_TEST_DATA_FILES", "title": "data files"}},
+         "data_files": data_files},
+        metadata_type_or_template_uid="microdata",
+    )
+    try:
+        actual = metadata_editor.metadata.get_for_project(project_id, output_mode="dict", template_uid="none")
+        assert [(f["file_id"], f["file_name"], f["description"]) for f in actual["data_files"]] == [
+            ("F1", "zeta", "household roster"),
+            ("F2", "Alpha", "individuals"),
+        ]
+        model = metadata_editor.metadata.get_for_project(project_id, output_mode="pydantic")
+        assert [f.file_name for f in model.data_files] == ["zeta", "Alpha"]
+    finally:
+        metadata_editor.projects.delete(project_id)
 
 
 def test_change_mode_or_template(metadata_editor, tmpdir):

@@ -36,11 +36,32 @@ me = MetadataEditor(
 
 ### List projects
 
+`list` returns one page (summary fields, no metadata) plus the server `total`:
+
 ```python
-response = me.projects.list(limit=10)
+response = me.projects.list(limit=10, metadata_type="indicator", keywords="literacy rate")
+print(response["total"])
 for project in response["projects"]:
     print(project["id"], project["type"], project["title"])
 ```
+
+Filters: `keywords`, `metadata_type`, `collection` (+ `exclude_collections=True`), `tag`, `ownership`, `users`,
+`created_by`, `changed_by`, `date_start` / `date_end` (last changed), `sort_by`. List filters accept Python lists.
+`me.projects.facets()` returns the available types, collections and their counts.
+
+To go through every matching project, iterate instead of loading everything at once:
+
+```python
+for project in me.projects.iter_all(metadata_type="indicator", page_size=500):
+    ...
+
+me.projects.count(collection=12)                # just the number
+me.projects.list_all(metadata_type="table")     # everything in memory: {"projects": [...], "total": n}
+```
+
+`iter_all` pages in id order, so projects edited while you iterate are neither skipped nor repeated. Other large
+listings have the same pattern: `me.collections.iter_projects`, `me.jobs.iter_all`, `me.codelists.iter_all`,
+`me.codelists.iter_codes`, `me.data_structures.iter_all`, `me.indicators.iter_data_rows`.
 
 ### Create a project (template-aware)
 
@@ -158,7 +179,8 @@ poetry run pytest tests/test_interface.py -q
 ### API documentation
 
 ```bash
-python make_docs.py
+python make_docs.py             # demo notebooks -> docs/*.md, and docs/API_Reference.md
+python make_docs.py --api-only  # only docs/API_Reference.md
 ```
 
 ## Notes

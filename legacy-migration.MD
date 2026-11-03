@@ -12,7 +12,7 @@ Sub-clients return **raw API `dict`s** unless noted. There is **no backward comp
 |-----|-----|
 | `me.count_projects()` | `me.projects.count()` |
 | `me.list_projects(limit=..., offset=..., keywords=..., ...)` | `me.projects.list(...)` |
-| `me.list_projects(limit="all", ...)` | `me.projects.list_all(...)` |
+| `me.list_projects(limit="all", ...)` | `me.projects.iter_all(...)` (generator) or `me.projects.list_all(...)` |
 | `me.get_project_by_id(id)` | `me.projects.get(id)` |
 | `me.delete_project_by_id(id)` | `me.projects.delete(id)` — **POST** `/editor/delete/{id}` |
 | `me.patch_update_project_log_by_id(id, type, patches)` | `me.projects.patch(id, project_type, patches)` |
@@ -46,7 +46,7 @@ Sub-clients return **raw API `dict`s** unless noted. There is **no backward comp
 | `me.move_collection(source_id, target_id)` | `me.collections.move(source_id, target_id)` |
 | `me.count_projects_in_collection(collection)` | `me.collections.count_projects(collection_id)` |
 | `me.list_projects_in_collection(collection, limit=..., ...)` → `pd.DataFrame` | `me.collections.list_projects_via_editor(...)` or `me.collections.list_projects_all(...)` → `dict` |
-| `me.list_projects_in_collection(..., limit="all")` | `me.collections.list_projects_all(collection_id, ...)` |
+| `me.list_projects_in_collection(..., limit="all")` | `me.collections.iter_projects(collection_id, ...)` or `list_projects_all(collection_id, ...)` |
 | `me.add_projects_to_collection(collection, id_format, projects)` | `me.collections.add_projects(collections, id_format, projects)` |
 | `me.remove_projects_from_collection(collection, id_format, projects)` | `me.collections.remove_projects(collections, id_format, projects)` |
 | `me.set_template_for_collection(collection_id, template_uid)` *(auto `project_type`)* | `me.collections.set_template(collection_id, template_uid, project_type)` — **`project_type` required** |
@@ -60,7 +60,7 @@ Sub-clients return **raw API `dict`s** unless noted. There is **no backward comp
 |-----|-----|
 | `me.list_templates()` → `pd.DataFrame` | `me.templates.list()` → `dict` |
 | `me.list_templates()` *(default-template cache for `get_metadata_class`)* | `me._refresh_default_templates_cache()` → `pd.DataFrame` *(internal)* |
-| `me.get_template_by_uid(uid)` → `pd.Series` | `me.templates.get(uid)` → `dict` (`response["result"]`) |
+| `me.get_template_by_uid(uid)` → `pd.Series` | `me.templates.get(uid)` → template `dict` (`uid`, `name`, `data_type`, `template`, …) |
 | `me.get_template_by_uid(uid)` *(pydantic class building)* | `me._ensure_template_cached(uid)` → `pd.Series` *(internal)* |
 | `me.delete_template(uid)` | `me.templates.delete(uid)` |
 | *(no old equivalent)* | `me.templates.create(...)`, `update(...)`, `duplicate(...)`, `translation_keys(...)` |
@@ -101,6 +101,26 @@ These remain on `me` directly (not moved to sub-clients):
 - `change_mode_or_template`
 - `read_metadata_from_excel`
 - LLM / Excel helpers
+
+---
+
+## 0.5.0 changes
+
+Changes from 0.4.0 that can break existing calls. All other 0.5.0 additions are new methods or optional arguments.
+
+| 0.4.0 | 0.5.0 |
+|-----|-----|
+| `me.codelists.list(limit=50, offset=0, ...)` | `me.codelists.list(page=1, per_page=50, flat=False, ...)` — returns `{codelists, total, page, per_page, collapsed}`; versions are collapsed into one row unless `flat=True`. Use `me.codelists.iter_all(...)` for everything |
+| `me.projects.delete_version_by_id(id, version)` | `me.projects.delete_version_by_id(version_project_id)` — the id of the version project itself |
+| `me.projects.list(exclude_collections="...")` | `me.projects.list(collection=..., exclude_collections=True)` — bool; raises `ValueError` without `collection` |
+| `me.jobs.list(limit=...)` *(any limit)* | Raises `ValueError` when `limit > 100` (server maximum); use `me.jobs.iter_all(...)` |
+| `me.jobs.list(project_id="<idno>")` | Raises `ValueError`; filter by numeric id (`me.projects.basic_info(idno)` gives it) |
+| `me.indicators.data_rows(..., limit=...)` *(any limit)* | Raises `ValueError` when `limit > 200` (server maximum); use `me.indicators.iter_data_rows(...)` |
+| `me.collections.list_projects(collection_id)` → `POST /collections/projects` | `GET /collections/projects/{id}` response (unpaged, needs edit access). For filtered or paged listings use `list_projects_via_editor` / `iter_projects` |
+| `me.templates.get(uid)["result"]` | `me.templates.get(uid)` — the template `dict` itself, no `result` wrapper |
+| `me.projects.count()` | `me.projects.count(**filters)` — same result without filters |
+
+New in 0.5.0: `projects.iter_all`, `projects.facets`, `projects.basic_info`, `templates.defaults`, `collections.iter_projects`, `jobs.iter_all`, `codelists.iter_all`, `codelists.iter_codes`, `data_structures.iter_all`, `indicators.iter_data_rows`, `indicators.get_dsd(detailed=..., resolve_codelists=...)`, `metadata.get_for_project(..., include_variables=...)`.
 
 ---
 

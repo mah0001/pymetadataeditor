@@ -3,9 +3,10 @@
 import json
 import os
 import tempfile
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional, Union
 from urllib.parse import quote
 
+from .paging import iter_offset_pages
 from .requester import RequestsWithSpecificErrors
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -19,6 +20,8 @@ ProjectRef = Union[int, str]
 
 #: Files above this size are sent with a resumable upload instead of a single multipart request.
 UPLOAD_THRESHOLD_BYTES = 20 * 1024 * 1024
+#: Server maximum for ``limit`` on ``GET indicator_dsd/data_rows``.
+DATA_ROWS_MAX_PAGE_SIZE = 200
 
 
 def _seg(value: ProjectRef) -> str:
@@ -139,7 +142,7 @@ class IndicatorsClient:
         text = str(project).strip()
         if text.isdigit():
             return int(text)
-        response = self._projects.get(text)
+        response = self._projects.basic_info(text)
         pid = (response.get("project") or {}).get("id") if isinstance(response, dict) else None
         if pid is None:
             raise ValueError(f"Project not found: {project!r}")
@@ -147,9 +150,17 @@ class IndicatorsClient:
 
     # ── data structure binding ────────────────────────────────────────────────
 
-    def get_dsd(self, project: ProjectRef) -> Dict:
-        """Columns of the project's data structure."""
-        return self._api.get_request(pth=f"indicator_dsd/{_seg(project)}")
+    def get_dsd(self, project: ProjectRef, detailed: bool = False, resolve_codelists: bool = False) -> Dict:
+        """Columns of the project's data structure: ``{columns}``.
+
+        ``detailed=True`` adds full column metadata; ``resolve_codelists=True`` adds the codes of each column.
+        """
+        params: Dict[str, int] = {}
+        if detailed:
+            params["detailed"] = 1
+        if resolve_codelists:
+            params["resolve_codelists"] = 1
+        return self._api.get_request(pth=f"indicator_dsd/{_seg(project)}", params=params or None)
 
     def validate(self, project: ProjectRef) -> Dict:
         """Validate the data structure and data (includes the data notes checks)."""
@@ -249,11 +260,32 @@ class IndicatorsClient:
     def data_rows(
         self, project: ProjectRef, offset: int = 0, limit: int = 50, filters: Optional[Dict[str, List[str]]] = None
     ) -> Dict:
-        """A page of imported rows (``filters``: column → list of values)."""
+        """A page of imported rows (``filters``: column → list of values). ``limit`` is at most 200.
+
+        Use :meth:`iter_data_rows` to read more, or :meth:`export_data` to download everything as CSV.
+        """
+        if not 1 <= int(limit) <= DATA_ROWS_MAX_PAGE_SIZE:
+            raise ValueError(f"limit must be between 1 and {DATA_ROWS_MAX_PAGE_SIZE}")
         params: Dict[str, Union[int, str]] = {"offset": offset, "limit": limit}
         if filters:
             params["filters"] = json.dumps(filters)
         return self._api.get_request(pth=f"indicator_dsd/data_rows/{_seg(project)}", params=params)
+
+    def iter_data_rows(
+        self,
+        project: ProjectRef,
+        filters: Optional[Dict[str, List[str]]] = None,
+        max_items: Optional[int] = None,
+    ) -> Iterator[Dict]:
+        """Yield imported rows one at a time, 200 per request."""
+        return iter_offset_pages(
+            lambda limit, offset: self.data_rows(project, offset=offset, limit=limit, filters=filters).get("data") or {},
+            items_key="rows",
+            page_size=DATA_ROWS_MAX_PAGE_SIZE,
+            max_items=max_items,
+            id_key=None,
+            total_key="total_row_count",
+        )
 
     def data_values(
         self, project: ProjectRef, code_column: str, label_column: Optional[str] = None, limit: int = 5000

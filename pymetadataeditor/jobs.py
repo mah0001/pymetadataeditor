@@ -1,10 +1,11 @@
 """Background job queue wrappers for the Metadata Editor API."""
 
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Iterator, Optional, Union
 
 from requests.exceptions import HTTPError
 
+from .paging import iter_offset_pages
 from .requester import RequestsWithSpecificErrors
 
 
@@ -38,6 +39,8 @@ class JobsClient:
     """Job queue wrappers (publish to NADA, poll status, list jobs)."""
 
     _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+    #: Server maximum for ``limit`` on ``GET /jobs``.
+    MAX_PAGE_SIZE = 100
 
     def __init__(self, api: RequestsWithSpecificErrors):
         self._api = api
@@ -177,10 +180,18 @@ class JobsClient:
         active: Optional[bool] = None,
         history: Optional[bool] = None,
         stale: Optional[bool] = None,
+        created_from: Optional[str] = None,
+        created_to: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> Dict:
-        """List background jobs with optional filters."""
+        """List one page of background jobs: ``{total, found, limit, offset, jobs, ...}``.
+
+        ``limit`` is at most 100 (server maximum); use :meth:`iter_all` for more. ``created_from`` and
+        ``created_to`` take ``YYYY-MM-DD`` or ``YYYY-MM-DD HH:MM:SS``. Non-admin users only see their own jobs.
+        """
+        if not 1 <= int(limit) <= self.MAX_PAGE_SIZE:
+            raise ValueError(f"limit must be between 1 and {self.MAX_PAGE_SIZE}; use jobs.iter_all() for more")
         params: Dict[str, Union[int, str]] = {
             "limit": int(limit),
             "offset": int(offset),
@@ -190,7 +201,10 @@ class JobsClient:
         if job_type is not None:
             params["job_type"] = job_type
         if project_id is not None:
-            params["project_id"] = _normalize_project_id(project_id)
+            pid = _normalize_project_id(project_id)
+            if not isinstance(pid, int):
+                raise ValueError("jobs.list filters by numeric project id; resolve an idno with me.projects.basic_info")
+            params["project_id"] = pid
         if user_id is not None:
             params["user_id"] = int(user_id)
         if active is True:
@@ -199,7 +213,21 @@ class JobsClient:
             params["history"] = "1"
         if stale is True:
             params["stale"] = "1"
+        if created_from:
+            params["created_from"] = created_from
+        if created_to:
+            params["created_to"] = created_to
         return self._api.get_request(pth="jobs", params=params)
+
+    def iter_all(self, max_items: Optional[int] = None, **filters: Any) -> Iterator[Dict]:
+        """Yield jobs one at a time, 100 per request (accepts the filters of :meth:`list`)."""
+        return iter_offset_pages(
+            lambda limit, offset: self.list(limit=limit, offset=offset, **filters),
+            items_key="jobs",
+            page_size=self.MAX_PAGE_SIZE,
+            max_items=max_items,
+            id_key="uuid",
+        )
 
     def wait(
         self,

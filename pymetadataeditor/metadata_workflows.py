@@ -15,12 +15,35 @@ from .utils import remove_empty_from_dict, validate_json_patches
 if TYPE_CHECKING:
     from .interface import MetadataEditor
 
+#: Microdata parts stored by the editor outside the project metadata.
+MICRODATA_TABLES = ("data_files", "variables", "variable_groups")
+
 
 class MetadataWorkflowsClient:
     """Template-aware metadata operations built on top of thin API clients."""
 
     def __init__(self, editor: "MetadataEditor"):
         self._editor = editor
+
+    def _add_microdata_tables(self, id: Union[int, str], project: Dict, include_variables: bool = False) -> None:
+        """Add a microdata project's data files, variables and variable groups to ``project["metadata"]``.
+
+        The editor stores these outside the project metadata; the JSON export returns them.
+        """
+        try:
+            project_type = self._editor._mm.standardize_metadata_name(project.get("type", ""))
+        except ValueError:
+            return
+        if project_type != "microdata":
+            return
+        export = self._editor.projects.get_json(id, exclude_variables=None if include_variables else 1)
+        metadata = project.get("metadata") or {}
+        for key in MICRODATA_TABLES:
+            if key == "variables" and not include_variables:
+                continue
+            if export.get(key) and not metadata.get(key):
+                metadata[key] = export[key]
+        project["metadata"] = metadata
 
     def get_for_project(
         self,
@@ -31,8 +54,13 @@ class MetadataWorkflowsClient:
         filename: Optional[str] = None,
         title: Optional[str] = None,
         debug: bool = False,
+        include_variables: bool = False,
     ) -> Union[BaseModel, Dict, str]:
-        """Return project metadata as dict, pydantic model, or Excel file."""
+        """Return project metadata as dict, pydantic model, or Excel file.
+
+        For microdata, the data files and variable groups (stored apart from the study metadata) are included.
+        ``include_variables=True`` also adds the variables, which can be large.
+        """
         output_mode = output_mode.lower().strip()
         if output_mode not in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES:
             raise ValueError(f"output_mode must be 'pydantic', 'dict' or 'excel' but found '{output_mode}'")
@@ -42,6 +70,7 @@ class MetadataWorkflowsClient:
             raise ValueError("When template_uid='none' then output_mode must be 'dict'")
 
         project = self._editor.projects.get(id)["project"]
+        self._add_microdata_tables(id, project, include_variables=include_variables)
 
         if template_uid == "none":
             return project["metadata"]

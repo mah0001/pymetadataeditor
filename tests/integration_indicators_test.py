@@ -97,3 +97,4 @@ def test_indicator_workflow_with_notes(me, tmp_path):
             assert published["data"]["status"] == "success"
     finally:
         me.projects.delete(project_id)
+        me.data_structures.delete(structure_id)

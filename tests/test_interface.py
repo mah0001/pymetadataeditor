@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 from requests.exceptions import SSLError
 
 from pymetadataeditor import MetadataEditor
-from pymetadataeditor.exceptions import DeleteNotAppliedError, TemplateError
+from pymetadataeditor.exceptions import ApiError, DeleteNotAppliedError, TemplateError
 from pymetadataeditor.requester import RequestsWithSpecificErrors
 
 
@@ -96,7 +96,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
     with pytest.raises(requests.HTTPError) as e:
         me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
         me.projects.list(limit=100)
-    assert str(e.value).split(".")[0] == "Page not found"
+    assert str(e.value).startswith("HTTP 404 Not Found for https://example.com/editor")
 
     # bad SSL
     def mock_response(*args, **kwargs):
@@ -166,7 +166,7 @@ def test_projects_subclient_list_and_get(monkeypatch, metadata_editor):
 
     def mock_response(*args, **kwargs):
         captured.append((args, kwargs))
-        if kwargs.get("params") is not None:
+        if args[1].endswith("/editor"):
             return MockResponse(http_status_code=200, json_data={"projects": [{"id": "p1"}], "total": 1})
         return MockResponse(http_status_code=200, json_data={"project": {"id": "my-idno", "title": "Example"}})
 
@@ -179,7 +179,7 @@ def test_projects_subclient_list_and_get(monkeypatch, metadata_editor):
         date_start="2026-01-01",
         date_end="2026-12-31",
         collection="1,2",
-        exclude_collections="true",
+        exclude_collections=True,
         ownership="self",
         users="4,5",
     )
@@ -191,6 +191,8 @@ def test_projects_subclient_list_and_get(monkeypatch, metadata_editor):
     assert captured[0][0][1].endswith("/editor")
     assert captured[0][1]["params"]["date_start"] == "2026-01-01"
     assert captured[0][1]["params"]["users"] == "4,5"
+    assert captured[0][1]["params"]["keywords"] == "a b"
+    assert captured[0][1]["params"]["exclude_collections"] == "true"
     assert captured[1][1]["params"]["version"] == "1.0.0"
 
 
@@ -241,11 +243,11 @@ def test_projects_subclient_json_pdf_import_and_versions(monkeypatch, metadata_e
     metadata_editor.projects.list_versions("idno-1", version="1.2.0")
     metadata_editor.projects.create_version("idno-1", "minor", "added section")
     metadata_editor.projects.delete_version("idno-1", "1.2.0")
-    metadata_editor.projects.delete_version_by_id("idno-1", "1.2.0")
+    metadata_editor.projects.delete_version_by_id(1234)
 
-    assert captured[0][0][1].endswith("/editor/jsonidno-1")
+    assert captured[0][0][1].endswith("/editor/json/idno-1")
     assert captured[0][1]["params"]["exclude_variables"] == 1
-    assert captured[1][0][1].endswith("/editor/json-field/idno-1")
+    assert captured[1][0][1].endswith("/editor/json_field/idno-1")
     assert captured[1][1]["params"]["path"] == "/idno"
     assert captured[2][0][1].endswith("/editor/generate_pdf/idno-1")
     assert captured[2][1]["params"]["template_uid"] == "uid123"
@@ -255,7 +257,7 @@ def test_projects_subclient_json_pdf_import_and_versions(monkeypatch, metadata_e
     assert captured[5][1]["json"]["version_type"] == "minor"
     assert captured[5][1]["json"]["version_notes"] == "added section"
     assert captured[6][1]["json"]["version"] == "1.2.0"
-    assert captured[7][1]["json"]["version"] == "1.2.0"
+    assert captured[7][1]["json"] == {"id": 1234}
 
 
 def test_projects_list(monkeypatch, metadata_editor):
@@ -287,13 +289,13 @@ def test_projects_get(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(
             http_status_code=400,
-            json_data={},
-            error_message={"message": "You don't have permission to access this project"},
+            json_data={"status": "failed", "message": "You don't have permission to access this project"},
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(Exception, match="You don't have permission to access this project"):
+    with pytest.raises(ApiError, match="You don't have permission to access this project") as e:
         metadata_editor.projects.get(1)
+    assert e.value.status_code == 400
 
     project = {"status": "success", "project": {"id": "2", "created": "2024-06-11T09:58:14-04:00"}}
 
@@ -320,14 +322,14 @@ def test_projects_get(monkeypatch, metadata_editor):
             "indicator",
             {
                 "idno": "GB123",
-                "series_description": {"doi": "string", "name": "Gordons Test", "display_name": "string"},
+                "series_description": {"doi": "string", "name": "Test Indicator", "display_name": "string"},
             },
             {
                 "idno": "GB123",
                 "series_description": {
                     "idno": "string",
                     "doi": "string",
-                    "name": "Gordons Test",
+                    "name": "Test Indicator",
                     "display_name": "string",
                 },
             },
@@ -385,8 +387,7 @@ def test_metadata_update(tmpdir, monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(
             http_status_code=400,
-            json_data={},
-            error_message={"message": "You don't have permission to access this project"},
+            json_data={"status": "failed", "message": "You don't have permission to access this project"},
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
@@ -498,7 +499,7 @@ def test_make_metadata_outline(tmpdir, monkeypatch, metadata_editor, metadata_ty
                 "series_description": {
                     "idno": "string",
                     "doi": "string",
-                    "name": "Gordons Test",
+                    "name": "Test Indicator",
                     "display_name": "string",
                 },
             },
@@ -809,12 +810,10 @@ def test_ensure_template_cached(monkeypatch, metadata_editor):
         return MockResponse(
             http_status_code=200,
             json_data={
-                "result": {
-                    "uid": "example",
-                    "name": "example name",
-                    "data_type": "microdata",
-                    "template": {},
-                }
+                "uid": "example",
+                "name": "example name",
+                "data_type": "microdata",
+                "template": {},
             },
         )
 
@@ -923,3 +922,86 @@ def test_create_update_delete_resource(
 
     monkeypatch.setattr(RequestsWithSpecificErrors, "post_request", mock_delete_response)
     metadata_editor.resources.delete(project_id=1, resource_id=1)
+
+
+def _paged_projects(total: int, captured: list):
+    rows = [{"id": i, "title": f"p{i}"} for i in range(1, total + 1)]
+
+    def mock_response(*args, **kwargs):
+        params = kwargs.get("params") or {}
+        captured.append(params)
+        offset, limit = int(params.get("offset", 0)), int(params.get("limit", 100))
+        return MockResponse(http_status_code=200, json_data={"total": total, "projects": rows[offset : offset + limit]})
+
+    return mock_response
+
+
+def test_projects_iter_all_pages_with_stable_sort(monkeypatch, metadata_editor):
+    captured = []
+    monkeypatch.setattr(requests, "request", _paged_projects(5, captured))
+
+    ids = [p["id"] for p in metadata_editor.projects.iter_all(page_size=2, metadata_type=["indicator", "table"])]
+    assert ids == [1, 2, 3, 4, 5]
+    assert len(captured) == 3  # stops at the server total
+    assert all(c["sort_by"] == "id_asc" and c["type"] == "indicator,table" for c in captured)
+
+    captured.clear()
+    assert [p["id"] for p in metadata_editor.projects.iter_all(page_size=2, max_items=3)] == [1, 2, 3]
+    assert [c["limit"] for c in captured] == [2, 1]
+
+    all_projects = metadata_editor.projects.list_all(page_size=2)
+    assert all_projects["total"] == 5
+
+
+def test_projects_list_filters_and_validation(monkeypatch, metadata_editor):
+    captured = []
+    monkeypatch.setattr(requests, "request", _paged_projects(1, captured))
+
+    metadata_editor.projects.list(tag=[1, 2], created_by=3, changed_by="4,5", collection=[7], ownership="shared, self")
+    params = captured[-1]
+    assert params["tag"] == "1,2"
+    assert params["created_by"] == "3"
+    assert params["changed_by"] == "4,5"
+    assert params["collection"] == "7"
+    assert params["ownership"] == "self,shared"
+    assert "exclude_collections" not in params
+
+    with pytest.raises(ValueError):
+        metadata_editor.projects.list(sort_by="newest")
+    with pytest.raises(ValueError):
+        metadata_editor.projects.list(ownership="everyone")
+    with pytest.raises(ValueError):
+        metadata_editor.projects.list(exclude_collections=True)
+
+    assert metadata_editor.projects.count(metadata_type="indicator") == 1
+    assert captured[-1]["limit"] == 1
+
+
+def test_collections_list_projects_uses_get_route(monkeypatch, metadata_editor):
+    captured = []
+
+    def mock_response(*args, **kwargs):
+        captured.append((args, kwargs))
+        return MockResponse(http_status_code=200, json_data={"total": 1, "projects": [{"id": 1}]})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    metadata_editor.collections.list_projects(9)
+    assert captured[-1][0][0] == "get"
+    assert captured[-1][0][1].endswith("/collections/projects/9")
+
+    metadata_editor.collections.list_projects_via_editor(9, keywords="health survey")
+    assert captured[-1][1]["params"]["collection"] == "9"
+    assert captured[-1][1]["params"]["keywords"] == "health survey"
+    assert metadata_editor.collections.count_projects(9) == 1
+
+
+def test_templates_create_route(monkeypatch, metadata_editor):
+    captured = []
+
+    def mock_response(*args, **kwargs):
+        captured.append((args, kwargs))
+        return MockResponse(http_status_code=200, json_data={"status": "success"})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    metadata_editor.templates.create({"name": "x"})
+    assert captured[-1][0][1].endswith("/templates/create")

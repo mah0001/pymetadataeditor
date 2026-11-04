@@ -89,12 +89,15 @@ def test_indicator_workflow_with_notes(me, tmp_path):
 
         # 8. Optional publish
         if NADA_CONNECTION_ID:
-            published = me.indicators.publish(
-                idno, int(NADA_CONNECTION_ID), metadata_options={"published": 1, "access_policy": "open"}
+            published = me.publish.project(
+                idno, int(NADA_CONNECTION_ID), publish_thumbnail=False, publish_resources=False,
+                publish_dsd=True, dsd_overwrite=True, publish_indicator_data=True,
+                options={"overwrite": "yes", "published": 1, "access_policy": "open"},
             )
-            assert published["metadata"]["status"] == "success"
-            assert published["dsd"]["status"] in ("success", "skipped")
-            assert published["data"]["status"] == "success"
+            assert not published["errors"], published["errors"]
+            assert published["results"]["metadata"]["status"] == "success"
+            assert published["results"]["dsd"]["status"] in ("success", "skipped")
+            assert published["results"]["indicator_data"]["status"] == "success"
     finally:
         me.projects.delete(project_id)
         me.data_structures.delete(structure_id)

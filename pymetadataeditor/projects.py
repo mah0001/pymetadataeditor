@@ -242,6 +242,13 @@ class ProjectsClient:
             params["admin_metadata"] = admin_metadata
         return self._api.get_request("/editor/json_field/{}", id=project_id, params=params)
 
+    def generate_json(self, project_id: ProjectIdOrIdno) -> Dict:
+        """Write the project JSON file from the current metadata (``GET editor/generate_json/{id}``).
+
+        Publishing metadata does this too; call it to refresh the file explicitly.
+        """
+        return self._api.get_request("/editor/generate_json/{}", id=project_id)
+
     def generate_pdf(
         self,
         project_id: ProjectIdOrIdno,

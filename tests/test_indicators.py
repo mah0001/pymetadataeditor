@@ -199,25 +199,60 @@ def test_export_data_streams_to_file(me, calls, tmp_path):
     assert calls[0]["stream"] is True
 
 
-def test_publish_resolves_numeric_id_and_steps(me, calls):
+def test_publish_project_resolves_id_and_runs_steps(me, calls):
     calls.queue.extend([
         FakeResponse(body={"status": "success", "project": {"id": "9"}}),
         FakeResponse(body={"status": "success"}),
         FakeResponse(body={"dsd": {"status": "skipped"}, "data": None}),
         FakeResponse(body={"dsd": None, "data": {"status": "success"}}),
+        FakeResponse(400, body={"status": "failed", "message": "Thumbnail file not found"}),
+        FakeResponse(body=[{"status": "success"}]),
     ])
-    out = me.indicators.publish("TRN_NOTES_TEST_LIT", 2, metadata_options={"published": 1})
+    out = me.publish.project(
+        "TRN_NOTES_TEST_LIT", 2, publish_dsd=True, publish_indicator_data=True, options={"published": 1}
+    )
     paths = [_path(c) for c in calls]
-    assert paths == ["editor/basic_info/TRN_NOTES_TEST_LIT", "publish/9/2", "publish/indicator/9/2", "publish/indicator/9/2"]
-    assert calls[1]["json"] == {"overwrite": "yes", "published": 1}
+    assert paths == [
+        "editor/basic_info/TRN_NOTES_TEST_LIT", "publish/9/2", "publish/indicator/9/2", "publish/indicator/9/2",
+        "publish/thumbnail/9/2", "publish/external_resources/9/2",
+    ]
+    assert calls[1]["json"] == {"published": 1}
     assert calls[2]["json"]["publish_dsd"] is True and calls[2]["json"]["dsd_force"] is False
     assert calls[3]["json"]["publish_indicator_data"] is True
-    assert out == {"metadata": {"status": "success"}, "dsd": {"status": "skipped"}, "data": {"status": "success"}}
+    assert out["results"]["metadata"] == {"status": "success"}
+    assert out["results"]["dsd"] == {"status": "skipped"} and out["results"]["indicator_data"] == {"status": "success"}
+    assert "Thumbnail file not found" in out["errors"]["thumbnail"]
+    assert out["results"]["resources"] == [{"status": "success"}]
 
 
-def test_jobs_import_indicator_data_and_publish_dsd_force(me, calls):
-    me.jobs.import_indicator_data(9, "u1", "TRN_LIT_RATE")
-    me.jobs.publish_to_nada(9, 2, publish_dsd=True, dsd_force=True)
+def test_publish_project_stop_on_error(me, calls):
+    calls.queue.append(FakeResponse(400, body={"status": "failed", "message": "bad"}))
+    out = me.publish.project(9, 2, stop_on_error=True)
+    assert list(out["errors"]) == ["metadata"] and len(calls) == 1
+
+
+def test_publish_resource_body(me, calls):
+    me.publish.resource(9, 2, 15, overwrite=True)
+    assert _path(calls[0]) == "publish/external_resource/9/2"
+    assert calls[0]["json"] == {"resource_id": 15, "overwrite": "yes"}
+
+
+def test_indicator_queue_recompute_and_wait(me, calls, monkeypatch):
+    monkeypatch.setattr("pymetadataeditor.indicators.time.sleep", lambda _: None)
+    calls.queue.extend([
+        FakeResponse(body={"status": "success", "job_id": "j1"}),
+        FakeResponse(body={"status": "success", "job": {"status": "running"}}),
+        FakeResponse(body={"status": "success", "job": {"status": "done", "result": {"rows": 3}}}),
+    ])
+    out = me.indicators.queue_recompute(9, wait=True)
+    assert _path(calls[0]) == "indicator_dsd/data_recompute/9"
+    assert calls[1]["params"] == {"job_id": "j1"}
+    assert out["status"] == "done" and out["timed_out"] is False and out["job"]["result"] == {"rows": 3}
+
+
+def test_jobs_queue_indicator_import_and_publish_dsd_force(me, calls):
+    me.jobs.queue_indicator_data_import(9, "u1", "TRN_LIT_RATE")
+    me.jobs.queue_publish_to_nada(9, 2, publish_dsd=True, dsd_force=True)
     assert _path(calls[0]) == "jobs/import_indicator_data"
     assert calls[0]["json"]["indicator_value"] == "TRN_LIT_RATE"
     assert calls[1]["json"]["dsd_force"] is True

@@ -150,14 +150,12 @@ class MetadataEditor:
         self.collections = CollectionsClient(self._apinterface, projects=self.projects)
         self.templates = TemplatesClient(self._apinterface, template_cache=self._templates)
         self.resources = ResourcesClient(self._apinterface)
-        self.publish = PublishClient(self._apinterface)
+        self.publish = PublishClient(self._apinterface, projects=self.projects)
         self.jobs = JobsClient(self._apinterface, projects=self.projects)
         self.uploads = UploadsClient(self._apinterface)
         self.data_structures = DataStructuresClient(self._apinterface)
         self.codelists = CodelistsClient(self._apinterface)
-        self.indicators = IndicatorsClient(
-            self._apinterface, projects=self.projects, uploads=self.uploads, publish=self.publish
-        )
+        self.indicators = IndicatorsClient(self._apinterface, projects=self.projects, uploads=self.uploads)
         self.metadata = MetadataWorkflowsClient(self)
 
     ####################################################################################################################

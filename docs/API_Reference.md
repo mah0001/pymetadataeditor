@@ -611,6 +611,19 @@ Filter values with counts: project types, collection tree, ownership (``GET /edi
 ---
 
 
+## <kbd>method</kbd> `generate_json`
+
+```python
+generate_json(project_id: Union[int, str]) → Dict
+```
+
+Write the project JSON file from the current metadata (``GET editor/generate_json/{id}``). 
+
+Publishing metadata does this too; call it to refresh the file explicitly. 
+
+---
+
+
 ## <kbd>method</kbd> `generate_pdf`
 
 ```python
@@ -1347,7 +1360,9 @@ Update a resource (multipart upload when file_path is set).
 
 
 # <kbd>class</kbd> `JobsClient`
-Job queue wrappers (publish to NADA, poll status, list jobs). 
+The editor's background job queue: queue jobs, poll their status, list jobs. 
+
+Methods that start with ``queue_`` return as soon as the job is queued (``{status, uuid, job}``). Pass ``wait=True`` to block until the job finishes; the result is then that of :meth:`wait`. 
 
 
 ### <kbd>method</kbd> `__init__`
@@ -1380,22 +1395,6 @@ Return True when ``GET /jobs/types`` is reachable on this server.
 ---
 
 
-## <kbd>method</kbd> `create`
-
-```python
-create(
-    job_type: str,
-    payload: Dict[str, Any],
-    priority: int = 0,
-    max_attempts: int = 3
-) → Dict
-```
-
-Queue ``POST /jobs`` with an explicit job type and payload. 
-
----
-
-
 ## <kbd>method</kbd> `get`
 
 ```python
@@ -1403,45 +1402,6 @@ get(job_uuid: str) → Dict
 ```
 
 Get full job details including payload and result. 
-
----
-
-
-## <kbd>method</kbd> `import_indicator_data`
-
-```python
-import_indicator_data(
-    project_id: Union[int, str],
-    upload_id: str,
-    indicator_value: str,
-    delimiter: str = ',',
-    priority: int = 0,
-    max_attempts: int = 1
-) → Dict
-```
-
-Queue an indicator data import from a completed upload (``POST /jobs/import_indicator_data``). 
-
-Imports the rows whose indicator_id column equals ``indicator_value``. Get ``upload_id`` from ``me.uploads.upload(path)``. Returns ``{status, uuid, job}``. 
-
----
-
-
-## <kbd>method</kbd> `import_indicator_data_and_wait`
-
-```python
-import_indicator_data_and_wait(
-    project_id: Union[int, str],
-    upload_id: str,
-    indicator_value: str,
-    timeout_seconds: int = 1800,
-    interval_seconds: float = 5.0,
-    show_progress: bool = False,
-    **kwargs: Any
-) → Dict
-```
-
-Queue :meth:`import_indicator_data` and wait until the job finishes or times out. 
 
 ---
 
@@ -1482,12 +1442,56 @@ List one page of background jobs: ``{total, found, limit, offset, jobs, ...}``.
 ---
 
 
-## <kbd>method</kbd> `publish_to_nada`
+## <kbd>method</kbd> `queue`
 
 ```python
-publish_to_nada(
+queue(
+    job_type: str,
+    payload: Dict[str, Any],
+    priority: int = 0,
+    max_attempts: int = 3
+) → Dict
+```
+
+Queue a job of any type (``POST /jobs``); see :meth:`types` for the job types. 
+
+---
+
+
+## <kbd>method</kbd> `queue_indicator_data_import`
+
+```python
+queue_indicator_data_import(
+    project_id: Union[int, str],
+    upload_id: str,
+    indicator_value: str,
+    wait: bool = False,
+    timeout_seconds: int = 1800,
+    interval_seconds: float = 5.0,
+    show_progress: bool = False,
+    delimiter: str = ',',
+    priority: int = 0,
+    max_attempts: int = 1
+) → Dict
+```
+
+Queue an indicator data import from a completed upload (``POST /jobs/import_indicator_data``). 
+
+Imports the rows whose indicator_id column equals ``indicator_value``. Get ``upload_id`` from ``me.uploads.upload(path)``. ``wait=True`` blocks until the job finishes (see :meth:`wait`). 
+
+---
+
+
+## <kbd>method</kbd> `queue_publish_to_nada`
+
+```python
+queue_publish_to_nada(
     project_id: Union[int, str],
     catalog_connection_id: int,
+    wait: bool = False,
+    timeout_seconds: int = 1800,
+    interval_seconds: float = 5.0,
+    show_progress: bool = False,
     publish_metadata: bool = True,
     publish_thumbnail: bool = True,
     publish_resources: bool = True,
@@ -1502,27 +1506,9 @@ publish_to_nada(
 ) → Dict
 ```
 
-Queue a publish-to-NADA job for a single project. 
+Queue a publish-to-NADA job for a project (``POST /jobs/publish_to_nada``). 
 
-Calls ``POST /jobs/publish_to_nada``. 
-
----
-
-
-## <kbd>method</kbd> `publish_to_nada_and_wait`
-
-```python
-publish_to_nada_and_wait(
-    project_id: Union[int, str],
-    catalog_connection_id: int,
-    timeout_seconds: int = 1800,
-    interval_seconds: float = 5.0,
-    show_progress: bool = False,
-    **publish_kwargs: Any
-) → Dict
-```
-
-Submit ``publish_to_nada`` and block until the job completes or times out. 
+Runs the same steps as :meth:`PublishClient.project`, on the server's worker. ``wait=True`` blocks until the job finishes (see :meth:`wait`). 
 
 ---
 
@@ -1555,13 +1541,18 @@ Poll ``GET /jobs/{uuid}`` until the job reaches a terminal state or times out.
 
 
 # <kbd>class</kbd> `PublishClient`
-Synchronous publish endpoints under /publish/*. 
+Synchronous publish endpoints under ``/publish/*``: each call returns once NADA has answered. 
+
+To publish in the background instead, queue a job with ``me.jobs.queue_publish_to_nada``. These endpoints need the numeric project id; an idno is resolved first. 
 
 
 ### <kbd>method</kbd> `__init__`
 
 ```python
-__init__(api: RequestsWithSpecificErrors)
+__init__(
+    api: RequestsWithSpecificErrors,
+    projects: Optional[ForwardRef('ProjectsClient')] = None
+)
 ```
 
 
@@ -1596,23 +1587,40 @@ Prefetch NADA collections, access codes, and existing study info.
 ---
 
 
-## <kbd>method</kbd> `generate_json`
+## <kbd>method</kbd> `create_catalog_connection`
 
 ```python
-generate_json(project_id: Union[int, str]) → Dict
+create_catalog_connection(
+    title: str,
+    url: str,
+    api_key: Optional[str] = None,
+    **fields: Any
+) → Dict
 ```
 
-Write the project JSON from the current metadata (``GET editor/generate_json/{id}``). 
-
-Publishing metadata also does this; call it to refresh the JSON file explicitly. 
+Create a NADA catalog connection for the current API user (``type``, ``is_official`` as fields). 
 
 ---
 
 
-## <kbd>method</kbd> `indicator`
+## <kbd>method</kbd> `delete_nada_resources`
 
 ```python
-indicator(
+delete_nada_resources(
+    project_id: Union[int, str],
+    catalog_connection_id: int
+) → Dict
+```
+
+Delete all external resources of the project's study in NADA. 
+
+---
+
+
+## <kbd>method</kbd> `indicator_data`
+
+```python
+indicator_data(
     project_id: Union[int, str],
     catalog_connection_id: int,
     publish_dsd: bool = True,
@@ -1623,9 +1631,20 @@ indicator(
 ) → Dict
 ```
 
-Publish an indicator project's data structure and/or data to NADA (synchronous). 
+Publish an indicator project's data structure and/or data to NADA. 
 
 Calls ``POST /publish/indicator/{project_id}/{catalog_connection_id}``. With ``dsd_overwrite``, the data structure is re-imported only when it differs from NADA's copy; ``dsd_force`` re-imports anyway (re-importing flags every NADA study on that structure for re-sync). Returns ``{"dsd": ..., "data": ...}``. 
+
+---
+
+
+## <kbd>method</kbd> `list_files`
+
+```python
+list_files(project_id: Union[int, str]) → Dict
+```
+
+Files uploaded to the project's external resources: ``{files}``. 
 
 ---
 
@@ -1640,9 +1659,77 @@ metadata(
 ) → Dict
 ```
 
-Publish project metadata synchronously. 
+Publish project metadata. 
 
-Calls ``POST /publish/{project_id}/{catalog_connection_id}`` with NADA options (``access_policy``, ``published``, ``repositoryid``, etc.) merged into the exported project JSON before posting to the catalog. 
+Calls ``POST /publish/{project_id}/{catalog_connection_id}`` with NADA options (``access_policy``, ``published``, ``repositoryid``, ``overwrite``, ...). The project JSON is regenerated first. 
+
+---
+
+
+## <kbd>method</kbd> `project`
+
+```python
+project(
+    project_id: Union[int, str],
+    catalog_connection_id: int,
+    publish_metadata: bool = True,
+    publish_thumbnail: bool = True,
+    publish_resources: bool = True,
+    publish_dsd: bool = False,
+    dsd_overwrite: bool = False,
+    dsd_force: bool = False,
+    publish_indicator_data: bool = False,
+    delete_nada_resources: bool = False,
+    options: Optional[Dict[str, Any]] = None,
+    stop_on_error: bool = False,
+    timeout: Optional[float] = None
+) → Dict
+```
+
+Publish a project to NADA now, step by step: the same steps as ``me.jobs.queue_publish_to_nada``. 
+
+Steps, in order: metadata, data structure and indicator data (indicator projects), thumbnail, delete NADA resources, resources. A failed step is recorded and the next one runs, unless ``stop_on_error``. ``options`` are the NADA options for the metadata. Returns ``{"results", "errors"}`` keyed by step. 
+
+---
+
+
+## <kbd>method</kbd> `resource`
+
+```python
+resource(
+    project_id: Union[int, str],
+    catalog_connection_id: int,
+    resource_id: int,
+    overwrite: bool = False,
+    nada_upload_id: Optional[str] = None
+) → Dict
+```
+
+Publish one external resource (and its file). 
+
+The file is sent to NADA in one request; ``nada_upload_id`` attaches a file already sent with NADA's resumable upload instead. 
+
+---
+
+
+## <kbd>method</kbd> `resources`
+
+```python
+resources(project_id: Union[int, str], catalog_connection_id: int) → List[Dict]
+```
+
+Publish all external resources of the project (and their files), overwriting NADA's copies. 
+
+---
+
+
+## <kbd>method</kbd> `thumbnail`
+
+```python
+thumbnail(project_id: Union[int, str], catalog_connection_id: int) → Dict
+```
+
+Upload the project thumbnail to the NADA study. 
 
 <!-- markdownlint-disable -->
 
@@ -2408,8 +2495,7 @@ Indicator projects: bind a registry data structure, import and export data, char
 __init__(
     api: RequestsWithSpecificErrors,
     projects: 'ProjectsClient',
-    uploads: 'UploadsClient',
-    publish: Optional[ForwardRef('PublishClient')] = None
+    uploads: 'UploadsClient'
 )
 ```
 
@@ -2526,6 +2612,17 @@ Download the imported data as CSV (DSD columns, in DSD order) to ``out_path``.
 ---
 
 
+## <kbd>method</kbd> `get_data_job`
+
+```python
+get_data_job(project_id: Union[int, str], job_id: str) → Dict
+```
+
+Status of a data job (import without ``wait``, recompute): ``{status, job, ...}``. 
+
+---
+
+
 ## <kbd>method</kbd> `get_dsd`
 
 ```python
@@ -2557,7 +2654,7 @@ import_data(
 
 Import the prepared CSV for the bound indicator ID value (replaces the project's data). 
 
-The result includes ``data_notes``: notes read from text columns, generated note IDs and the reference checks. 
+The import runs as a data job. With ``wait=True`` the server waits for it (up to 30 minutes); with ``wait=False`` the result has a ``job_id`` for :meth:`get_data_job` / :meth:`wait_data_job`. The result includes ``data_notes``: notes read from text columns, generated note IDs and the reference checks. 
 
 ---
 
@@ -2573,17 +2670,6 @@ iter_data_rows(
 ```
 
 Yield imported rows one at a time, 200 per request. 
-
----
-
-
-## <kbd>method</kbd> `job`
-
-```python
-job(project_id: Union[int, str], job_id: str) → Dict
-```
-
-Status of a data job (import without ``wait``, recompute). 
 
 ---
 
@@ -2668,36 +2754,20 @@ Returns the header check, the distinct indicator ID values, and ignored columns.
 ---
 
 
-## <kbd>method</kbd> `publish`
+## <kbd>method</kbd> `queue_recompute`
 
 ```python
-publish(
+queue_recompute(
     project_id: Union[int, str],
-    catalog_connection_id: int,
-    publish_metadata: bool = True,
-    publish_dsd: bool = True,
-    dsd_overwrite: bool = True,
-    dsd_force: bool = False,
-    publish_indicator_data: bool = True,
-    metadata_options: Optional[Dict[str, Any]] = None,
-    timeout: Optional[float] = None
+    wait: bool = False,
+    timeout_seconds: int = 1800,
+    interval_seconds: float = 3.0
 ) → Dict
 ```
 
-Publish an indicator project to NADA: metadata, data structure, then data. 
+Queue a recompute of the derived time columns (after changing FREQ or time format). 
 
-The data structure is re-imported only when it differs from NADA's copy (``dsd_force`` re-imports anyway). ``metadata_options`` are the NADA options (``published``, ``access_policy``, ``repositoryid``, ``overwrite``). Returns ``{"metadata", "dsd", "data"}``. 
-
----
-
-
-## <kbd>method</kbd> `recompute`
-
-```python
-recompute(project_id: Union[int, str]) → Dict
-```
-
-Recompute derived time columns (after changing FREQ or time format). 
+Returns ``{job_id, ...}``; ``wait=True`` returns the finished job (see :meth:`wait_data_job`). 
 
 ---
 
@@ -2746,6 +2816,24 @@ validate(project_id: Union[int, str]) → Dict
 ```
 
 Validate the data structure and data (includes the data notes checks). 
+
+---
+
+
+## <kbd>method</kbd> `wait_data_job`
+
+```python
+wait_data_job(
+    project_id: Union[int, str],
+    job_id: str,
+    timeout_seconds: int = 1800,
+    interval_seconds: float = 3.0
+) → Dict
+```
+
+Poll :meth:`get_data_job` until the job is ``done`` or ``error``, or the timeout passes. 
+
+Returns ``{job_id, status, timed_out, job}``. 
 
 <!-- markdownlint-disable -->
 

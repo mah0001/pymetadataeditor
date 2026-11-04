@@ -56,7 +56,8 @@ report["notes_check"]            # {valid, errors, warnings, unknown, unused, ..
 
 - One file, many indicators: `me.indicators.load_many("data.csv", {"EDU_NER": 101, "EDU_GER": 102})`.
 - From pandas: `me.indicators.load_dataframe(project_id, df, indicator_id_value="EDU_NER")`.
-- Background job (large files): `upload_id = me.uploads.upload("data.csv")`, then `me.jobs.import_indicator_data_and_wait(project_id, upload_id, "EDU_NER")`.
+- Background job (large files): `upload_id = me.uploads.upload("data.csv")`, then `me.jobs.queue_indicator_data_import(project_id, upload_id, "EDU_NER", wait=True)`.
+- `import_data` and `queue_recompute` run as data jobs (keyed by `job_id`, separate from `me.jobs`): `import_data(wait=False)` and `queue_recompute()` return a `job_id` for `me.indicators.get_data_job` / `wait_data_job`.
 
 ## 3. Notes
 
@@ -85,13 +86,15 @@ me.indicators.export_data(project_id, "export.csv")   # DSD columns, DSD order
 ## 5. Publish to NADA
 
 ```python
-me.indicators.publish(
+out = me.publish.project(
     "EDU_NER", catalog_connection_id=1,
-    metadata_options={"published": 1, "access_policy": "open"},
+    publish_dsd=True, dsd_overwrite=True, publish_indicator_data=True,
+    options={"overwrite": "yes", "published": 1, "access_policy": "open"},
 )
+out["errors"]   # {} when every step succeeded
 ```
 
-This publishes the metadata, then the data structure, then the data. The data structure is re-imported only when it differs from NADA's copy (`dsd_force=True` re-imports anyway; re-importing flags every NADA study on that structure for re-sync). For the background job, use `me.jobs.publish_to_nada(..., publish_dsd=True, dsd_overwrite=True, publish_indicator_data=True)`.
+This publishes the metadata, then the data structure, then the data, then the thumbnail and resources (turn them off with `publish_thumbnail=False`, `publish_resources=False`). With `dsd_overwrite`, the data structure is re-imported only when it differs from NADA's copy (`dsd_force=True` re-imports anyway; re-importing flags every NADA study on that structure for re-sync). For the background job, use `me.jobs.queue_publish_to_nada(...)` with the same arguments.
 
 ## 6. Preparing data with pandas (`pymetadataeditor.tidy`)
 

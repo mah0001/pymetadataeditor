@@ -110,6 +110,8 @@ Changes from 0.4.0 that can break existing calls. All other 0.5.0 additions are 
 
 Every project argument is now `project_id` (type `ProjectIdOrIdno`): the numeric project id or the project idno. IDNOs cannot be numeric only, so a numeric value is always the id.
 
+Methods that only queue work start with `queue_` and return the job id; pass `wait=True` to block until the job finishes. `me.jobs.*` is the editor job queue (`uuid`); `me.indicators.*_data_job` are indicator data jobs (`job_id`). `me.publish.*` methods run now (no queue).
+
 | 0.4.0 | 0.5.0 |
 |-----|-----|
 | `me.codelists.list(limit=50, offset=0, ...)` | `me.codelists.list(page=1, per_page=50, flat=False, ...)` — returns `{codelists, total, page, per_page, collapsed}`; versions are collapsed into one row unless `flat=True`. Use `me.codelists.iter_all(...)` for everything |
@@ -121,6 +123,17 @@ Every project argument is now `project_id` (type `ProjectIdOrIdno`): the numeric
 | `me.indicators.*(project=...)`, `me.indicators.notes.*(project=...)` | `project_id=...` |
 | `me.indicators.project_id(project)` | `me.projects.resolve_id(project_id)` → numeric id; `me.projects.resolve_idno(project_id)` → idno |
 | `me.indicators.load_many(...)` rows: `project` | `project_id` |
+| `me.jobs.create(job_type, payload)` | `me.jobs.queue(job_type, payload)` |
+| `me.jobs.publish_to_nada(...)` | `me.jobs.queue_publish_to_nada(...)` |
+| `me.jobs.publish_to_nada_and_wait(...)` | `me.jobs.queue_publish_to_nada(..., wait=True)` |
+| `me.jobs.import_indicator_data(...)` | `me.jobs.queue_indicator_data_import(...)` |
+| `me.jobs.import_indicator_data_and_wait(...)` | `me.jobs.queue_indicator_data_import(..., wait=True)` |
+| `me.indicators.recompute(project_id)` | `me.indicators.queue_recompute(project_id, wait=False)` |
+| `me.indicators.job(project_id, job_id)` | `me.indicators.get_data_job(project_id, job_id)`; new `wait_data_job` |
+| `me.indicators.publish(project_id, conn, metadata_options=...)` | `me.publish.project(project_id, conn, publish_dsd=True, dsd_overwrite=True, publish_indicator_data=True, options={"overwrite": "yes", ...})` — returns `{results, errors}`; also publishes the thumbnail and resources unless turned off |
+| `me.publish.indicator(...)` | `me.publish.indicator_data(...)` |
+| `me.publish.generate_json(project_id)` | `me.projects.generate_json(project_id)` |
+| `me.publish.*(project_id="<idno>")` | The idno is resolved to the numeric id first (the publish endpoints need it) |
 | `me.jobs.list(project_id="<idno>")` | The idno is resolved to the numeric id (one extra `basic_info` call) |
 | `me.indicators.data_rows(..., limit=...)` *(any limit)* | Raises `ValueError` when `limit > 200` (server maximum); use `me.indicators.iter_data_rows(...)` |
 | `me.collections.list_projects(collection_id)` → `POST /collections/projects` | `me.collections.list_projects(collection_id, limit=..., offset=..., keywords=..., ...)` — one page from `GET /editor?collection=` |
@@ -131,7 +144,7 @@ Every project argument is now `project_id` (type `ProjectIdOrIdno`): the numeric
 | `me.templates.get(uid)["result"]` | `me.templates.get(uid)` — the template `dict` itself, no `result` wrapper |
 | `me.projects.count()` | `me.projects.count(**filters)` — same result without filters |
 
-New in 0.5.0: `projects.resolve_id`, `projects.resolve_idno`, `projects.iter_all`, `projects.facets`, `projects.basic_info`, `templates.defaults`, `collections.iter_projects`, `jobs.iter_all`, `codelists.iter_all`, `codelists.iter_codes`, `data_structures.iter_all`, `data_structures.iter_projects`, `indicators.iter_data_rows`, `indicators.get_dsd(detailed=..., resolve_codelists=...)`, `metadata.get_for_project(..., include_variables=...)`.
+New in 0.5.0: `publish.project`, `publish.thumbnail`, `publish.resources`, `publish.resource`, `publish.delete_nada_resources`, `publish.list_files`, `publish.create_catalog_connection`, `indicators.wait_data_job`, `projects.resolve_id`, `projects.resolve_idno`, `projects.iter_all`, `projects.facets`, `projects.basic_info`, `templates.defaults`, `collections.iter_projects`, `jobs.iter_all`, `codelists.iter_all`, `codelists.iter_codes`, `data_structures.iter_all`, `data_structures.iter_projects`, `indicators.iter_data_rows`, `indicators.get_dsd(detailed=..., resolve_codelists=...)`, `metadata.get_for_project(..., include_variables=...)`.
 
 ---
 

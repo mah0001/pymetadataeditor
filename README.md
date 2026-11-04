@@ -130,25 +130,23 @@ POST body styles:
 
 Many deletes use **POST** in restricted networks (e.g. `me.projects.delete`, `me.collections.delete`), not HTTP DELETE.
 
-### Publish to NADA (background job)
+### Publish to NADA
+
+`me.publish.*` publishes now and returns NADA's answers; `me.jobs.queue_*` methods queue a job on the
+editor's worker and return its `uuid` (pass `wait=True` to block until it finishes). Both take the same steps:
 
 ```python
-job = me.jobs.publish_to_nada(
-    project_id=123,
-    catalog_connection_id=1,
-    publish_thumbnail=False,
-    publish_resources=False,
-    options={
-        "overwrite": "yes",
-        "published": 1,
-        "access_policy": "licensed",
-        "repositoryid": "MY_COLLECTION",
-    },
-)
+options = {"overwrite": "yes", "published": 1, "access_policy": "licensed", "repositoryid": "MY_COLLECTION"}
+
+# now: {"results": {...}, "errors": {...}} per step
+me.publish.project(123, catalog_connection_id=1, publish_thumbnail=False, options=options)
+
+# background job
+job = me.jobs.queue_publish_to_nada(123, catalog_connection_id=1, publish_thumbnail=False, options=options)
 result = me.jobs.wait(job["uuid"], timeout_seconds=3600)
 ```
 
-For a single blocking call, use `me.jobs.publish_to_nada_and_wait(...)`.
+Single steps: `me.publish.metadata`, `indicator_data`, `thumbnail`, `resources`, `resource`, `delete_nada_resources`.
 
 Step-by-step notebook: [`demo/publish_to_nada_jobs.ipynb`](demo/publish_to_nada_jobs.ipynb).
 

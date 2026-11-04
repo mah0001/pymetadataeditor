@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import time
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional, Union
 from urllib.parse import quote
 
@@ -14,7 +15,6 @@ if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
 
     from .projects import ProjectsClient
-    from .publish import PublishClient
     from .uploads import UploadsClient
 
 #: Files above this size are sent with a resumable upload instead of a single multipart request.
@@ -128,12 +128,10 @@ class IndicatorsClient:
         api: RequestsWithSpecificErrors,
         projects: "ProjectsClient",
         uploads: "UploadsClient",
-        publish: Optional["PublishClient"] = None,
     ):
         self._api = api
         self._projects = projects
         self._uploads = uploads
-        self._publish = publish
         self.notes = IndicatorNotesClient(api, projects, uploads)
 
     # ── data structure binding ────────────────────────────────────────────────
@@ -236,8 +234,9 @@ class IndicatorsClient:
     ) -> Dict:
         """Import the prepared CSV for the bound indicator ID value (replaces the project's data).
 
-        The result includes ``data_notes``: notes read from text columns, generated note IDs and the
-        reference checks.
+        The import runs as a data job. With ``wait=True`` the server waits for it (up to 30 minutes); with
+        ``wait=False`` the result has a ``job_id`` for :meth:`get_data_job` / :meth:`wait_data_job`. The result
+        includes ``data_notes``: notes read from text columns, generated note IDs and the reference checks.
         """
         body: Dict[str, Any] = {"wait": bool(wait), "keep_extra_csv_columns": bool(keep_extra_csv_columns)}
         if implied_freq_code:
@@ -303,13 +302,54 @@ class IndicatorsClient:
         """Delete the project's imported data."""
         return self._api.post_request(pth=f"indicator_dsd/data_delete/{_seg(project_id)}", json={})
 
-    def recompute(self, project_id: ProjectIdOrIdno) -> Dict:
-        """Recompute derived time columns (after changing FREQ or time format)."""
-        return self._api.post_request(pth=f"indicator_dsd/data_recompute/{_seg(project_id)}", json={})
+    # ── data jobs ─────────────────────────────────────────────────────────────
+    # Data jobs run in the data service, not the editor job queue (``me.jobs``); they are keyed by ``job_id``.
 
-    def job(self, project_id: ProjectIdOrIdno, job_id: str) -> Dict:
-        """Status of a data job (import without ``wait``, recompute)."""
+    def queue_recompute(
+        self,
+        project_id: ProjectIdOrIdno,
+        wait: bool = False,
+        timeout_seconds: int = 1800,
+        interval_seconds: float = 3.0,
+    ) -> Dict:
+        """Queue a recompute of the derived time columns (after changing FREQ or time format).
+
+        Returns ``{job_id, ...}``; ``wait=True`` returns the finished job (see :meth:`wait_data_job`).
+        """
+        submit = self._api.post_request(pth=f"indicator_dsd/data_recompute/{_seg(project_id)}", json={})
+        if not wait:
+            return submit
+        job_id = submit.get("job_id") if isinstance(submit, dict) else None
+        if not job_id:
+            raise ValueError(f"The server did not return a job_id: {submit!r}")
+        return self.wait_data_job(
+            project_id, job_id, timeout_seconds=timeout_seconds, interval_seconds=interval_seconds
+        )
+
+    def get_data_job(self, project_id: ProjectIdOrIdno, job_id: str) -> Dict:
+        """Status of a data job (import without ``wait``, recompute): ``{status, job, ...}``."""
         return self._api.get_request(pth=f"indicator_dsd/job/{_seg(project_id)}", params={"job_id": job_id})
+
+    def wait_data_job(
+        self,
+        project_id: ProjectIdOrIdno,
+        job_id: str,
+        timeout_seconds: int = 1800,
+        interval_seconds: float = 3.0,
+    ) -> Dict:
+        """Poll :meth:`get_data_job` until the job is ``done`` or ``error``, or the timeout passes.
+
+        Returns ``{job_id, status, timed_out, job}``.
+        """
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            job = self.get_data_job(project_id, job_id).get("job") or {}
+            status = job.get("status") if isinstance(job, dict) else None
+            if status in ("done", "error"):
+                return {"job_id": job_id, "status": status, "timed_out": False, "job": job}
+            if time.monotonic() >= deadline:
+                return {"job_id": job_id, "status": status, "timed_out": True, "job": job}
+            time.sleep(interval_seconds)
 
     def chart_data(
         self,
@@ -417,39 +457,3 @@ class IndicatorsClient:
                     raise
             results.append(row)
         return results
-
-    def publish(
-        self,
-        project_id: ProjectIdOrIdno,
-        catalog_connection_id: int,
-        publish_metadata: bool = True,
-        publish_dsd: bool = True,
-        dsd_overwrite: bool = True,
-        dsd_force: bool = False,
-        publish_indicator_data: bool = True,
-        metadata_options: Optional[Dict[str, Any]] = None,
-        timeout: Optional[float] = None,
-    ) -> Dict:
-        """Publish an indicator project to NADA: metadata, data structure, then data.
-
-        The data structure is re-imported only when it differs from NADA's copy (``dsd_force`` re-imports
-        anyway). ``metadata_options`` are the NADA options (``published``, ``access_policy``,
-        ``repositoryid``, ``overwrite``). Returns ``{"metadata", "dsd", "data"}``.
-        """
-        if self._publish is None:
-            raise RuntimeError("IndicatorsClient was created without a PublishClient")
-        project_id = self._projects.resolve_id(project_id)
-        out: Dict[str, Any] = {"metadata": None, "dsd": None, "data": None}
-        if publish_metadata:
-            options = {"overwrite": "yes", **(metadata_options or {})}
-            out["metadata"] = self._publish.metadata(project_id, catalog_connection_id, options=options)
-        if publish_dsd:
-            out["dsd"] = self._publish.indicator(
-                project_id, catalog_connection_id, publish_dsd=True, dsd_overwrite=dsd_overwrite, dsd_force=dsd_force,
-                publish_indicator_data=False, timeout=timeout,
-            ).get("dsd")
-        if publish_indicator_data:
-            out["data"] = self._publish.indicator(
-                project_id, catalog_connection_id, publish_dsd=False, publish_indicator_data=True, timeout=timeout,
-            ).get("data")
-        return out

@@ -238,7 +238,7 @@ def test_projects_subclient_json_pdf_import_and_versions(monkeypatch, metadata_e
 
     import_file = tmp_path / "demo.json"
     import_file.write_text("{}")
-    metadata_editor.projects.import_project("document", str(import_file))
+    metadata_editor.projects.import_file("document", str(import_file))
 
     metadata_editor.projects.list_versions("idno-1", version="1.2.0")
     metadata_editor.projects.create_version("idno-1", "minor", "added section")
@@ -520,7 +520,7 @@ def test_make_metadata_outline(tmpdir, monkeypatch, metadata_editor, metadata_ty
         ("video", {"video_description": {"idno": "example_idno", "title": "example_title"}}),
     ],
 )
-def test_metadata_get_for_project(tmpdir, monkeypatch, metadata_editor, metadata_type, metadata):
+def test_metadata_get(tmpdir, monkeypatch, metadata_editor, metadata_type, metadata):
     # bad project type
     def mock_response(*args, **kwargs):
         return MockResponse(
@@ -542,12 +542,12 @@ def test_metadata_get_for_project(tmpdir, monkeypatch, metadata_editor, metadata
     monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
 
     with pytest.raises(TemplateError):
-        metadata_editor.metadata.get_for_project(1, output_mode="pydantic")
+        metadata_editor.metadata.get(1, output_mode="pydantic")
     with pytest.raises(TemplateError):
-        metadata_editor.metadata.get_for_project(1, output_mode="dict")
+        metadata_editor.metadata.get(1, output_mode="dict")
     with pytest.raises(TemplateError):
-        metadata_editor.metadata.get_for_project(1, output_mode="excel")
-    ts = metadata_editor.metadata.get_for_project(1, output_mode="dict", template_uid="none")
+        metadata_editor.metadata.get(1, output_mode="excel")
+    ts = metadata_editor.metadata.get(1, output_mode="dict", template_uid="none")
 
     def mock_response(*args, **kwargs):
         return MockResponse(
@@ -563,14 +563,14 @@ def test_metadata_get_for_project(tmpdir, monkeypatch, metadata_editor, metadata
     monkeypatch.setattr(requests, "request", mock_response)
 
     # as object
-    ts = metadata_editor.metadata.get_for_project(1, output_mode="pydantic")
+    ts = metadata_editor.metadata.get(1, output_mode="pydantic")
     assert isinstance(ts, BaseModel), type(ts)
 
-    ts = metadata_editor.metadata.get_for_project(1, output_mode="dict")
+    ts = metadata_editor.metadata.get(1, output_mode="dict")
     assert isinstance(ts, dict)
 
     filename = os.path.join(tmpdir, f"metadata_get_for_project_test_{metadata_type}.xlsx")
-    metadata_editor.metadata.get_for_project(1, output_mode="excel", filename=filename, title="metadata_get_for_project")
+    metadata_editor.metadata.get(1, output_mode="excel", filename=filename, title="metadata_get_for_project")
 
 
 def test_api_client_verbs(monkeypatch, metadata_editor):
@@ -601,7 +601,7 @@ def test_api_client_verbs(monkeypatch, metadata_editor):
     assert captured[-1][0][1].endswith("/collections/3")
 
 
-def test_generic_api_request_delegates_to_api(monkeypatch, metadata_editor):
+def test_api_request_generic(monkeypatch, metadata_editor):
     captured = []
 
     def mock_response(*args, **kwargs):
@@ -609,7 +609,7 @@ def test_generic_api_request_delegates_to_api(monkeypatch, metadata_editor):
         return MockResponse(http_status_code=200, json_data={"projects": []})
 
     monkeypatch.setattr(requests, "request", mock_response)
-    response = metadata_editor.generic_api_request("get", "/editor", params={"limit": 2})
+    response = metadata_editor.api.request("get", "/editor", params={"limit": 2})
     assert response == {"projects": []}
     assert captured[0][0][0] == "get"
 

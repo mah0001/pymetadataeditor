@@ -335,7 +335,7 @@ class DataStructuresClient:
         body = {**body, "overwrite": bool(overwrite), "dry_run": bool(dry_run)}
         return self._api.post_request(pth="data_structures/import_json", json=body)
 
-    def export(self, idno_or_id: Union[int, str], out_path: Optional[str] = None) -> Dict:
+    def export_json(self, idno_or_id: Union[int, str], out_path: Optional[str] = None) -> Dict:
         """Export a data structure as JSON (structure, components, codelists). Optionally save to ``out_path``."""
         response = self._api.get_request(pth=f"data_structures/export/{_seg(idno_or_id)}")
         if out_path:

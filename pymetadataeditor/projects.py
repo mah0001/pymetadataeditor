@@ -263,7 +263,7 @@ class ProjectsClient:
             params["template_uid"] = template_uid
         return self._api.get_request("/editor/generate_pdf/{}", id=project_id, params=params if params else None)
 
-    def import_project(self, project_type: str, file_path: str) -> Dict:
+    def import_file(self, project_type: str, file_path: str) -> Dict:
         """Import project metadata or package file."""
         with open(file_path, "rb") as f:
             files = {"file": f}

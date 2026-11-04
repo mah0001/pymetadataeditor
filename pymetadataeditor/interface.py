@@ -1,7 +1,6 @@
 """The interface between pyMetadataEditor and the Metadata Editor API."""
 
 import warnings
-from io import BufferedReader
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Dict, List, Optional, Tuple, Type, Union
@@ -157,47 +156,6 @@ class MetadataEditor:
         self.codelists = CodelistsClient(self._apinterface)
         self.indicators = IndicatorsClient(self._apinterface, projects=self.projects, uploads=self.uploads)
         self.metadata = MetadataWorkflowsClient(self)
-
-    ####################################################################################################################
-    # Generic API requests
-    ####################################################################################################################
-
-    def generic_api_request(
-        self,
-        method: str,
-        endpoint: str,
-        params: Optional[Dict] = None,
-        data: Optional[Dict] = None,
-        json: Optional[Dict] = None,
-        files: Optional[Dict[str, BufferedReader]] = None,
-        id: Optional[Union[int, str]] = None,
-    ) -> Dict:
-        """Make a generic API request to the Metadata Editor API.
-
-        Prefer sub-clients (`projects`, `collections`, …) or `me.api.get/post/put/delete`.
-        This method remains for backward compatibility.
-
-        Args:
-            method (str): HTTP verb — GET, POST, PUT, or DELETE.
-            endpoint (str): Path relative to the API base URL (may include ``{}`` with ``id``).
-            params (optional dict): Query string parameters.
-            data (optional dict): Form fields (POST/PUT).
-            json (optional dict): JSON body (POST/PUT).
-            files (optional dict): Multipart files (POST/PUT).
-            id (optional): Value substituted into ``{}`` in ``endpoint``.
-
-        Returns:
-            Dict: Parsed JSON response from the API.
-        """
-        return self.api.request(
-            method=method,
-            path=endpoint,
-            id=id,
-            params=params,
-            data=data,
-            json=json,
-            files=files,
-        )
 
     ####################################################################################################################
     # METADATA Input and Output

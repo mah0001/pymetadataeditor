@@ -84,7 +84,7 @@ project_id = me.metadata.create(
 ### Read metadata back
 
 ```python
-model = me.metadata.get_for_project(project_id, output_mode="pydantic")
+model = me.metadata.get(project_id, output_mode="pydantic")
 model.pretty_print()
 ```
 

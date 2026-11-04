@@ -315,45 +315,6 @@ me.draft_metadata_from_files(
 ---
 
 
-## <kbd>method</kbd> `generic_api_request`
-
-```python
-generic_api_request(
-    method: str,
-    endpoint: str,
-    params: Optional[Dict] = None,
-    data: Optional[Dict] = None,
-    json: Optional[Dict] = None,
-    files: Optional[Dict[str, BufferedReader]] = None,
-    id: Optional[int, str] = None
-) → Dict
-```
-
-Make a generic API request to the Metadata Editor API. 
-
-Prefer sub-clients (`projects`, `collections`, …) or `me.api.get/post/put/delete`. This method remains for backward compatibility. 
-
-
-
-**Args:**
- 
- - <b>`method`</b> (str):  HTTP verb — GET, POST, PUT, or DELETE. 
- - <b>`endpoint`</b> (str):  Path relative to the API base URL (may include ``{}`` with ``id``). 
- - <b>`params`</b> (optional dict):  Query string parameters. 
- - <b>`data`</b> (optional dict):  Form fields (POST/PUT). 
- - <b>`json`</b> (optional dict):  JSON body (POST/PUT). 
- - <b>`files`</b> (optional dict):  Multipart files (POST/PUT). 
- - <b>`id`</b> (optional):  Value substituted into ``{}`` in ``endpoint``. 
-
-
-
-**Returns:**
- 
- - <b>`Dict`</b>:  Parsed JSON response from the API. 
-
----
-
-
 ## <kbd>method</kbd> `get_metadata_class`
 
 ```python
@@ -687,10 +648,10 @@ Get a single value from exported JSON by JSON Pointer.
 ---
 
 
-## <kbd>method</kbd> `import_project`
+## <kbd>method</kbd> `import_file`
 
 ```python
-import_project(project_type: str, file_path: str) → Dict
+import_file(project_type: str, file_path: str) → Dict
 ```
 
 Import project metadata or package file. 
@@ -902,10 +863,10 @@ Validate metadata and create a project; returns new project id.
 ---
 
 
-## <kbd>method</kbd> `get_for_project`
+## <kbd>method</kbd> `get`
 
 ```python
-get_for_project(
+get(
     project_id: 'ProjectIdOrIdno',
     output_mode: 'str',
     template_uid: 'Optional[str]' = None,
@@ -1936,10 +1897,10 @@ Duplicate a data structure (e.g. as a new version).
 ---
 
 
-## <kbd>method</kbd> `export`
+## <kbd>method</kbd> `export_json`
 
 ```python
-export(idno_or_id: Union[int, str], out_path: Optional[str] = None) → Dict
+export_json(idno_or_id: Union[int, str], out_path: Optional[str] = None) → Dict
 ```
 
 Export a data structure as JSON (structure, components, codelists). Optionally save to ``out_path``. 
@@ -2592,7 +2553,7 @@ Distinct values (and labels) of a column in the imported data.
 delete_data(project_id: Union[int, str]) → Dict
 ```
 
-Delete the project's imported data. 
+Delete the project's imported data and its CSV archive (the data structure binding stays). 
 
 ---
 
@@ -2772,17 +2733,6 @@ Returns ``{job_id, ...}``; ``wait=True`` returns the finished job (see :meth:`wa
 ---
 
 
-## <kbd>method</kbd> `reset`
-
-```python
-reset(project_id: Union[int, str]) → Dict
-```
-
-Drop the project's timeseries data (full reset). 
-
----
-
-
 ## <kbd>method</kbd> `unbind`
 
 ```python
@@ -2864,24 +2814,6 @@ __init__(
 ---
 
 
-## <kbd>method</kbd> `add`
-
-```python
-add(
-    project_id: Union[int, str],
-    note_id: str,
-    note: str,
-    scope: Optional[str] = None,
-    column: Optional[str] = None,
-    project_type: str = 'indicator'
-) → Dict
-```
-
-Add or update one note (by ID). 
-
----
-
-
 ## <kbd>method</kbd> `check`
 
 ```python
@@ -2950,6 +2882,24 @@ set(
 ```
 
 Replace all data notes of a project (list of ``{"id", "note", "scope"?, "column"?}``). 
+
+---
+
+
+## <kbd>method</kbd> `upsert`
+
+```python
+upsert(
+    project_id: Union[int, str],
+    note_id: str,
+    note: str,
+    scope: Optional[str] = None,
+    column: Optional[str] = None,
+    project_type: str = 'indicator'
+) → Dict
+```
+
+Add or update one note (by ID). 
 
 <!-- markdownlint-disable -->
 

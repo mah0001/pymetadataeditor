@@ -102,13 +102,13 @@ Download metadata for a project you already created:
 
 ```python
 # Pydantic model (template-aware validation)
-demo_pydantic = me.metadata.get_for_project(project_id, output_mode="pydantic")
+demo_pydantic = me.metadata.get(project_id, output_mode="pydantic")
 
 # Plain dictionary
-demo_dict = me.metadata.get_for_project(project_id, output_mode="dict")
+demo_dict = me.metadata.get(project_id, output_mode="dict")
 
 # Excel file on disk
-me.metadata.get_for_project(
+me.metadata.get(
     project_id,
     output_mode="excel",
     filename="exported_metadata.xlsx",

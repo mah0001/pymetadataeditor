@@ -19,7 +19,7 @@ Sub-clients return **raw API `dict`s** unless noted. There is **no backward comp
 | `me.patch_update_project_log_by_id(...)` (single op) | `me.projects.patch_one(id, project_type, op, path, value=...)` |
 | *(no direct old equivalent)* | `me.projects.create(project_type, metadata)` |
 | *(no direct old equivalent)* | `me.projects.update(id, project_type, metadata)` |
-| *(no direct old equivalent)* | `me.projects.get_json(...)`, `get_json_field(...)`, `generate_pdf(...)`, `import_project(...)`, version helpers |
+| *(no direct old equivalent)* | `me.projects.get_json(...)`, `get_json_field(...)`, `generate_pdf(...)`, `import_file(...)`, version helpers |
 
 ---
 
@@ -27,7 +27,7 @@ Sub-clients return **raw API `dict`s** unless noted. There is **no backward comp
 
 | Old | New |
 |-----|-----|
-| `me.get_project_metadata_by_id(id, output_mode=..., ...)` | `me.metadata.get_for_project(id, output_mode=..., ...)` |
+| `me.get_project_metadata_by_id(id, output_mode=..., ...)` | `me.metadata.get(project_id, output_mode=..., ...)` |
 | `me.create_project_log(metadata, type)` | `me.metadata.create(metadata, metadata_type_or_template_uid=...)` |
 | `me.update_project_log_by_id(id, metadata)` | `me.metadata.update(id, new_metadata)` |
 
@@ -83,7 +83,7 @@ Sub-clients return **raw API `dict`s** unless noted. There is **no backward comp
 
 | Old | New |
 |-----|-----|
-| `me.generic_api_request("get"\|"post", endpoint, ...)` | `me.generic_api_request(method, endpoint, ...)` — also **PUT**, **DELETE**, and `id=` |
+| `me.generic_api_request("get"\|"post", endpoint, ...)` | `me.api.request(method, path, ...)` — also **PUT**, **DELETE**, and `id=` |
 | *(use specific methods)* | `me.api.get(path, ...)` |
 | *(use specific methods)* | `me.api.post(path, json=...)` or `post(path, data=..., files=...)` |
 | *(use specific methods)* | `me.api.put(path, ...)` |
@@ -119,7 +119,7 @@ Methods that only queue work start with `queue_` and return the job id; pass `wa
 | `me.projects.list(exclude_collections="...")` | `me.projects.list(collection=..., exclude_collections=True)` — bool; raises `ValueError` without `collection` |
 | `me.jobs.list(limit=...)` *(any limit)* | Raises `ValueError` when `limit > 100` (server maximum); use `me.jobs.iter_all(...)` |
 | `me.projects.get(id=...)`, `basic_info`, `update`, `patch`, `patch_one`, `delete`, `get_json`, `get_json_field`, `generate_pdf`, `list_versions`, `create_version`, `delete_version` | Argument renamed `id` → `project_id` (only affects keyword calls) |
-| `me.metadata.get_for_project(id=...)`, `me.metadata.update(id=...)` | `project_id=...` |
+| `me.metadata.get_for_project(id=...)`, `me.metadata.update(id=...)` | `me.metadata.get(project_id=...)`, `me.metadata.update(project_id=...)` |
 | `me.indicators.*(project=...)`, `me.indicators.notes.*(project=...)` | `project_id=...` |
 | `me.indicators.project_id(project)` | `me.projects.resolve_id(project_id)` → numeric id; `me.projects.resolve_idno(project_id)` → idno |
 | `me.indicators.load_many(...)` rows: `project` | `project_id` |
@@ -133,6 +133,11 @@ Methods that only queue work start with `queue_` and return the job id; pass `wa
 | `me.indicators.publish(project_id, conn, metadata_options=...)` | `me.publish.project(project_id, conn, publish_dsd=True, dsd_overwrite=True, publish_indicator_data=True, options={"overwrite": "yes", ...})` — returns `{results, errors}`; also publishes the thumbnail and resources unless turned off |
 | `me.publish.indicator(...)` | `me.publish.indicator_data(...)` |
 | `me.publish.generate_json(project_id)` | `me.projects.generate_json(project_id)` |
+| `me.generic_api_request(method, endpoint, ...)` | `me.api.request(method, endpoint, ...)` |
+| `me.indicators.reset(project_id)` | `me.indicators.delete_data(project_id)` — also deletes the CSV archive, and fails when the data service is unavailable |
+| `me.indicators.notes.add(...)` | `me.indicators.notes.upsert(...)` (adds or updates by note ID) |
+| `me.data_structures.export(...)` | `me.data_structures.export_json(...)` (pairs with `import_json`) |
+| `me.projects.import_project(project_type, file_path)` | `me.projects.import_file(project_type, file_path)` |
 | `me.publish.*(project_id="<idno>")` | The idno is resolved to the numeric id first (the publish endpoints need it) |
 | `me.jobs.list(project_id="<idno>")` | The idno is resolved to the numeric id (one extra `basic_info` call) |
 | `me.indicators.data_rows(..., limit=...)` *(any limit)* | Raises `ValueError` when `limit > 200` (server maximum); use `me.indicators.iter_data_rows(...)` |

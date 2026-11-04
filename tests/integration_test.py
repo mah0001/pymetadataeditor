@@ -258,7 +258,7 @@ def test_projects_integration(tmpdir, metadata_editor):
             #     assert k in project_metadata, project_metadata
             #     assert project_metadata[k] == v, project_metadata
 
-            project_metadata = metadata_editor.metadata.get_for_project(project_id, output_mode="dict")
+            project_metadata = metadata_editor.metadata.get(project_id, output_mode="dict")
             for k, v in creation_data[metadata_type].items():
                 assert k in project_metadata, project_metadata
                 assert project_metadata[k] == v, project_metadata
@@ -266,7 +266,7 @@ def test_projects_integration(tmpdir, metadata_editor):
             # update project
             print(f"updating project {project_id} with {update_data[metadata_type]}")
             metadata_editor.metadata.update(project_id, new_metadata=update_data[metadata_type])
-            project_metadata_updated = metadata_editor.metadata.get_for_project(project_id, output_mode="dict")
+            project_metadata_updated = metadata_editor.metadata.get(project_id, output_mode="dict")
             for k, v in update_data[metadata_type].items():
                 assert project_metadata_updated[k] == v, project_metadata_updated
 
@@ -305,7 +305,7 @@ def test_projects_integration(tmpdir, metadata_editor):
 
             filename = f"{metadata_type}_{project_id}.xlsx"
             filename = os.path.join(tmpdir, filename)
-            metadata_editor.metadata.get_for_project(project_id, output_mode="excel", filename=filename)
+            metadata_editor.metadata.get(project_id, output_mode="excel", filename=filename)
             metadata_editor.metadata.update(project_id, filename)
         finally:
             metadata_editor.projects.delete(project_id)
@@ -349,7 +349,7 @@ def test_project_download_and_read(metadata_editor, tmpdir):
     excel_validation_errors = {}
     for project in projects[:50]:
         project_id = project["id"]
-        metadata_editor.metadata.get_for_project(project_id, output_mode="dict", template_uid="none")
+        metadata_editor.metadata.get(project_id, output_mode="dict", template_uid="none")
         if project.get("template_uid"):
             try:
                 metadata_editor.get_metadata_class(project["template_uid"])
@@ -360,17 +360,17 @@ def test_project_download_and_read(metadata_editor, tmpdir):
             metadata_editor.get_metadata_class(project["type"])
 
         try:
-            metadata_editor.metadata.get_for_project(project_id, output_mode="dict", template_uid="default")
+            metadata_editor.metadata.get(project_id, output_mode="dict", template_uid="default")
         except (ValidationError, TemplateError) as e:
             default_validation_errors[project_id] = e
 
         try:
-            metadata_editor.metadata.get_for_project(project_id, output_mode="dict")
+            metadata_editor.metadata.get(project_id, output_mode="dict")
         except (ValidationError, TemplateError) as e:
             dict_validation_errors[project_id] = e
             continue
         try:
-            pydantic_obj = metadata_editor.metadata.get_for_project(project_id, output_mode="pydantic")
+            pydantic_obj = metadata_editor.metadata.get(project_id, output_mode="pydantic")
         except (ValidationError, TemplateError) as e:
             pydantic_validation_errors[project_id] = e
             continue
@@ -378,7 +378,7 @@ def test_project_download_and_read(metadata_editor, tmpdir):
         filename = os.path.join(tmpdir, f"test_project_download_and_read_{project_id}.xlsx")
         # filename = f"test_project_download_and_read_{project_id}.xlsx"
         try:
-            filename = metadata_editor.metadata.get_for_project(
+            filename = metadata_editor.metadata.get(
                 project_id, output_mode="excel", filename=filename, debug=False
             )
         except (ValidationError, TemplateError) as e:
@@ -635,7 +635,7 @@ def test_resources_integration(metadata_editor, tmpdir):
 #                 metadata_type_or_template_uid=template_info.uid, metadata=template_outline
 #             )
 #             # read back the logged template
-#             read_logged_template = metadata_editor.metadata.get_for_project(log_id, output_mode="pydantic")
+#             read_logged_template = metadata_editor.metadata.get(log_id, output_mode="pydantic")
 #             assert_pydantic_models_equal(template_outline, read_logged_template)
 #             # delete the logged template
 #             metadata_editor.projects.delete(log_id)
@@ -717,13 +717,13 @@ def test_templates(metadata_editor, tmpdir):
         # log skeleton
         log_id = metadata_editor.metadata.create(metadata_type_or_template_uid=uid[0], metadata=skeleton)
         try:
-            expected = metadata_editor.metadata.get_for_project(log_id, output_mode="pydantic")
+            expected = metadata_editor.metadata.get(log_id, output_mode="pydantic")
             assert_pydantic_models_equal(skeleton, expected)
 
             filename1 = tmpdir.join(f"test_skeleton_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx")
             # filename1 = f"test_skeleton_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx"
             print(f"logging skeleton to {filename1}")
-            metadata_editor.metadata.get_for_project(log_id, output_mode="excel", filename=filename1)
+            metadata_editor.metadata.get(log_id, output_mode="excel", filename=filename1)
             # actual = metadata_editor._mm.read_metadata_from_excel(filename1, class_def)
             actual = metadata_editor.read_metadata_from_excel(filename1)
             assert (
@@ -778,7 +778,7 @@ def test_templates(metadata_editor, tmpdir):
         print(f"{modl}\n\n")
         log_id = metadata_editor.metadata.create(metadata_type_or_template_uid=uid[0], metadata=modl)
         try:
-            actual = metadata_editor.metadata.get_for_project(log_id, output_mode="pydantic", debug=True)
+            actual = metadata_editor.metadata.get(log_id, output_mode="pydantic", debug=True)
             print("actual from log direct")
             print(f"{actual}\n\n")
             assert (
@@ -798,7 +798,7 @@ def test_templates(metadata_editor, tmpdir):
             filename3 = tmpdir.join(f"test_filledin_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx")
             # filename3 = f"test_filledin_from_log_{uid[0].replace(' ', '_').replace('.', '_')}.xlsx"
             print(f"logging filled in metadata to {filename3}")
-            metadata_editor.metadata.get_for_project(log_id, output_mode="excel", filename=filename3)
+            metadata_editor.metadata.get(log_id, output_mode="excel", filename=filename3)
             # actual = metadata_editor._mm.read_metadata_from_excel(filename3, class_def)
             actual = metadata_editor.read_metadata_from_excel(filename3)
             print("actual from log via excel")
@@ -831,12 +831,12 @@ def test_microdata_data_files_round_trip(metadata_editor):
         metadata_type_or_template_uid="microdata",
     )
     try:
-        actual = metadata_editor.metadata.get_for_project(project_id, output_mode="dict", template_uid="none")
+        actual = metadata_editor.metadata.get(project_id, output_mode="dict", template_uid="none")
         assert [(f["file_id"], f["file_name"], f["description"]) for f in actual["data_files"]] == [
             ("F1", "zeta", "household roster"),
             ("F2", "Alpha", "individuals"),
         ]
-        model = metadata_editor.metadata.get_for_project(project_id, output_mode="pydantic")
+        model = metadata_editor.metadata.get(project_id, output_mode="pydantic")
         assert [f.file_name for f in model.data_files] == ["zeta", "Alpha"]
     finally:
         metadata_editor.projects.delete(project_id)
@@ -916,14 +916,14 @@ def test_change_mode_or_template(metadata_editor, tmpdir):
     assert_pydantic_models_equal(modl_alt, modl_alt_from_excel)
 
 
-def test_generic_api_request(metadata_editor):
+def test_api_get(metadata_editor):
     # Define the API URL and parameters
 
     list_projects_get_path = "/editor"
     params = {"offset": 0, "limit": 2}
 
     # Make a GET request to the API
-    response = metadata_editor.generic_api_request("get", endpoint=list_projects_get_path, params=params)
+    response = metadata_editor.api.get(list_projects_get_path, params=params)
     assert isinstance(response, dict)
 
     # Check if the response contains the expected keys

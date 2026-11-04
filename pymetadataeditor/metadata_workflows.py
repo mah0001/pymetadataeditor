@@ -47,7 +47,7 @@ class MetadataWorkflowsClient:
                 metadata[key] = export[key]
         project["metadata"] = metadata
 
-    def get_for_project(
+    def get(
         self,
         project_id: ProjectIdOrIdno,
         output_mode: str,
@@ -124,7 +124,7 @@ class MetadataWorkflowsClient:
             metadata_object = klass.model_validate(standardize_keys_in_dict(combined_dict), strict=False)
         except ValidationError as e:
             raise TemplateError(
-                f"{validation_error_msg}, consider rerunning metadata.get_for_project with "
+                f"{validation_error_msg}, consider rerunning metadata.get with "
                 f"output_mode='dict' and template_uid='none' or changing the assigned template",
                 response=e,
             ) from e

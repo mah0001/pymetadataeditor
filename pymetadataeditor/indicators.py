@@ -93,7 +93,7 @@ class IndicatorNotesClient:
             project_id, project_type, [{"op": "add", "path": "/data_notes", "value": clean}], validate=False
         )
 
-    def add(
+    def upsert(
         self,
         project_id: ProjectIdOrIdno,
         note_id: str,
@@ -191,10 +191,6 @@ class IndicatorsClient:
     def unbind(self, project_id: ProjectIdOrIdno) -> Dict:
         """Remove the data structure binding."""
         return self._api.post_request(pth=f"indicator_dsd/unbind/{_seg(project_id)}", json={})
-
-    def reset(self, project_id: ProjectIdOrIdno) -> Dict:
-        """Drop the project's timeseries data (full reset)."""
-        return self._api.post_request(pth=f"indicator_dsd/reset/{_seg(project_id)}", json={})
 
     # ── data import ───────────────────────────────────────────────────────────
 
@@ -299,7 +295,7 @@ class IndicatorsClient:
         return _save(response, out_path)
 
     def delete_data(self, project_id: ProjectIdOrIdno) -> Dict:
-        """Delete the project's imported data."""
+        """Delete the project's imported data and its CSV archive (the data structure binding stays)."""
         return self._api.post_request(pth=f"indicator_dsd/data_delete/{_seg(project_id)}", json={})
 
     # ── data jobs ─────────────────────────────────────────────────────────────

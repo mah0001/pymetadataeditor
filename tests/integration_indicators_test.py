@@ -78,7 +78,7 @@ def test_indicator_workflow_with_notes(me, tmp_path):
         assert header[0] == "INDICATOR_ID" and not any(h.startswith("_ts_") for h in header)
 
         # 6. Notes editing through the project metadata
-        me.indicators.notes.add(project_id, "N77", "Added from Python", column="NOTE_ID")
+        me.indicators.notes.upsert(project_id, "N77", "Added from Python", column="NOTE_ID")
         assert "N77" in [n["id"] for n in me.indicators.notes.list(project_id)["notes"]]
         me.indicators.notes.remove(project_id, "N77")
         assert "N77" not in [n["id"] for n in me.indicators.notes.list(project_id)["notes"]]

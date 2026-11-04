@@ -69,7 +69,7 @@ Ways to provide the text:
 |---|---|
 | Notes CSV (`note_id, note`; optional `indicator_id, scope, column`) | `me.indicators.notes.import_csv(project, csv_path="notes.csv", dry_run=True)` |
 | Text columns in the data CSV | `NOTE_ID_LABEL` (and `NOTE_ID_LABEL2`… by position), or one `NOTE_ID_LABEL` with texts separated by `\|\|`. If the CSV has text but no `NOTE_ID`, the IDs (`N01`, `N02`…) are generated on import. |
-| Python | `me.indicators.notes.add(project, "N01", "Text", column="NOTE_ID")`, `notes.remove`, `notes.set` |
+| Python | `me.indicators.notes.upsert(project_id, "N01", "Text", column="NOTE_ID")`, `notes.remove`, `notes.set` |
 
 Check references: `me.indicators.notes.check(project)`. An unknown ID is an error; a note used in another column, an unused note, or a table note used in cells is a warning.
 

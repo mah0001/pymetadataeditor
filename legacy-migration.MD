@@ -108,19 +108,26 @@ These remain on `me` directly (not moved to sub-clients):
 
 Changes from 0.4.0 that can break existing calls. All other 0.5.0 additions are new methods or optional arguments.
 
+Every project argument is now `project_id` (type `ProjectIdOrIdno`): the numeric project id or the project idno. IDNOs cannot be numeric only, so a numeric value is always the id.
+
 | 0.4.0 | 0.5.0 |
 |-----|-----|
 | `me.codelists.list(limit=50, offset=0, ...)` | `me.codelists.list(page=1, per_page=50, flat=False, ...)` — returns `{codelists, total, page, per_page, collapsed}`; versions are collapsed into one row unless `flat=True`. Use `me.codelists.iter_all(...)` for everything |
 | `me.projects.delete_version_by_id(id, version)` | `me.projects.delete_version_by_id(version_project_id)` — the id of the version project itself |
 | `me.projects.list(exclude_collections="...")` | `me.projects.list(collection=..., exclude_collections=True)` — bool; raises `ValueError` without `collection` |
 | `me.jobs.list(limit=...)` *(any limit)* | Raises `ValueError` when `limit > 100` (server maximum); use `me.jobs.iter_all(...)` |
-| `me.jobs.list(project_id="<idno>")` | Raises `ValueError`; filter by numeric id (`me.projects.basic_info(idno)` gives it) |
+| `me.projects.get(id=...)`, `basic_info`, `update`, `patch`, `patch_one`, `delete`, `get_json`, `get_json_field`, `generate_pdf`, `list_versions`, `create_version`, `delete_version` | Argument renamed `id` → `project_id` (only affects keyword calls) |
+| `me.metadata.get_for_project(id=...)`, `me.metadata.update(id=...)` | `project_id=...` |
+| `me.indicators.*(project=...)`, `me.indicators.notes.*(project=...)` | `project_id=...` |
+| `me.indicators.project_id(project)` | `me.projects.resolve_id(project_id)` → numeric id; `me.projects.resolve_idno(project_id)` → idno |
+| `me.indicators.load_many(...)` rows: `project` | `project_id` |
+| `me.jobs.list(project_id="<idno>")` | The idno is resolved to the numeric id (one extra `basic_info` call) |
 | `me.indicators.data_rows(..., limit=...)` *(any limit)* | Raises `ValueError` when `limit > 200` (server maximum); use `me.indicators.iter_data_rows(...)` |
 | `me.collections.list_projects(collection_id)` → `POST /collections/projects` | `GET /collections/projects/{id}` response (unpaged, needs edit access). For filtered or paged listings use `list_projects_via_editor` / `iter_projects` |
 | `me.templates.get(uid)["result"]` | `me.templates.get(uid)` — the template `dict` itself, no `result` wrapper |
 | `me.projects.count()` | `me.projects.count(**filters)` — same result without filters |
 
-New in 0.5.0: `projects.iter_all`, `projects.facets`, `projects.basic_info`, `templates.defaults`, `collections.iter_projects`, `jobs.iter_all`, `codelists.iter_all`, `codelists.iter_codes`, `data_structures.iter_all`, `indicators.iter_data_rows`, `indicators.get_dsd(detailed=..., resolve_codelists=...)`, `metadata.get_for_project(..., include_variables=...)`.
+New in 0.5.0: `projects.resolve_id`, `projects.resolve_idno`, `projects.iter_all`, `projects.facets`, `projects.basic_info`, `templates.defaults`, `collections.iter_projects`, `jobs.iter_all`, `codelists.iter_all`, `codelists.iter_codes`, `data_structures.iter_all`, `indicators.iter_data_rows`, `indicators.get_dsd(detailed=..., resolve_codelists=...)`, `metadata.get_for_project(..., include_variables=...)`.
 
 ---
 

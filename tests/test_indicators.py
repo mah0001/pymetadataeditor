@@ -300,8 +300,6 @@ def test_codelists_iter_codes(me, calls):
 def test_jobs_list_limit_and_iter_all(me, calls):
     with pytest.raises(ValueError):
         me.jobs.list(limit=500)
-    with pytest.raises(ValueError):
-        me.jobs.list(project_id="MY-IDNO")
     calls.queue.extend([
         FakeResponse(body={"jobs": [{"uuid": str(i)} for i in range(100)], "total": 101}),
         FakeResponse(body={"jobs": [{"uuid": "100"}], "total": 101}),
@@ -310,6 +308,30 @@ def test_jobs_list_limit_and_iter_all(me, calls):
     assert len(jobs) == 101
     assert calls[0]["params"]["limit"] == 100 and calls[1]["params"]["offset"] == 100
     assert calls[0]["params"]["created_from"] == "2026-01-01"
+
+
+def test_jobs_list_resolves_idno(me, calls):
+    calls.queue.extend([
+        FakeResponse(body={"status": "success", "project": {"id": "42", "idno": "MY-IDNO"}}),
+        FakeResponse(body={"jobs": [], "total": 0}),
+    ])
+    me.jobs.list(project_id="MY-IDNO")
+    assert _path(calls[0]) == "editor/basic_info/MY-IDNO"
+    assert calls[1]["params"]["project_id"] == 42
+
+
+def test_projects_resolve_id_and_idno(me, calls):
+    assert me.projects.resolve_id(" 17 ") == 17 and not calls
+    calls.queue.extend([
+        FakeResponse(body={"status": "success", "project": {"id": "42", "idno": "MY-IDNO"}}),
+        FakeResponse(body={"status": "success", "project": {"id": "42", "idno": "MY-IDNO"}}),
+        FakeResponse(body={"status": "success", "project": {}}),
+    ])
+    assert me.projects.resolve_id("MY-IDNO") == 42
+    assert me.projects.resolve_idno(42) == "MY-IDNO"
+    assert _path(calls[1]) == "editor/basic_info/42"
+    with pytest.raises(ValueError):
+        me.projects.resolve_idno("MISSING")
 
 
 def test_indicator_iter_data_rows(me, calls):

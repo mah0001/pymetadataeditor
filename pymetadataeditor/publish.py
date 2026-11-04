@@ -1,7 +1,8 @@
 """Publish-to-NADA API wrappers (synchronous endpoints)."""
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
+from .api_types import ProjectIdOrIdno
 from .jobs import _normalize_project_id
 from .requester import RequestsWithSpecificErrors
 
@@ -18,7 +19,7 @@ class PublishClient:
 
     def catalog_info(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         catalog_connection_id: int,
     ) -> Dict:
         """Prefetch NADA collections, access codes, and existing study info."""
@@ -29,7 +30,7 @@ class PublishClient:
 
     def metadata(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         catalog_connection_id: int,
         options: Optional[Dict[str, Any]] = None,
     ) -> Dict:
@@ -45,7 +46,7 @@ class PublishClient:
             json=options or {},
         )
 
-    def generate_json(self, project_id: Union[int, str]) -> Dict:
+    def generate_json(self, project_id: ProjectIdOrIdno) -> Dict:
         """Write the project JSON from the current metadata (``GET editor/generate_json/{id}``).
 
         Publishing metadata also does this; call it to refresh the JSON file explicitly.
@@ -55,7 +56,7 @@ class PublishClient:
 
     def indicator(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         catalog_connection_id: int,
         publish_dsd: bool = True,
         dsd_overwrite: bool = False,

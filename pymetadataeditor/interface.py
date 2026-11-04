@@ -4,17 +4,23 @@ import warnings
 from io import BufferedReader
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 import pandas as pd
 from metadataschemas.metadata_manager import MetadataManager
 from metadataschemas.utils.schema_base_model import SchemaBaseModel
 
 # from metadataschemas.utils.quick_start import make_skeleton
-from metadataschemas.utils.utils import merge_dicts, standardize_keys_in_dict
+from metadataschemas.utils.utils import merge_dicts
 from pydantic import BaseModel, ValidationError
 from urllib3.exceptions import InsecureRequestWarning
 
+from pymetadataeditor.api_client import ApiClient
+from pymetadataeditor.codelists import CodelistsClient
+from pymetadataeditor.collections import CollectionsClient
+from pymetadataeditor.data_structures import DataStructuresClient
+from pymetadataeditor.indicators import IndicatorsClient
+from pymetadataeditor.jobs import JobsClient
 from pymetadataeditor.llm_helpers import (
     _iterated_validated_update_to_outline,
     _prepend_draft_drop_non_str,
@@ -22,12 +28,6 @@ from pymetadataeditor.llm_helpers import (
     get_date_as_text,
     json_to_markdown,
 )
-from pymetadataeditor.api_client import ApiClient
-from pymetadataeditor.codelists import CodelistsClient
-from pymetadataeditor.collections import CollectionsClient
-from pymetadataeditor.data_structures import DataStructuresClient
-from pymetadataeditor.indicators import IndicatorsClient
-from pymetadataeditor.jobs import JobsClient
 from pymetadataeditor.metadata_workflows import MetadataWorkflowsClient
 from pymetadataeditor.projects import ProjectsClient
 from pymetadataeditor.publish import PublishClient
@@ -39,7 +39,7 @@ from pymetadataeditor.uploads import UploadsClient
 
 from .constants import DICT_MODES, EXCEL_MODES, PYDANTIC_MODES
 from .exceptions import TemplateError
-from .utils import remove_empty_from_dict, validate_json_patches
+from .utils import remove_empty_from_dict
 
 __all__ = ["MetadataEditor", "TemplateError"]
 
@@ -151,7 +151,7 @@ class MetadataEditor:
         self.templates = TemplatesClient(self._apinterface, template_cache=self._templates)
         self.resources = ResourcesClient(self._apinterface)
         self.publish = PublishClient(self._apinterface)
-        self.jobs = JobsClient(self._apinterface)
+        self.jobs = JobsClient(self._apinterface, projects=self.projects)
         self.uploads = UploadsClient(self._apinterface)
         self.data_structures = DataStructuresClient(self._apinterface)
         self.codelists = CodelistsClient(self._apinterface)

@@ -1,15 +1,19 @@
 """Background job queue wrappers for the Metadata Editor API."""
 
 import time
-from typing import Any, Dict, Iterator, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Union
 
 from requests.exceptions import HTTPError
 
+from .api_types import ProjectIdOrIdno
 from .paging import iter_offset_pages
 from .requester import RequestsWithSpecificErrors
 
+if TYPE_CHECKING:  # pragma: no cover
+    from .projects import ProjectsClient
 
-def _normalize_project_id(project_id: Union[int, str], *, arg_name: str = "project_id") -> Union[int, str]:
+
+def _normalize_project_id(project_id: ProjectIdOrIdno, *, arg_name: str = "project_id") -> Union[int, str]:
     """Accept numeric id or idno string for job payloads."""
     if project_id is None:
         raise ValueError(f"{arg_name} is required")
@@ -42,8 +46,9 @@ class JobsClient:
     #: Server maximum for ``limit`` on ``GET /jobs``.
     MAX_PAGE_SIZE = 100
 
-    def __init__(self, api: RequestsWithSpecificErrors):
+    def __init__(self, api: RequestsWithSpecificErrors, projects: Optional["ProjectsClient"] = None):
         self._api = api
+        self._projects = projects
 
     def available(self) -> bool:
         """Return True when ``GET /jobs/types`` is reachable on this server."""
@@ -80,7 +85,7 @@ class JobsClient:
 
     def publish_to_nada(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         catalog_connection_id: int,
         *,
         publish_metadata: bool = True,
@@ -119,7 +124,7 @@ class JobsClient:
 
     def import_indicator_data(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         upload_id: str,
         indicator_value: str,
         *,
@@ -144,7 +149,7 @@ class JobsClient:
 
     def import_indicator_data_and_wait(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         upload_id: str,
         indicator_value: str,
         *,
@@ -175,7 +180,7 @@ class JobsClient:
         *,
         status: Optional[str] = None,
         job_type: Optional[str] = None,
-        project_id: Optional[Union[int, str]] = None,
+        project_id: Optional[ProjectIdOrIdno] = None,
         user_id: Optional[int] = None,
         active: Optional[bool] = None,
         history: Optional[bool] = None,
@@ -188,7 +193,8 @@ class JobsClient:
         """List one page of background jobs: ``{total, found, limit, offset, jobs, ...}``.
 
         ``limit`` is at most 100 (server maximum); use :meth:`iter_all` for more. ``created_from`` and
-        ``created_to`` take ``YYYY-MM-DD`` or ``YYYY-MM-DD HH:MM:SS``. Non-admin users only see their own jobs.
+        ``created_to`` take ``YYYY-MM-DD`` or ``YYYY-MM-DD HH:MM:SS``. A ``project_id`` idno is resolved to the
+        numeric id first. Non-admin users only see their own jobs.
         """
         if not 1 <= int(limit) <= self.MAX_PAGE_SIZE:
             raise ValueError(f"limit must be between 1 and {self.MAX_PAGE_SIZE}; use jobs.iter_all() for more")
@@ -203,7 +209,9 @@ class JobsClient:
         if project_id is not None:
             pid = _normalize_project_id(project_id)
             if not isinstance(pid, int):
-                raise ValueError("jobs.list filters by numeric project id; resolve an idno with me.projects.basic_info")
+                if self._projects is None:
+                    raise ValueError("jobs.list needs a numeric project id; use projects.resolve_id for an idno")
+                pid = self._projects.resolve_id(pid)
             params["project_id"] = pid
         if user_id is not None:
             params["user_id"] = int(user_id)
@@ -274,7 +282,7 @@ class JobsClient:
 
     def publish_to_nada_and_wait(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         catalog_connection_id: int,
         *,
         timeout_seconds: int = 1800,

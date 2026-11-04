@@ -1,6 +1,10 @@
-"""Project type normalization for Metadata Editor API paths."""
+"""Shared argument types and project type normalization for Metadata Editor API paths."""
 
-from typing import Dict
+from typing import Dict, Union
+
+#: A project argument: the numeric project id (e.g. ``1234``) or the project idno (e.g. ``"ALB_2012_LSMS"``).
+#: IDNOs cannot be numeric only, so a numeric value is always the project id.
+ProjectIdOrIdno = Union[int, str]
 
 # Legacy / display names -> OpenAPI path segment (hyphenated).
 _PROJECT_TYPE_ALIASES: Dict[str, str] = {

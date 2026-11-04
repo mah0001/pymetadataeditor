@@ -399,7 +399,7 @@ def test_metadata_update(tmpdir, monkeypatch, metadata_editor):
 
     with pytest.raises(Exception, match="You don't have permission to access this project"):
         metadata_editor.metadata.update(
-            id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
+            project_id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
         )
 
     # id is good
@@ -416,12 +416,12 @@ def test_metadata_update(tmpdir, monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
     metadata_editor.metadata.update(
-        id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
+        project_id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
     )
 
     # use pydantic
     model = metadata_editor.make_metadata_outline("indicator", "pydantic")
-    metadata_editor.metadata.update(id=1, new_metadata=model)
+    metadata_editor.metadata.update(project_id=1, new_metadata=model)
 
     # use excel
     metadata_editor.make_metadata_outline(

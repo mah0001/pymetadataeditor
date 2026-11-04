@@ -522,7 +522,7 @@ __init__(api: RequestsWithSpecificErrors)
 ## <kbd>method</kbd> `basic_info`
 
 ```python
-basic_info(id: Union[int, str]) → Dict
+basic_info(project_id: Union[int, str]) → Dict
 ```
 
 Get a project's id, idno, type, title, template and version fields, without the metadata. 
@@ -556,7 +556,7 @@ Create a project using API-native type and metadata.
 
 ```python
 create_version(
-    id: Union[int, str],
+    project_id: Union[int, str],
     version_type: str,
     version_notes: str
 ) → Dict
@@ -570,7 +570,7 @@ Create a new version for a project.
 ## <kbd>method</kbd> `delete`
 
 ```python
-delete(id: Union[int, str]) → Dict
+delete(project_id: Union[int, str]) → Dict
 ```
 
 Delete a project by internal id or idno (POST, for environments that block GET deletes). 
@@ -581,7 +581,7 @@ Delete a project by internal id or idno (POST, for environments that block GET d
 ## <kbd>method</kbd> `delete_version`
 
 ```python
-delete_version(id: Union[int, str], version: str) → Dict
+delete_version(project_id: Union[int, str], version: str) → Dict
 ```
 
 Delete a project version by project id/idno and version string. 
@@ -615,7 +615,7 @@ Filter values with counts: project types, collection tree, ownership (``GET /edi
 
 ```python
 generate_pdf(
-    id: Union[int, str],
+    project_id: Union[int, str],
     include_private_fields: Optional[int] = None,
     template_uid: Optional[str] = None
 ) → Dict
@@ -629,7 +629,7 @@ Generate PDF documentation for a project.
 ## <kbd>method</kbd> `get`
 
 ```python
-get(id: Union[int, str], version: Optional[str] = None) → Dict
+get(project_id: Union[int, str], version: Optional[str] = None) → Dict
 ```
 
 Get a project by internal id or idno, including its full metadata. 
@@ -641,7 +641,7 @@ Get a project by internal id or idno, including its full metadata.
 
 ```python
 get_json(
-    id: Union[int, str],
+    project_id: Union[int, str],
     version: Optional[str] = None,
     exclude_variables: Optional[int] = None,
     exclude_private_fields: Optional[int] = None,
@@ -659,7 +659,7 @@ Get project metadata JSON export.
 
 ```python
 get_json_field(
-    id: Union[int, str],
+    project_id: Union[int, str],
     path: str,
     version: Optional[str] = None,
     exclude_variables: Optional[int] = None,
@@ -780,7 +780,7 @@ Prefer :meth:`iter_all` for large catalogs.
 ## <kbd>method</kbd> `list_versions`
 
 ```python
-list_versions(id: Union[int, str], version: Optional[str] = None) → Dict
+list_versions(project_id: Union[int, str], version: Optional[str] = None) → Dict
 ```
 
 List versions for a project. 
@@ -792,7 +792,7 @@ List versions for a project.
 
 ```python
 patch(
-    id: Union[int, str],
+    project_id: Union[int, str],
     project_type: str,
     patches: List[Dict],
     validate: bool = False
@@ -808,7 +808,7 @@ Patch a project metadata document.
 
 ```python
 patch_one(
-    id: Union[int, str],
+    project_id: Union[int, str],
     project_type: str,
     op: str,
     path: str,
@@ -822,10 +822,32 @@ Apply a single JSON Patch operation to project metadata.
 ---
 
 
+## <kbd>method</kbd> `resolve_id`
+
+```python
+resolve_id(project_id: Union[int, str]) → int
+```
+
+Numeric project id for an id or idno (an idno is looked up with :meth:`basic_info`). 
+
+---
+
+
+## <kbd>method</kbd> `resolve_idno`
+
+```python
+resolve_idno(project_id: Union[int, str]) → str
+```
+
+Project idno for an id or idno (checks that the project exists). 
+
+---
+
+
 ## <kbd>method</kbd> `update`
 
 ```python
-update(id: Union[int, str], project_type: str, metadata: Dict) → Dict
+update(project_id: Union[int, str], project_type: str, metadata: Dict) → Dict
 ```
 
 Update a project using API-native type and metadata. 
@@ -871,7 +893,7 @@ Validate metadata and create a project; returns new project id.
 
 ```python
 get_for_project(
-    id: 'Union[int, str]',
+    project_id: 'ProjectIdOrIdno',
     output_mode: 'str',
     template_uid: 'Optional[str]' = None,
     simplify: 'bool' = True,
@@ -893,7 +915,7 @@ For microdata, the data files and variable groups (stored apart from the study m
 
 ```python
 update(
-    id: 'Union[int, str]',
+    project_id: 'ProjectIdOrIdno',
     new_metadata: 'Union[BaseModel, Dict, str]'
 ) → None
 ```
@@ -1361,7 +1383,10 @@ Job queue wrappers (publish to NADA, poll status, list jobs).
 ### <kbd>method</kbd> `__init__`
 
 ```python
-__init__(api: RequestsWithSpecificErrors)
+__init__(
+    api: RequestsWithSpecificErrors,
+    projects: Optional[ForwardRef('ProjectsClient')] = None
+)
 ```
 
 
@@ -1482,7 +1507,7 @@ list(
 
 List one page of background jobs: ``{total, found, limit, offset, jobs, ...}``. 
 
-``limit`` is at most 100 (server maximum); use :meth:`iter_all` for more. ``created_from`` and ``created_to`` take ``YYYY-MM-DD`` or ``YYYY-MM-DD HH:MM:SS``. Non-admin users only see their own jobs. 
+``limit`` is at most 100 (server maximum); use :meth:`iter_all` for more. ``created_from`` and ``created_to`` take ``YYYY-MM-DD`` or ``YYYY-MM-DD HH:MM:SS``. A ``project_id`` idno is resolved to the numeric id first. Non-admin users only see their own jobs. 
 
 ---
 
@@ -2383,7 +2408,7 @@ Versions of a codelist.
 # <kbd>class</kbd> `IndicatorsClient`
 Indicator projects: bind a registry data structure, import and export data, chart data, notes. 
 
-``project`` is a numeric project id or the project idno. 
+``project_id`` is the numeric project id or the project idno. 
 
 
 ### <kbd>method</kbd> `__init__`
@@ -2411,7 +2436,7 @@ __init__(
 
 ```python
 bind(
-    project: Union[int, str],
+    project_id: Union[int, str],
     data_structure_id: Optional[int] = None,
     data_structure_reference: Optional[str, Dict[str, str]] = None
 ) → Dict
@@ -2425,7 +2450,7 @@ Bind a registry data structure to the project (by id, or by idno / {agency, name
 ## <kbd>method</kbd> `binding`
 
 ```python
-binding(project: Union[int, str]) → Dict
+binding(project_id: Union[int, str]) → Dict
 ```
 
 Current binding: data structure, indicator ID value, implied FREQ, data state. 
@@ -2437,7 +2462,7 @@ Current binding: data structure, indicator ID value, implied FREQ, data state.
 
 ```python
 chart_data(
-    project: Union[int, str],
+    project_id: Union[int, str],
     geography: Optional[Iterable[str]] = None,
     dimensions: Optional[Dict[str, List[str]]] = None,
     time_period_start: Optional[str] = None,
@@ -2454,7 +2479,7 @@ Chart records for a selection, with note IDs per record, the note text used, and
 
 ```python
 data_rows(
-    project: Union[int, str],
+    project_id: Union[int, str],
     offset: int = 0,
     limit: int = 50,
     filters: Optional[Dict[str, List[str]]] = None
@@ -2472,7 +2497,7 @@ Use :meth:`iter_data_rows` to read more, or :meth:`export_data` to download ever
 
 ```python
 data_values(
-    project: Union[int, str],
+    project_id: Union[int, str],
     code_column: str,
     label_column: Optional[str] = None,
     limit: int = 5000
@@ -2487,7 +2512,7 @@ Distinct values (and labels) of a column in the imported data.
 ## <kbd>method</kbd> `delete_data`
 
 ```python
-delete_data(project: Union[int, str]) → Dict
+delete_data(project_id: Union[int, str]) → Dict
 ```
 
 Delete the project's imported data. 
@@ -2499,7 +2524,7 @@ Delete the project's imported data.
 
 ```python
 export_data(
-    project: Union[int, str],
+    project_id: Union[int, str],
     out_path: str,
     timeout: Optional[float] = None
 ) → str
@@ -2514,7 +2539,7 @@ Download the imported data as CSV (DSD columns, in DSD order) to ``out_path``.
 
 ```python
 get_dsd(
-    project: Union[int, str],
+    project_id: Union[int, str],
     detailed: bool = False,
     resolve_codelists: bool = False
 ) → Dict
@@ -2531,7 +2556,7 @@ Columns of the project's data structure: ``{columns}``.
 
 ```python
 import_data(
-    project: Union[int, str],
+    project_id: Union[int, str],
     wait: bool = True,
     keep_extra_csv_columns: bool = False,
     implied_freq_code: Optional[str] = None,
@@ -2550,7 +2575,7 @@ The result includes ``data_notes``: notes read from text columns, generated note
 
 ```python
 iter_data_rows(
-    project: Union[int, str],
+    project_id: Union[int, str],
     filters: Optional[Dict[str, List[str]]] = None,
     max_items: Optional[int] = None
 ) → Iterator[Dict]
@@ -2564,7 +2589,7 @@ Yield imported rows one at a time, 200 per request.
 ## <kbd>method</kbd> `job`
 
 ```python
-job(project: Union[int, str], job_id: str) → Dict
+job(project_id: Union[int, str], job_id: str) → Dict
 ```
 
 Status of a data job (import without ``wait``, recompute). 
@@ -2576,7 +2601,7 @@ Status of a data job (import without ``wait``, recompute).
 
 ```python
 load_csv(
-    project: Union[int, str],
+    project_id: Union[int, str],
     csv_path: str,
     indicator_id_value: Optional[str] = None,
     data_structure_id: Optional[int] = None,
@@ -2601,7 +2626,11 @@ Returns ``{"binding", "prepare", "import", "notes_import", "notes_check"}`` (mis
 ## <kbd>method</kbd> `load_dataframe`
 
 ```python
-load_dataframe(project: Union[int, str], df: 'DataFrame', **kwargs: Any) → Dict
+load_dataframe(
+    project_id: Union[int, str],
+    df: 'DataFrame',
+    **kwargs: Any
+) → Dict
 ```
 
 Write a DataFrame to a temporary UTF-8 CSV and call :meth:`load_csv` with it. 
@@ -2621,9 +2650,9 @@ load_many(
 ) → List[Dict]
 ```
 
-Load one CSV holding several indicators into several projects (``{indicator_id: project}``). 
+Load one CSV holding several indicators into several projects (``{indicator_id: project_id}``). 
 
-Returns one row per indicator: ``{indicator_id, project, status, rows, notes_errors, error}``. 
+Returns one row per indicator: ``{indicator_id, project_id, status, rows, notes_errors, error}``. 
 
 ---
 
@@ -2632,7 +2661,7 @@ Returns one row per indicator: ``{indicator_id, project, status, rows, notes_err
 
 ```python
 prepare_data(
-    project: Union[int, str],
+    project_id: Union[int, str],
     csv_path: Optional[str] = None,
     upload_id: Optional[str] = None,
     delimiter: str = ',',
@@ -2648,22 +2677,11 @@ Returns the header check, the distinct indicator ID values, and ignored columns.
 ---
 
 
-## <kbd>method</kbd> `project_id`
-
-```python
-project_id(project: Union[int, str]) → int
-```
-
-Numeric project id for an id or idno (publish endpoints need the numeric id). 
-
----
-
-
 ## <kbd>method</kbd> `publish`
 
 ```python
 publish(
-    project: Union[int, str],
+    project_id: Union[int, str],
     catalog_connection_id: int,
     publish_metadata: bool = True,
     publish_dsd: bool = True,
@@ -2685,7 +2703,7 @@ The data structure is re-imported only when it differs from NADA's copy (``dsd_f
 ## <kbd>method</kbd> `recompute`
 
 ```python
-recompute(project: Union[int, str]) → Dict
+recompute(project_id: Union[int, str]) → Dict
 ```
 
 Recompute derived time columns (after changing FREQ or time format). 
@@ -2696,7 +2714,7 @@ Recompute derived time columns (after changing FREQ or time format).
 ## <kbd>method</kbd> `reset`
 
 ```python
-reset(project: Union[int, str]) → Dict
+reset(project_id: Union[int, str]) → Dict
 ```
 
 Drop the project's timeseries data (full reset). 
@@ -2707,7 +2725,7 @@ Drop the project's timeseries data (full reset).
 ## <kbd>method</kbd> `unbind`
 
 ```python
-unbind(project: Union[int, str]) → Dict
+unbind(project_id: Union[int, str]) → Dict
 ```
 
 Remove the data structure binding. 
@@ -2719,7 +2737,7 @@ Remove the data structure binding.
 
 ```python
 update_binding(
-    project: Union[int, str],
+    project_id: Union[int, str],
     indicator_id_value: Optional[str] = None,
     implied_freq_code: Optional[str] = None
 ) → Dict
@@ -2733,7 +2751,7 @@ Set the indicator ID value (rows imported from a CSV) and/or the series FREQ.
 ## <kbd>method</kbd> `validate`
 
 ```python
-validate(project: Union[int, str]) → Dict
+validate(project_id: Union[int, str]) → Dict
 ```
 
 Validate the data structure and data (includes the data notes checks). 
@@ -2771,7 +2789,7 @@ __init__(
 
 ```python
 add(
-    project: Union[int, str],
+    project_id: Union[int, str],
     note_id: str,
     note: str,
     scope: Optional[str] = None,
@@ -2788,7 +2806,7 @@ Add or update one note (by ID).
 ## <kbd>method</kbd> `check`
 
 ```python
-check(project: Union[int, str]) → Dict
+check(project_id: Union[int, str]) → Dict
 ```
 
 Check note IDs used in the data against the project notes: ``{valid, errors, warnings, ...}``. 
@@ -2800,7 +2818,7 @@ Check note IDs used in the data against the project notes: ``{valid, errors, war
 
 ```python
 import_csv(
-    project: Union[int, str],
+    project_id: Union[int, str],
     csv_path: Optional[str] = None,
     upload_id: Optional[str] = None,
     dry_run: bool = False,
@@ -2819,7 +2837,7 @@ Rows for other indicators are skipped; notes are added or updated by ID (``repla
 ## <kbd>method</kbd> `list`
 
 ```python
-list(project: Union[int, str]) → Dict
+list(project_id: Union[int, str]) → Dict
 ```
 
 Footnote columns and all data notes: ``{footnote_columns, notes}``. 
@@ -2831,7 +2849,7 @@ Footnote columns and all data notes: ``{footnote_columns, notes}``.
 
 ```python
 remove(
-    project: Union[int, str],
+    project_id: Union[int, str],
     note_id: str,
     project_type: str = 'indicator'
 ) → Dict
@@ -2846,7 +2864,7 @@ Remove one note (by ID).
 
 ```python
 set(
-    project: Union[int, str],
+    project_id: Union[int, str],
     notes: List[Dict[str, Any]],
     project_type: str = 'indicator'
 ) → Dict

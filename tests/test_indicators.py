@@ -108,6 +108,7 @@ def test_upload_sends_chunks(me, calls, tmp_path):
     assert calls[0]["json"] == {"filename": "data.csv", "total_size": 25, "total_chunks": 3, "chunk_size": 10}
     chunks = [c for c in calls if _path(c).startswith("uploads/chunk/")]
     assert [c["data"]["chunk_number"] for c in chunks] == ["0", "1", "2"]
+    assert [c["data"]["chunk_size"] for c in chunks] == ["10", "10", "5"]
     assert all(_path(c) == "uploads/chunk/abc" for c in chunks)
 
 

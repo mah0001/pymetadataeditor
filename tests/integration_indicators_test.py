@@ -42,7 +42,7 @@ def test_indicator_workflow_with_notes(me, tmp_path):
     )
     structure_id = created["structure_id"]
     assert created["validation"]["validation"]["valid"] is True
-    components = {c["name"]: c for c in me.data_structures.components(structure_id)}
+    components = {c["name"]: c for c in me.data_structures.list_components(structure_id)}
     assert components["NOTE_ID"].get("display_role") == "footnote"
 
     # 2. Project

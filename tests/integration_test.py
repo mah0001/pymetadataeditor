@@ -429,6 +429,10 @@ def test_project_download_and_read(metadata_editor, tmpdir):
     assert output == "", output
 
 
+def _collection_projects(metadata_editor, collection_id, **filters):
+    return {"projects": list(metadata_editor.collections.iter_projects(collection_id, **filters))}
+
+
 def test_collections_integration(metadata_editor):
     # list collections
     original_collections = metadata_editor.collections.list().get("collections", [])
@@ -459,7 +463,7 @@ def test_collections_integration(metadata_editor):
         assert updated_collection["title"] == collection_title_updated
         assert updated_collection["description"] == collection_description_updated
 
-        initial_projects_collection = metadata_editor.collections.list_projects_all(collection_id)
+        initial_projects_collection = _collection_projects(metadata_editor, collection_id)
         assert len(initial_projects_collection["projects"]) == 0
 
         # create a project and add it to the collection by id
@@ -472,37 +476,37 @@ def test_collections_integration(metadata_editor):
         try:
             metadata_editor.collections.add_projects(collection_id, "id", project_id)
 
-            oneproject_collection = metadata_editor.collections.list_projects_all(collection_id)
+            oneproject_collection = _collection_projects(metadata_editor, collection_id)
             assert len(oneproject_collection["projects"]) == 1
             assert oneproject_collection["projects"][0]["study_idno"] == project_idno
-            good_search = metadata_editor.collections.list_projects_all(collection_id, keywords="integration")
+            good_search = _collection_projects(metadata_editor, collection_id, keywords="integration")
             assert len(good_search["projects"]) == 1
-            good_search = metadata_editor.collections.list_projects_all(
-                collection_id, keywords=["project", "integration"]
+            good_search = _collection_projects(
+                metadata_editor, collection_id, keywords=["project", "integration"]
             )
             assert len(good_search["projects"]) == 1
-            good_search = metadata_editor.collections.list_projects_all(
-                collection_id, keywords="project integration"
+            good_search = _collection_projects(
+                metadata_editor, collection_id, keywords="project integration"
             )
             assert len(good_search["projects"]) == 1
             assert good_search["projects"][0]["study_idno"] == project_idno
-            bad_search = metadata_editor.collections.list_projects_all(collection_id, keywords="bogus")
+            bad_search = _collection_projects(metadata_editor, collection_id, keywords="bogus")
             assert len(bad_search["projects"]) == 0
-            good_search = metadata_editor.collections.list_projects_all(collection_id)
+            good_search = _collection_projects(metadata_editor, collection_id)
             assert len(good_search["projects"]) == 1
-            good_search = metadata_editor.collections.list_projects_via_editor(collection_id, limit=10)
+            good_search = metadata_editor.collections.list_projects(collection_id, limit=10)
             assert len(good_search["projects"]) == 1
-            good_search = metadata_editor.collections.list_projects_via_editor(collection_id, offset=1, limit=500)
+            good_search = metadata_editor.collections.list_projects(collection_id, offset=1, limit=500)
             assert len(good_search["projects"]) == 0
-            good_search = metadata_editor.collections.list_projects_all(collection_id, sort_by="updated_asc")
+            good_search = _collection_projects(metadata_editor, collection_id, sort_by="updated_asc")
             assert len(good_search["projects"]) == 1
 
             metadata_editor.collections.remove_projects(collection_id, "id", project_id)
-            final_collection = metadata_editor.collections.list_projects_all(collection_id)
+            final_collection = _collection_projects(metadata_editor, collection_id)
             assert len(final_collection["projects"]) == 0
 
             metadata_editor.collections.add_projects(collection_id, "id", project_id)
-            oneproject_collection = metadata_editor.collections.list_projects_all(collection_id)
+            oneproject_collection = _collection_projects(metadata_editor, collection_id)
             assert len(oneproject_collection["projects"]) == 1
             assert oneproject_collection["projects"][0]["study_idno"] == project_idno
 
@@ -510,20 +514,20 @@ def test_collections_integration(metadata_editor):
                 title="integration_test_collection2", description="integration_test_collection2"
             )["collection"]
             metadata_editor.collections.copy(collection_id, collection_id2)
-            copied_collection = metadata_editor.collections.list_projects_all(collection_id2)
+            copied_collection = _collection_projects(metadata_editor, collection_id2)
             assert len(copied_collection["projects"]) == 1
             assert copied_collection["projects"][0]["study_idno"] == project_idno
-            original_collection = metadata_editor.collections.list_projects_all(collection_id)
+            original_collection = _collection_projects(metadata_editor, collection_id)
             assert len(original_collection["projects"]) == 1
             assert original_collection["projects"][0]["study_idno"] == project_idno
             metadata_editor.collections.remove_projects(collection_id2, "id", project_id)
-            final_collection = metadata_editor.collections.list_projects_all(collection_id2)
+            final_collection = _collection_projects(metadata_editor, collection_id2)
             assert len(final_collection["projects"]) == 0
 
             metadata_editor.collections.move(collection_id, collection_id2)
-            moved_collection = metadata_editor.collections.list_projects_all(collection_id2)
+            moved_collection = _collection_projects(metadata_editor, collection_id2)
             assert len(moved_collection["projects"]) == 0
-            original_collection = metadata_editor.collections.list_projects_all(collection_id)
+            original_collection = _collection_projects(metadata_editor, collection_id)
             assert len(original_collection["projects"]) == 1
             assert original_collection["projects"][0]["study_idno"] == project_idno
 

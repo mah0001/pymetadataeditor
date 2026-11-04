@@ -179,14 +179,28 @@ class DataStructuresClient:
         """Duplicate a data structure (e.g. as a new version)."""
         return self._api.post_request(pth=f"data_structures/duplicate/{int(structure_id)}", json=fields)
 
-    def versions(self, idno_or_id: Union[int, str]) -> Dict:
+    def list_versions(self, idno_or_id: Union[int, str]) -> Dict:
         """List versions of a data structure."""
         return self._api.get_request(pth=f"data_structures/versions/{_seg(idno_or_id)}")
 
-    def projects(self, idno_or_id: Union[int, str], page: int = 1, per_page: int = 50) -> Dict:
-        """Projects bound to a data structure."""
+    def list_projects(self, idno_or_id: Union[int, str], page: int = 1, per_page: int = 50) -> Dict:
+        """One page of projects bound to a data structure: ``{projects, total, page, per_page}``.
+
+        ``per_page`` is at most 200 (server maximum); use :meth:`iter_projects` for more.
+        """
         return self._api.get_request(
             pth=f"data_structures/projects/{_seg(idno_or_id)}", params={"page": page, "per_page": per_page}
+        )
+
+    def iter_projects(
+        self, idno_or_id: Union[int, str], per_page: int = 200, max_items: Optional[int] = None
+    ) -> Iterator[Dict]:
+        """Yield the projects bound to a data structure one at a time."""
+        return iter_numbered_pages(
+            lambda page, size: self.list_projects(idno_or_id, page=page, per_page=size),
+            items_key="projects",
+            per_page=per_page,
+            max_items=max_items,
         )
 
     def validate(self, structure_id: int) -> Dict:
@@ -195,7 +209,7 @@ class DataStructuresClient:
 
     # ── components ────────────────────────────────────────────────────────────
 
-    def components(self, structure_id: int) -> List[Dict]:
+    def list_components(self, structure_id: int) -> List[Dict]:
         """Components of a data structure, in order."""
         response = self.get(structure_id, with_components=True)
         structure = response.get("data_structure", {}) if isinstance(response, dict) else {}

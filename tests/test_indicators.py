@@ -288,6 +288,16 @@ def test_codelists_iter_all_stops_at_total(me, calls):
     assert [c["params"]["page"] for c in calls] == [1, 2]
 
 
+def test_data_structures_iter_projects(me, calls):
+    calls.queue.extend([
+        FakeResponse(body={"projects": [{"id": 1}, {"id": 2}], "total": 3, "page": 1, "per_page": 2}),
+        FakeResponse(body={"projects": [{"id": 3}], "total": 3, "page": 2, "per_page": 2}),
+    ])
+    assert [p["id"] for p in me.data_structures.iter_projects("SDG_DSD", per_page=2)] == [1, 2, 3]
+    assert _path(calls[0]) == "data_structures/projects/SDG_DSD"
+    assert [c["params"]["page"] for c in calls] == [1, 2]
+
+
 def test_codelists_iter_codes(me, calls):
     calls.queue.extend([
         FakeResponse(body={"codes": [{"id": 1}, {"id": 2}], "total": 3}),

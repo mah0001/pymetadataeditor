@@ -75,7 +75,7 @@ class CodelistsClient:
             params["version"] = version
         return self._api.get_request(pth="codelists/lookup_by_identity", params=params)
 
-    def versions(self, name: str, agency: Optional[str] = None) -> Dict:
+    def list_versions(self, name: str, agency: Optional[str] = None) -> Dict:
         """Versions of a codelist."""
         params = {"agency": agency} if agency else None
         return self._api.get_request(pth=f"codelists/versions/{_seg(name)}", params=params)
@@ -99,7 +99,7 @@ class CodelistsClient:
 
     # ── codes ─────────────────────────────────────────────────────────────────
 
-    def codes(
+    def list_codes(
         self,
         codelist_id: int,
         search: Optional[str] = None,
@@ -127,7 +127,7 @@ class CodelistsClient:
     ) -> Iterator[Dict]:
         """Yield the codes of a codelist one at a time (accepts ``search``, ``language``, ``compact``)."""
         return iter_offset_pages(
-            lambda limit, offset: self.codes(codelist_id, limit=limit, offset=offset, **filters),
+            lambda limit, offset: self.list_codes(codelist_id, limit=limit, offset=offset, **filters),
             items_key="codes",
             page_size=page_size,
             max_items=max_items,
@@ -173,7 +173,7 @@ class CodelistsClient:
 
     # ── translations ──────────────────────────────────────────────────────────
 
-    def translations(self, codelist_id: int) -> Dict:
+    def list_translations(self, codelist_id: int) -> Dict:
         """Translations of a codelist."""
         return self._api.get_request(pth=f"codelists/codelist_translations/{int(codelist_id)}")
 

@@ -739,7 +739,7 @@ def test_list_projects_in_collection(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
 
-    response = metadata_editor.collections.list_projects_via_editor(1, limit=100)
+    response = metadata_editor.collections.list_projects(1, limit=100)
     assert len(response["projects"]) == 2
 
     # # call is good, but the number of projects is limited
@@ -977,7 +977,7 @@ def test_projects_list_filters_and_validation(monkeypatch, metadata_editor):
     assert captured[-1]["limit"] == 1
 
 
-def test_collections_list_projects_uses_get_route(monkeypatch, metadata_editor):
+def test_collections_list_projects_uses_editor_listing(monkeypatch, metadata_editor):
     captured = []
 
     def mock_response(*args, **kwargs):
@@ -985,11 +985,8 @@ def test_collections_list_projects_uses_get_route(monkeypatch, metadata_editor):
         return MockResponse(http_status_code=200, json_data={"total": 1, "projects": [{"id": 1}]})
 
     monkeypatch.setattr(requests, "request", mock_response)
-    metadata_editor.collections.list_projects(9)
+    metadata_editor.collections.list_projects(9, keywords="health survey")
     assert captured[-1][0][0] == "get"
-    assert captured[-1][0][1].endswith("/collections/projects/9")
-
-    metadata_editor.collections.list_projects_via_editor(9, keywords="health survey")
     assert captured[-1][1]["params"]["collection"] == "9"
     assert captured[-1][1]["params"]["keywords"] == "health survey"
     assert metadata_editor.collections.count_projects(9) == 1

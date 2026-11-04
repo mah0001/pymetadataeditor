@@ -69,19 +69,11 @@ class CollectionsClient:
         """Get the API user's collection permission levels."""
         return self._api.get_request(pth="/collections/permissions")
 
-    def list_projects(self, collection_id: int) -> Dict:
-        """List all projects in a collection (``GET /collections/projects/{id}``, unpaged, needs edit access).
-
-        For large collections, or to filter and search, use :meth:`list_projects_via_editor` or
-        :meth:`iter_projects`.
-        """
-        return self._api.get_request(pth="/collections/projects/{}", id=int(collection_id))
-
     def count_projects(self, collection_id: int) -> int:
         """Count projects in a collection."""
         return self._projects.count(collection=collection_id)
 
-    def list_projects_via_editor(
+    def list_projects(
         self,
         collection_id: int,
         limit: int = 100,
@@ -101,25 +93,10 @@ class CollectionsClient:
     def iter_projects(
         self, collection_id: int, page_size: int = 500, max_items: Optional[int] = None, **filters: Any
     ) -> Iterator[Dict]:
-        """Yield the projects of a collection one at a time (see :meth:`ProjectsClient.iter_all`)."""
+        """Yield the projects of a collection one at a time (accepts the filters of :meth:`list_projects`)."""
         return self._projects.iter_all(
             page_size=page_size, max_items=max_items, collection=collection_id, **filters
         )
-
-    def list_projects_all(
-        self,
-        collection_id: int,
-        page_size: int = 500,
-        keywords: Optional[Union[str, List[str]]] = None,
-        sort_by: Optional[str] = None,
-        **filters: Any,
-    ) -> Dict:
-        """Fetch all projects in a collection into memory: ``{"projects": [...], "total": n}``."""
-        if keywords is not None:
-            filters["keywords"] = keywords
-        if sort_by is not None:
-            filters["sort_by"] = sort_by
-        return self._projects.list_all(page_size=page_size, collection=collection_id, **filters)
 
     def add_projects(
         self,

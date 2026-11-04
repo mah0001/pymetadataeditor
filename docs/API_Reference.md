@@ -1029,7 +1029,7 @@ iter_projects(
 ) → Iterator[Dict]
 ```
 
-Yield the projects of a collection one at a time (see :meth:`ProjectsClient.iter_all`). 
+Yield the projects of a collection one at a time (accepts the filters of :meth:`list_projects`). 
 
 ---
 
@@ -1048,37 +1048,7 @@ List collections visible to the API key.
 ## <kbd>method</kbd> `list_projects`
 
 ```python
-list_projects(collection_id: int) → Dict
-```
-
-List all projects in a collection (``GET /collections/projects/{id}``, unpaged, needs edit access). 
-
-For large collections, or to filter and search, use :meth:`list_projects_via_editor` or :meth:`iter_projects`. 
-
----
-
-
-## <kbd>method</kbd> `list_projects_all`
-
-```python
-list_projects_all(
-    collection_id: int,
-    page_size: int = 500,
-    keywords: Optional[str, List[str]] = None,
-    sort_by: Optional[str] = None,
-    **filters: Any
-) → Dict
-```
-
-Fetch all projects in a collection into memory: ``{"projects": [...], "total": n}``. 
-
----
-
-
-## <kbd>method</kbd> `list_projects_via_editor`
-
-```python
-list_projects_via_editor(
+list_projects(
     collection_id: int,
     limit: int = 100,
     offset: int = 0,
@@ -1803,17 +1773,6 @@ Add a component (column) to a data structure.
 ---
 
 
-## <kbd>method</kbd> `components`
-
-```python
-components(structure_id: int) → List[Dict]
-```
-
-Components of a data structure, in order. 
-
----
-
-
 ## <kbd>method</kbd> `create`
 
 ```python
@@ -1988,6 +1947,21 @@ Yield data structures one at a time (accepts the filters of :meth:`list`).
 ---
 
 
+## <kbd>method</kbd> `iter_projects`
+
+```python
+iter_projects(
+    idno_or_id: Union[int, str],
+    per_page: int = 200,
+    max_items: Optional[int] = None
+) → Iterator[Dict]
+```
+
+Yield the projects bound to a data structure one at a time. 
+
+---
+
+
 ## <kbd>method</kbd> `list`
 
 ```python
@@ -2007,6 +1981,45 @@ By default versions are collapsed into one row; ``flat=True`` lists every versio
 ---
 
 
+## <kbd>method</kbd> `list_components`
+
+```python
+list_components(structure_id: int) → List[Dict]
+```
+
+Components of a data structure, in order. 
+
+---
+
+
+## <kbd>method</kbd> `list_projects`
+
+```python
+list_projects(
+    idno_or_id: Union[int, str],
+    page: int = 1,
+    per_page: int = 50
+) → Dict
+```
+
+One page of projects bound to a data structure: ``{projects, total, page, per_page}``. 
+
+``per_page`` is at most 200 (server maximum); use :meth:`iter_projects` for more. 
+
+---
+
+
+## <kbd>method</kbd> `list_versions`
+
+```python
+list_versions(idno_or_id: Union[int, str]) → Dict
+```
+
+List versions of a data structure. 
+
+---
+
+
 ## <kbd>method</kbd> `lookup`
 
 ```python
@@ -2014,17 +2027,6 @@ lookup(idno_or_id: Union[int, str], with_components: bool = True) → Dict
 ```
 
 Get a data structure by idno or id. 
-
----
-
-
-## <kbd>method</kbd> `projects`
-
-```python
-projects(idno_or_id: Union[int, str], page: int = 1, per_page: int = 50) → Dict
-```
-
-Projects bound to a data structure. 
 
 ---
 
@@ -2060,17 +2062,6 @@ validate(structure_id: int) → Dict
 ```
 
 Validate a data structure (required roles, duplicates, codelists, display roles). 
-
----
-
-
-## <kbd>method</kbd> `versions`
-
-```python
-versions(idno_or_id: Union[int, str]) → Dict
-```
-
-List versions of a data structure. 
 
 <!-- markdownlint-disable -->
 
@@ -2122,26 +2113,6 @@ add_codes(codelist_id: int, codes: List[Dict[str, Any]]) → List[Dict]
 ```
 
 Add several codes (each ``{"code", "label"?, ...}``); one request per code. 
-
----
-
-
-## <kbd>method</kbd> `codes`
-
-```python
-codes(
-    codelist_id: int,
-    search: Optional[str] = None,
-    language: Optional[str] = None,
-    limit: int = 500,
-    offset: int = 0,
-    compact: bool = False
-) → Dict
-```
-
-One page of codes (with labels): ``{total, offset, limit, codes}``. ``limit=0`` returns all codes. 
-
-``compact=True`` returns ``{id, code, label, description, sort_order, parent_id}`` per code, with the label in ``language`` (default English). 
 
 ---
 
@@ -2334,6 +2305,48 @@ By default versions of a codelist are collapsed into one row; ``flat=True`` list
 ---
 
 
+## <kbd>method</kbd> `list_codes`
+
+```python
+list_codes(
+    codelist_id: int,
+    search: Optional[str] = None,
+    language: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
+    compact: bool = False
+) → Dict
+```
+
+One page of codes (with labels): ``{total, offset, limit, codes}``. ``limit=0`` returns all codes. 
+
+``compact=True`` returns ``{id, code, label, description, sort_order, parent_id}`` per code, with the label in ``language`` (default English). 
+
+---
+
+
+## <kbd>method</kbd> `list_translations`
+
+```python
+list_translations(codelist_id: int) → Dict
+```
+
+Translations of a codelist. 
+
+---
+
+
+## <kbd>method</kbd> `list_versions`
+
+```python
+list_versions(name: str, agency: Optional[str] = None) → Dict
+```
+
+Versions of a codelist. 
+
+---
+
+
 ## <kbd>method</kbd> `set_label`
 
 ```python
@@ -2361,17 +2374,6 @@ Add or update a codelist translation (``language``, ``title``, ``description`` .
 ---
 
 
-## <kbd>method</kbd> `translations`
-
-```python
-translations(codelist_id: int) → Dict
-```
-
-Translations of a codelist. 
-
----
-
-
 ## <kbd>method</kbd> `update`
 
 ```python
@@ -2390,17 +2392,6 @@ update_code(code_id: int, **fields: Any) → Dict
 ```
 
 Update a code. 
-
----
-
-
-## <kbd>method</kbd> `versions`
-
-```python
-versions(name: str, agency: Optional[str] = None) → Dict
-```
-
-Versions of a codelist. 
 
 <!-- markdownlint-disable -->
 

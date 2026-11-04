@@ -15,8 +15,8 @@ Sub-clients return **raw API `dict`s** unless noted. There is **no backward comp
 | `me.list_projects(limit="all", ...)` | `me.projects.iter_all(...)` (generator) or `me.projects.list_all(...)` |
 | `me.get_project_by_id(id)` | `me.projects.get(id)` |
 | `me.delete_project_by_id(id)` | `me.projects.delete(id)` — **POST** `/editor/delete/{id}` |
-| `me.patch_update_project_log_by_id(id, type, patches)` | `me.projects.patch(id, project_type, patches)` |
-| `me.patch_update_project_log_by_id(...)` (single op) | `me.projects.patch_one(id, project_type, op, path, value=...)` |
+| `me.patch_update_project_log_by_id(id, type, patches)` | `me.projects.patch(project_id, patches, project_type=None)` |
+| `me.patch_update_project_log_by_id(...)` (single op) | `me.projects.patch_one(project_id, op, path, value=..., project_type=None)` |
 | *(no direct old equivalent)* | `me.projects.create(project_type, metadata)` |
 | *(no direct old equivalent)* | `me.projects.update(id, project_type, metadata)` |
 | *(no direct old equivalent)* | `me.projects.get_json(...)`, `get_json_field(...)`, `generate_pdf(...)`, `import_file(...)`, version helpers |
@@ -138,6 +138,8 @@ Methods that only queue work start with `queue_` and return the job id; pass `wa
 | `me.indicators.notes.add(...)` | `me.indicators.notes.upsert(...)` (adds or updates by note ID) |
 | `me.data_structures.export(...)` | `me.data_structures.export_json(...)` (pairs with `import_json`) |
 | `me.projects.import_project(project_type, file_path)` | `me.projects.import_file(project_type, file_path)` |
+| `me.projects.patch(id, project_type, patches, validate=False)` | `me.projects.patch(project_id, patches, project_type=None, validate=True)` — `project_type` is looked up when omitted; patches are checked before sending; the patched metadata is schema-validated by default |
+| `me.projects.patch_one(id, project_type, op, path, value=None)` | `me.projects.patch_one(project_id, op, path, value=..., from_path=None, project_type=None, validate=True)` — `value=None` now sends JSON `null`; `from_path` enables `move` / `copy` |
 | `me.publish.*(project_id="<idno>")` | The idno is resolved to the numeric id first (the publish endpoints need it) |
 | `me.jobs.list(project_id="<idno>")` | The idno is resolved to the numeric id (one extra `basic_info` call) |
 | `me.indicators.data_rows(..., limit=...)` *(any limit)* | Raises `ValueError` when `limit > 200` (server maximum); use `me.indicators.iter_data_rows(...)` |

@@ -767,13 +767,22 @@ List versions for a project.
 ```python
 patch(
     project_id: Union[int, str],
-    project_type: str,
     patches: List[Dict],
-    validate: bool = False
+    project_type: Optional[str] = None,
+    validate: bool = True
 ) → Dict
 ```
 
-Patch a project metadata document. 
+Apply JSON Patch operations (RFC 6902) to a project's metadata. 
+
+
+
+**Args:**
+ 
+ - <b>`project_id`</b>:  numeric project id or idno. 
+ - <b>`patches`</b>:  operations such as ``{"op": "replace", "path": "/series_description/name", "value": "..."}``;  they are checked (op, ``value`` / ``from``) and a missing leading ``/`` is added. 
+ - <b>`project_type`</b>:  the project's type; looked up with :meth:`basic_info` when not given. 
+ - <b>`validate`</b>:  validate the patched metadata against the schema (the server rejects invalid results). 
 
 ---
 
@@ -783,15 +792,18 @@ Patch a project metadata document.
 ```python
 patch_one(
     project_id: Union[int, str],
-    project_type: str,
     op: str,
     path: str,
-    value: Optional[str] = None,
-    validate: bool = False
+    value: Any = <object object at 0x109730720>,
+    from_path: Optional[str] = None,
+    project_type: Optional[str] = None,
+    validate: bool = True
 ) → Dict
 ```
 
-Apply a single JSON Patch operation to project metadata. 
+Apply one JSON Patch operation to a project's metadata (see :meth:`patch`). 
+
+``value`` is required for ``add``, ``replace`` and ``test`` and may be any JSON value, including None; ``from_path`` is the ``from`` of ``move`` and ``copy``. 
 
 ---
 

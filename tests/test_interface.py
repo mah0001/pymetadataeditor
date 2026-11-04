@@ -210,7 +210,9 @@ def test_projects_subclient_create_update_patch_delete(monkeypatch, metadata_edi
     updated = metadata_editor.projects.update("abc-idno", "timeseries-db", {"title": "new"})
     assert updated["ok"] is True
 
-    patched = metadata_editor.projects.patch("abc-idno", "timeseries-db", [{"op": "replace", "path": "/title", "value": "X"}])
+    patched = metadata_editor.projects.patch(
+        "abc-idno", [{"op": "replace", "path": "/title", "value": "X"}], project_type="timeseries-db"
+    )
     assert patched["ok"] is True
 
     deleted = metadata_editor.projects.delete("abc-idno")
@@ -430,30 +432,67 @@ def test_metadata_update(tmpdir, monkeypatch, metadata_editor):
 
 
 def test_projects_patch_one(monkeypatch, metadata_editor):
+    captured = []
+
     def mock_response(*args, **kwargs):
+        captured.append((args, kwargs))
         return MockResponse(http_status_code=200, json_data={})
 
     monkeypatch.setattr(requests, "request", mock_response)
 
-    metadata_editor.projects.patch_one(1, "timeseries", op="remove", path="/toc")
+    metadata_editor.projects.patch_one(1, op="remove", path="/toc", project_type="timeseries")
+    assert captured[-1][1]["json"] == {"patches": [{"op": "remove", "path": "/toc"}], "validate": True}
 
     for p in [
         {"op": "replace", "path": "/title", "value": "New Title"},
         {"op": "add", "path": "/description", "value": "Updated description."},
+        {"op": "replace", "path": "/count", "value": 3},
+        {"op": "add", "path": "/keywords", "value": [{"name": "x"}]},
     ]:
-        metadata_editor.projects.patch_one(1, "timeseries", **p)
+        metadata_editor.projects.patch_one(1, project_type="timeseries", **p)
+        assert captured[-1][1]["json"]["patches"][0]["value"] == p["value"]
+
+    # None is a JSON value (null), not "no value"
+    metadata_editor.projects.patch_one(1, op="replace", path="/abstract", value=None, project_type="timeseries")
+    assert captured[-1][1]["json"]["patches"] == [{"op": "replace", "path": "/abstract", "value": None}]
+
+    metadata_editor.projects.patch_one(1, op="move", path="/b", from_path="/a", project_type="timeseries")
+    assert captured[-1][1]["json"]["patches"] == [{"op": "move", "path": "/b", "from": "/a"}]
 
     with pytest.raises(ValueError, match="Invalid operation"):
-        metadata_editor.projects.patch_one(1, "timeseries", op="bad_op", path="/title", value="Should raise error")
+        metadata_editor.projects.patch_one(1, op="bad_op", path="/title", value="x", project_type="timeseries")
 
-    for p in [
-        {"op": "replace", "path": "title", "value": "Title without leading slash"},
-        {"op": "add", "path": "description", "value": "Description without leading slash"},
-    ]:
-        metadata_editor.projects.patch_one(1, "timeseries", **p)
+    metadata_editor.projects.patch_one(1, op="replace", path="title", value="No leading slash", project_type="timeseries")
+    assert captured[-1][1]["json"]["patches"][0]["path"] == "/title"
 
     with pytest.raises(ValueError, match="Operation 'replace' requires a 'value' field."):
-        metadata_editor.projects.patch_one(1, "timeseries", op="replace", path="/title")
+        metadata_editor.projects.patch_one(1, op="replace", path="/title", project_type="timeseries")
+    with pytest.raises(ValueError, match="requires a 'from' field"):
+        metadata_editor.projects.patch_one(1, op="copy", path="/b", project_type="timeseries")
+
+
+def test_projects_patch_checks_patches_and_looks_up_type(monkeypatch, metadata_editor):
+    captured = []
+
+    def mock_response(*args, **kwargs):
+        captured.append((args, kwargs))
+        if "/editor/basic_info/" in args[1]:
+            return MockResponse(http_status_code=200, json_data={"project": {"id": 7, "type": "survey"}})
+        return MockResponse(http_status_code=200, json_data={"status": "success"})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    with pytest.raises(ValueError, match="requires a 'value' field"):
+        metadata_editor.projects.patch("ABC", [{"op": "add", "path": "/x"}], project_type="survey")
+    assert not captured
+
+    metadata_editor.projects.patch("ABC", [{"op": "replace", "path": "study_desc/title", "value": "T"}], validate=False)
+    assert captured[0][0][1].endswith("/editor/basic_info/ABC")
+    assert captured[1][0][1].endswith("/editor/patch/survey/ABC")
+    assert captured[1][1]["json"] == {
+        "patches": [{"op": "replace", "path": "/study_desc/title", "value": "T"}],
+        "validate": False,
+    }
 
 
 metadata_types = [

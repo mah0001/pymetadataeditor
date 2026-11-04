@@ -89,9 +89,8 @@ class IndicatorNotesClient:
             if ";" in str(note["id"]):
                 raise ValueError(f"Note id must not contain ';': {note['id']!r}")
             clean.append({k: v for k, v in note.items() if v is not None})
-        return self._projects.patch(
-            project_id, project_type, [{"op": "add", "path": "/data_notes", "value": clean}], validate=False
-        )
+        patches = [{"op": "add", "path": "/data_notes", "value": clean}]
+        return self._projects.patch(project_id, patches, project_type=project_type, validate=False)
 
     def upsert(
         self,

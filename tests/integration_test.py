@@ -290,10 +290,10 @@ def test_projects_integration(tmpdir, metadata_editor):
                 print(f"patching with {p}")
                 metadata_editor.projects.patch_one(
                     project_id,
-                    metadata_type,
                     op=p["op"],
                     path=p["path"],
                     value=p.get("value"),
+                    project_type=metadata_type,
                 )
 
             # title_contains_updated = metadata_editor.projects.list(

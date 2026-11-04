@@ -14,6 +14,9 @@ OWNERSHIP_OPTIONS = ("self", "shared", "self,shared")
 
 ListFilter = Union[str, int, Iterable[Union[str, int]]]
 
+#: Marks ``patch_one`` calls without a ``value`` (None is a valid JSON Patch value).
+_NO_VALUE: Any = object()
+
 
 class ProjectsClient:
     """Project-focused thin wrappers around API endpoints."""
@@ -169,27 +172,48 @@ class ProjectsClient:
         return self._api.post_request(pth=endpoint, id=project_id, json=metadata)
 
     def patch(
-        self, project_id: ProjectIdOrIdno, project_type: str, patches: List[Dict], validate: bool = False
+        self,
+        project_id: ProjectIdOrIdno,
+        patches: List[Dict],
+        project_type: Optional[str] = None,
+        validate: bool = True,
     ) -> Dict:
-        """Patch a project metadata document."""
+        """Apply JSON Patch operations (RFC 6902) to a project's metadata.
+
+        Args:
+            project_id: numeric project id or idno.
+            patches: operations such as ``{"op": "replace", "path": "/series_description/name", "value": "..."}``;
+                they are checked (op, ``value`` / ``from``) and a missing leading ``/`` is added.
+            project_type: the project's type; looked up with :meth:`basic_info` when not given.
+            validate: validate the patched metadata against the schema (the server rejects invalid results).
+        """
+        patches = validate_json_patches(patches)
+        if project_type is None:
+            project_type = str(self._basic_info_field(project_id, "type"))
         endpoint = f"editor/patch/{normalize_project_type(project_type)}/" + "{}"
         return self._api.post_request(pth=endpoint, id=project_id, json={"patches": patches, "validate": validate})
 
     def patch_one(
         self,
         project_id: ProjectIdOrIdno,
-        project_type: str,
         op: str,
         path: str,
-        value: Optional[str] = None,
-        validate: bool = False,
+        value: Any = _NO_VALUE,
+        from_path: Optional[str] = None,
+        project_type: Optional[str] = None,
+        validate: bool = True,
     ) -> Dict:
-        """Apply a single JSON Patch operation to project metadata."""
-        patch = {"op": op, "path": path}
-        if value is not None:
+        """Apply one JSON Patch operation to a project's metadata (see :meth:`patch`).
+
+        ``value`` is required for ``add``, ``replace`` and ``test`` and may be any JSON value, including None;
+        ``from_path`` is the ``from`` of ``move`` and ``copy``.
+        """
+        patch: Dict[str, Any] = {"op": op, "path": path}
+        if value is not _NO_VALUE:
             patch["value"] = value
-        patches = validate_json_patches([patch])
-        return self.patch(project_id, project_type, patches, validate=validate)
+        if from_path is not None:
+            patch["from"] = from_path
+        return self.patch(project_id, [patch], project_type=project_type, validate=validate)
 
     def delete(self, project_id: ProjectIdOrIdno) -> Dict:
         """Delete a project by internal id or idno (POST, for environments that block GET deletes)."""

@@ -16,6 +16,13 @@ API_REFERENCE_CLASSES = [
     "pymetadataeditor.collections.CollectionsClient",
     "pymetadataeditor.templates_client.TemplatesClient",
     "pymetadataeditor.resources.ResourcesClient",
+    "pymetadataeditor.jobs.JobsClient",
+    "pymetadataeditor.publish.PublishClient",
+    "pymetadataeditor.uploads.UploadsClient",
+    "pymetadataeditor.data_structures.DataStructuresClient",
+    "pymetadataeditor.codelists.CodelistsClient",
+    "pymetadataeditor.indicators.IndicatorsClient",
+    "pymetadataeditor.indicators.IndicatorNotesClient",
     "pymetadataeditor.api_client.ApiClient",
 ]
 
@@ -97,6 +104,13 @@ def generate_api_reference(docs_dir: str = "docs") -> None:
         out.write("| `CollectionsClient` | `me.collections` |\n")
         out.write("| `TemplatesClient` | `me.templates` |\n")
         out.write("| `ResourcesClient` | `me.resources` |\n")
+        out.write("| `JobsClient` | `me.jobs` |\n")
+        out.write("| `PublishClient` | `me.publish` |\n")
+        out.write("| `UploadsClient` | `me.uploads` |\n")
+        out.write("| `DataStructuresClient` | `me.data_structures` |\n")
+        out.write("| `CodelistsClient` | `me.codelists` |\n")
+        out.write("| `IndicatorsClient` | `me.indicators` |\n")
+        out.write("| `IndicatorNotesClient` | `me.indicators.notes` |\n")
         out.write("| `ApiClient` | `me.api` |\n\n")
 
         for import_path in API_REFERENCE_CLASSES:
@@ -116,6 +130,10 @@ def generate_api_reference(docs_dir: str = "docs") -> None:
 
 
 if __name__ == "__main__":
+    if "--api-only" in sys.argv:
+        generate_api_reference()
+        sys.exit(0)
+
     filenames = [f.split(".")[0] for f in os.listdir("demo") if f.endswith(".ipynb")]
     markdown_exporter = MarkdownExporter()
 

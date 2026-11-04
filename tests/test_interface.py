@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 from requests.exceptions import SSLError
 
 from pymetadataeditor import MetadataEditor
-from pymetadataeditor.exceptions import DeleteNotAppliedError, TemplateError
+from pymetadataeditor.exceptions import ApiError, DeleteNotAppliedError, TemplateError
 from pymetadataeditor.requester import RequestsWithSpecificErrors
 
 
@@ -96,7 +96,7 @@ def test_MetadataEditor_instantiation(monkeypatch):
     with pytest.raises(requests.HTTPError) as e:
         me = MetadataEditor(api_url="https://example.com", api_key=test_api_key)
         me.projects.list(limit=100)
-    assert str(e.value).split(".")[0] == "Page not found"
+    assert str(e.value).startswith("HTTP 404 Not Found for https://example.com/editor")
 
     # bad SSL
     def mock_response(*args, **kwargs):
@@ -166,7 +166,7 @@ def test_projects_subclient_list_and_get(monkeypatch, metadata_editor):
 
     def mock_response(*args, **kwargs):
         captured.append((args, kwargs))
-        if kwargs.get("params") is not None:
+        if args[1].endswith("/editor"):
             return MockResponse(http_status_code=200, json_data={"projects": [{"id": "p1"}], "total": 1})
         return MockResponse(http_status_code=200, json_data={"project": {"id": "my-idno", "title": "Example"}})
 
@@ -179,7 +179,7 @@ def test_projects_subclient_list_and_get(monkeypatch, metadata_editor):
         date_start="2026-01-01",
         date_end="2026-12-31",
         collection="1,2",
-        exclude_collections="true",
+        exclude_collections=True,
         ownership="self",
         users="4,5",
     )
@@ -191,6 +191,8 @@ def test_projects_subclient_list_and_get(monkeypatch, metadata_editor):
     assert captured[0][0][1].endswith("/editor")
     assert captured[0][1]["params"]["date_start"] == "2026-01-01"
     assert captured[0][1]["params"]["users"] == "4,5"
+    assert captured[0][1]["params"]["keywords"] == "a b"
+    assert captured[0][1]["params"]["exclude_collections"] == "true"
     assert captured[1][1]["params"]["version"] == "1.0.0"
 
 
@@ -208,7 +210,9 @@ def test_projects_subclient_create_update_patch_delete(monkeypatch, metadata_edi
     updated = metadata_editor.projects.update("abc-idno", "timeseries-db", {"title": "new"})
     assert updated["ok"] is True
 
-    patched = metadata_editor.projects.patch("abc-idno", "timeseries-db", [{"op": "replace", "path": "/title", "value": "X"}])
+    patched = metadata_editor.projects.patch(
+        "abc-idno", [{"op": "replace", "path": "/title", "value": "X"}], project_type="timeseries-db"
+    )
     assert patched["ok"] is True
 
     deleted = metadata_editor.projects.delete("abc-idno")
@@ -236,16 +240,16 @@ def test_projects_subclient_json_pdf_import_and_versions(monkeypatch, metadata_e
 
     import_file = tmp_path / "demo.json"
     import_file.write_text("{}")
-    metadata_editor.projects.import_project("document", str(import_file))
+    metadata_editor.projects.import_file("document", str(import_file))
 
     metadata_editor.projects.list_versions("idno-1", version="1.2.0")
     metadata_editor.projects.create_version("idno-1", "minor", "added section")
     metadata_editor.projects.delete_version("idno-1", "1.2.0")
-    metadata_editor.projects.delete_version_by_id("idno-1", "1.2.0")
+    metadata_editor.projects.delete_version_by_id(1234)
 
-    assert captured[0][0][1].endswith("/editor/jsonidno-1")
+    assert captured[0][0][1].endswith("/editor/json/idno-1")
     assert captured[0][1]["params"]["exclude_variables"] == 1
-    assert captured[1][0][1].endswith("/editor/json-field/idno-1")
+    assert captured[1][0][1].endswith("/editor/json_field/idno-1")
     assert captured[1][1]["params"]["path"] == "/idno"
     assert captured[2][0][1].endswith("/editor/generate_pdf/idno-1")
     assert captured[2][1]["params"]["template_uid"] == "uid123"
@@ -255,7 +259,7 @@ def test_projects_subclient_json_pdf_import_and_versions(monkeypatch, metadata_e
     assert captured[5][1]["json"]["version_type"] == "minor"
     assert captured[5][1]["json"]["version_notes"] == "added section"
     assert captured[6][1]["json"]["version"] == "1.2.0"
-    assert captured[7][1]["json"]["version"] == "1.2.0"
+    assert captured[7][1]["json"] == {"id": 1234}
 
 
 def test_projects_list(monkeypatch, metadata_editor):
@@ -287,13 +291,13 @@ def test_projects_get(monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(
             http_status_code=400,
-            json_data={},
-            error_message={"message": "You don't have permission to access this project"},
+            json_data={"status": "failed", "message": "You don't have permission to access this project"},
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    with pytest.raises(Exception, match="You don't have permission to access this project"):
+    with pytest.raises(ApiError, match="You don't have permission to access this project") as e:
         metadata_editor.projects.get(1)
+    assert e.value.status_code == 400
 
     project = {"status": "success", "project": {"id": "2", "created": "2024-06-11T09:58:14-04:00"}}
 
@@ -320,14 +324,14 @@ def test_projects_get(monkeypatch, metadata_editor):
             "indicator",
             {
                 "idno": "GB123",
-                "series_description": {"doi": "string", "name": "Gordons Test", "display_name": "string"},
+                "series_description": {"doi": "string", "name": "Test Indicator", "display_name": "string"},
             },
             {
                 "idno": "GB123",
                 "series_description": {
                     "idno": "string",
                     "doi": "string",
-                    "name": "Gordons Test",
+                    "name": "Test Indicator",
                     "display_name": "string",
                 },
             },
@@ -385,8 +389,7 @@ def test_metadata_update(tmpdir, monkeypatch, metadata_editor):
     def mock_response(*args, **kwargs):
         return MockResponse(
             http_status_code=400,
-            json_data={},
-            error_message={"message": "You don't have permission to access this project"},
+            json_data={"status": "failed", "message": "You don't have permission to access this project"},
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
@@ -398,7 +401,7 @@ def test_metadata_update(tmpdir, monkeypatch, metadata_editor):
 
     with pytest.raises(Exception, match="You don't have permission to access this project"):
         metadata_editor.metadata.update(
-            id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
+            project_id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
         )
 
     # id is good
@@ -415,12 +418,12 @@ def test_metadata_update(tmpdir, monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
     metadata_editor.metadata.update(
-        id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
+        project_id=1, new_metadata={"series_description": series_description, "metadata_information": metadata_information}
     )
 
     # use pydantic
     model = metadata_editor.make_metadata_outline("indicator", "pydantic")
-    metadata_editor.metadata.update(id=1, new_metadata=model)
+    metadata_editor.metadata.update(project_id=1, new_metadata=model)
 
     # use excel
     metadata_editor.make_metadata_outline(
@@ -429,30 +432,67 @@ def test_metadata_update(tmpdir, monkeypatch, metadata_editor):
 
 
 def test_projects_patch_one(monkeypatch, metadata_editor):
+    captured = []
+
     def mock_response(*args, **kwargs):
+        captured.append((args, kwargs))
         return MockResponse(http_status_code=200, json_data={})
 
     monkeypatch.setattr(requests, "request", mock_response)
 
-    metadata_editor.projects.patch_one(1, "timeseries", op="remove", path="/toc")
+    metadata_editor.projects.patch_one(1, op="remove", path="/toc", project_type="timeseries")
+    assert captured[-1][1]["json"] == {"patches": [{"op": "remove", "path": "/toc"}], "validate": True}
 
     for p in [
         {"op": "replace", "path": "/title", "value": "New Title"},
         {"op": "add", "path": "/description", "value": "Updated description."},
+        {"op": "replace", "path": "/count", "value": 3},
+        {"op": "add", "path": "/keywords", "value": [{"name": "x"}]},
     ]:
-        metadata_editor.projects.patch_one(1, "timeseries", **p)
+        metadata_editor.projects.patch_one(1, project_type="timeseries", **p)
+        assert captured[-1][1]["json"]["patches"][0]["value"] == p["value"]
+
+    # None is a JSON value (null), not "no value"
+    metadata_editor.projects.patch_one(1, op="replace", path="/abstract", value=None, project_type="timeseries")
+    assert captured[-1][1]["json"]["patches"] == [{"op": "replace", "path": "/abstract", "value": None}]
+
+    metadata_editor.projects.patch_one(1, op="move", path="/b", from_path="/a", project_type="timeseries")
+    assert captured[-1][1]["json"]["patches"] == [{"op": "move", "path": "/b", "from": "/a"}]
 
     with pytest.raises(ValueError, match="Invalid operation"):
-        metadata_editor.projects.patch_one(1, "timeseries", op="bad_op", path="/title", value="Should raise error")
+        metadata_editor.projects.patch_one(1, op="bad_op", path="/title", value="x", project_type="timeseries")
 
-    for p in [
-        {"op": "replace", "path": "title", "value": "Title without leading slash"},
-        {"op": "add", "path": "description", "value": "Description without leading slash"},
-    ]:
-        metadata_editor.projects.patch_one(1, "timeseries", **p)
+    metadata_editor.projects.patch_one(1, op="replace", path="title", value="No leading slash", project_type="timeseries")
+    assert captured[-1][1]["json"]["patches"][0]["path"] == "/title"
 
     with pytest.raises(ValueError, match="Operation 'replace' requires a 'value' field."):
-        metadata_editor.projects.patch_one(1, "timeseries", op="replace", path="/title")
+        metadata_editor.projects.patch_one(1, op="replace", path="/title", project_type="timeseries")
+    with pytest.raises(ValueError, match="requires a 'from' field"):
+        metadata_editor.projects.patch_one(1, op="copy", path="/b", project_type="timeseries")
+
+
+def test_projects_patch_checks_patches_and_looks_up_type(monkeypatch, metadata_editor):
+    captured = []
+
+    def mock_response(*args, **kwargs):
+        captured.append((args, kwargs))
+        if "/editor/basic_info/" in args[1]:
+            return MockResponse(http_status_code=200, json_data={"project": {"id": 7, "type": "survey"}})
+        return MockResponse(http_status_code=200, json_data={"status": "success"})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+
+    with pytest.raises(ValueError, match="requires a 'value' field"):
+        metadata_editor.projects.patch("ABC", [{"op": "add", "path": "/x"}], project_type="survey")
+    assert not captured
+
+    metadata_editor.projects.patch("ABC", [{"op": "replace", "path": "study_desc/title", "value": "T"}], validate=False)
+    assert captured[0][0][1].endswith("/editor/basic_info/ABC")
+    assert captured[1][0][1].endswith("/editor/patch/survey/ABC")
+    assert captured[1][1]["json"] == {
+        "patches": [{"op": "replace", "path": "/study_desc/title", "value": "T"}],
+        "validate": False,
+    }
 
 
 metadata_types = [
@@ -498,7 +538,7 @@ def test_make_metadata_outline(tmpdir, monkeypatch, metadata_editor, metadata_ty
                 "series_description": {
                     "idno": "string",
                     "doi": "string",
-                    "name": "Gordons Test",
+                    "name": "Test Indicator",
                     "display_name": "string",
                 },
             },
@@ -519,7 +559,7 @@ def test_make_metadata_outline(tmpdir, monkeypatch, metadata_editor, metadata_ty
         ("video", {"video_description": {"idno": "example_idno", "title": "example_title"}}),
     ],
 )
-def test_metadata_get_for_project(tmpdir, monkeypatch, metadata_editor, metadata_type, metadata):
+def test_metadata_get(tmpdir, monkeypatch, metadata_editor, metadata_type, metadata):
     # bad project type
     def mock_response(*args, **kwargs):
         return MockResponse(
@@ -541,12 +581,12 @@ def test_metadata_get_for_project(tmpdir, monkeypatch, metadata_editor, metadata
     monkeypatch.setattr(metadata_editor, "get_metadata_class", mock_get_metadata_class)
 
     with pytest.raises(TemplateError):
-        metadata_editor.metadata.get_for_project(1, output_mode="pydantic")
+        metadata_editor.metadata.get(1, output_mode="pydantic")
     with pytest.raises(TemplateError):
-        metadata_editor.metadata.get_for_project(1, output_mode="dict")
+        metadata_editor.metadata.get(1, output_mode="dict")
     with pytest.raises(TemplateError):
-        metadata_editor.metadata.get_for_project(1, output_mode="excel")
-    ts = metadata_editor.metadata.get_for_project(1, output_mode="dict", template_uid="none")
+        metadata_editor.metadata.get(1, output_mode="excel")
+    ts = metadata_editor.metadata.get(1, output_mode="dict", template_uid="none")
 
     def mock_response(*args, **kwargs):
         return MockResponse(
@@ -562,14 +602,14 @@ def test_metadata_get_for_project(tmpdir, monkeypatch, metadata_editor, metadata
     monkeypatch.setattr(requests, "request", mock_response)
 
     # as object
-    ts = metadata_editor.metadata.get_for_project(1, output_mode="pydantic")
+    ts = metadata_editor.metadata.get(1, output_mode="pydantic")
     assert isinstance(ts, BaseModel), type(ts)
 
-    ts = metadata_editor.metadata.get_for_project(1, output_mode="dict")
+    ts = metadata_editor.metadata.get(1, output_mode="dict")
     assert isinstance(ts, dict)
 
     filename = os.path.join(tmpdir, f"metadata_get_for_project_test_{metadata_type}.xlsx")
-    metadata_editor.metadata.get_for_project(1, output_mode="excel", filename=filename, title="metadata_get_for_project")
+    metadata_editor.metadata.get(1, output_mode="excel", filename=filename, title="metadata_get_for_project")
 
 
 def test_api_client_verbs(monkeypatch, metadata_editor):
@@ -600,7 +640,7 @@ def test_api_client_verbs(monkeypatch, metadata_editor):
     assert captured[-1][0][1].endswith("/collections/3")
 
 
-def test_generic_api_request_delegates_to_api(monkeypatch, metadata_editor):
+def test_api_request_generic(monkeypatch, metadata_editor):
     captured = []
 
     def mock_response(*args, **kwargs):
@@ -608,7 +648,7 @@ def test_generic_api_request_delegates_to_api(monkeypatch, metadata_editor):
         return MockResponse(http_status_code=200, json_data={"projects": []})
 
     monkeypatch.setattr(requests, "request", mock_response)
-    response = metadata_editor.generic_api_request("get", "/editor", params={"limit": 2})
+    response = metadata_editor.api.request("get", "/editor", params={"limit": 2})
     assert response == {"projects": []}
     assert captured[0][0][0] == "get"
 
@@ -738,7 +778,7 @@ def test_list_projects_in_collection(monkeypatch, metadata_editor):
 
     monkeypatch.setattr(requests, "request", mock_response)
 
-    response = metadata_editor.collections.list_projects_via_editor(1, limit=100)
+    response = metadata_editor.collections.list_projects(1, limit=100)
     assert len(response["projects"]) == 2
 
     # # call is good, but the number of projects is limited
@@ -809,12 +849,10 @@ def test_ensure_template_cached(monkeypatch, metadata_editor):
         return MockResponse(
             http_status_code=200,
             json_data={
-                "result": {
-                    "uid": "example",
-                    "name": "example name",
-                    "data_type": "microdata",
-                    "template": {},
-                }
+                "uid": "example",
+                "name": "example name",
+                "data_type": "microdata",
+                "template": {},
             },
         )
 
@@ -923,3 +961,83 @@ def test_create_update_delete_resource(
 
     monkeypatch.setattr(RequestsWithSpecificErrors, "post_request", mock_delete_response)
     metadata_editor.resources.delete(project_id=1, resource_id=1)
+
+
+def _paged_projects(total: int, captured: list):
+    rows = [{"id": i, "title": f"p{i}"} for i in range(1, total + 1)]
+
+    def mock_response(*args, **kwargs):
+        params = kwargs.get("params") or {}
+        captured.append(params)
+        offset, limit = int(params.get("offset", 0)), int(params.get("limit", 100))
+        return MockResponse(http_status_code=200, json_data={"total": total, "projects": rows[offset : offset + limit]})
+
+    return mock_response
+
+
+def test_projects_iter_all_pages_with_stable_sort(monkeypatch, metadata_editor):
+    captured = []
+    monkeypatch.setattr(requests, "request", _paged_projects(5, captured))
+
+    ids = [p["id"] for p in metadata_editor.projects.iter_all(page_size=2, metadata_type=["indicator", "table"])]
+    assert ids == [1, 2, 3, 4, 5]
+    assert len(captured) == 3  # stops at the server total
+    assert all(c["sort_by"] == "id_asc" and c["type"] == "indicator,table" for c in captured)
+
+    captured.clear()
+    assert [p["id"] for p in metadata_editor.projects.iter_all(page_size=2, max_items=3)] == [1, 2, 3]
+    assert [c["limit"] for c in captured] == [2, 1]
+
+    all_projects = metadata_editor.projects.list_all(page_size=2)
+    assert all_projects["total"] == 5
+
+
+def test_projects_list_filters_and_validation(monkeypatch, metadata_editor):
+    captured = []
+    monkeypatch.setattr(requests, "request", _paged_projects(1, captured))
+
+    metadata_editor.projects.list(tag=[1, 2], created_by=3, changed_by="4,5", collection=[7], ownership="shared, self")
+    params = captured[-1]
+    assert params["tag"] == "1,2"
+    assert params["created_by"] == "3"
+    assert params["changed_by"] == "4,5"
+    assert params["collection"] == "7"
+    assert params["ownership"] == "self,shared"
+    assert "exclude_collections" not in params
+
+    with pytest.raises(ValueError):
+        metadata_editor.projects.list(sort_by="newest")
+    with pytest.raises(ValueError):
+        metadata_editor.projects.list(ownership="everyone")
+    with pytest.raises(ValueError):
+        metadata_editor.projects.list(exclude_collections=True)
+
+    assert metadata_editor.projects.count(metadata_type="indicator") == 1
+    assert captured[-1]["limit"] == 1
+
+
+def test_collections_list_projects_uses_editor_listing(monkeypatch, metadata_editor):
+    captured = []
+
+    def mock_response(*args, **kwargs):
+        captured.append((args, kwargs))
+        return MockResponse(http_status_code=200, json_data={"total": 1, "projects": [{"id": 1}]})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    metadata_editor.collections.list_projects(9, keywords="health survey")
+    assert captured[-1][0][0] == "get"
+    assert captured[-1][1]["params"]["collection"] == "9"
+    assert captured[-1][1]["params"]["keywords"] == "health survey"
+    assert metadata_editor.collections.count_projects(9) == 1
+
+
+def test_templates_create_route(monkeypatch, metadata_editor):
+    captured = []
+
+    def mock_response(*args, **kwargs):
+        captured.append((args, kwargs))
+        return MockResponse(http_status_code=200, json_data={"status": "success"})
+
+    monkeypatch.setattr(requests, "request", mock_response)
+    metadata_editor.templates.create({"name": "x"})
+    assert captured[-1][0][1].endswith("/templates/create")

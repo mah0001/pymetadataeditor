@@ -108,6 +108,7 @@ def test_upload_sends_chunks(me, calls, tmp_path):
     assert calls[0]["json"] == {"filename": "data.csv", "total_size": 25, "total_chunks": 3, "chunk_size": 10}
     chunks = [c for c in calls if _path(c).startswith("uploads/chunk/")]
     assert [c["data"]["chunk_number"] for c in chunks] == ["0", "1", "2"]
+    assert [c["data"]["chunk_size"] for c in chunks] == ["10", "10", "5"]
     assert all(_path(c) == "uploads/chunk/abc" for c in chunks)
 
 
@@ -199,25 +200,60 @@ def test_export_data_streams_to_file(me, calls, tmp_path):
     assert calls[0]["stream"] is True
 
 
-def test_publish_resolves_numeric_id_and_steps(me, calls):
+def test_publish_project_resolves_id_and_runs_steps(me, calls):
     calls.queue.extend([
         FakeResponse(body={"status": "success", "project": {"id": "9"}}),
         FakeResponse(body={"status": "success"}),
         FakeResponse(body={"dsd": {"status": "skipped"}, "data": None}),
         FakeResponse(body={"dsd": None, "data": {"status": "success"}}),
+        FakeResponse(400, body={"status": "failed", "message": "Thumbnail file not found"}),
+        FakeResponse(body=[{"status": "success"}]),
     ])
-    out = me.indicators.publish("TRN_NOTES_TEST_LIT", 2, metadata_options={"published": 1})
+    out = me.publish.project(
+        "TRN_NOTES_TEST_LIT", 2, publish_dsd=True, publish_indicator_data=True, options={"published": 1}
+    )
     paths = [_path(c) for c in calls]
-    assert paths == ["editor/TRN_NOTES_TEST_LIT", "publish/9/2", "publish/indicator/9/2", "publish/indicator/9/2"]
-    assert calls[1]["json"] == {"overwrite": "yes", "published": 1}
+    assert paths == [
+        "editor/basic_info/TRN_NOTES_TEST_LIT", "publish/9/2", "publish/indicator/9/2", "publish/indicator/9/2",
+        "publish/thumbnail/9/2", "publish/external_resources/9/2",
+    ]
+    assert calls[1]["json"] == {"published": 1}
     assert calls[2]["json"]["publish_dsd"] is True and calls[2]["json"]["dsd_force"] is False
     assert calls[3]["json"]["publish_indicator_data"] is True
-    assert out == {"metadata": {"status": "success"}, "dsd": {"status": "skipped"}, "data": {"status": "success"}}
+    assert out["results"]["metadata"] == {"status": "success"}
+    assert out["results"]["dsd"] == {"status": "skipped"} and out["results"]["indicator_data"] == {"status": "success"}
+    assert "Thumbnail file not found" in out["errors"]["thumbnail"]
+    assert out["results"]["resources"] == [{"status": "success"}]
 
 
-def test_jobs_import_indicator_data_and_publish_dsd_force(me, calls):
-    me.jobs.import_indicator_data(9, "u1", "TRN_LIT_RATE")
-    me.jobs.publish_to_nada(9, 2, publish_dsd=True, dsd_force=True)
+def test_publish_project_stop_on_error(me, calls):
+    calls.queue.append(FakeResponse(400, body={"status": "failed", "message": "bad"}))
+    out = me.publish.project(9, 2, stop_on_error=True)
+    assert list(out["errors"]) == ["metadata"] and len(calls) == 1
+
+
+def test_publish_resource_body(me, calls):
+    me.publish.resource(9, 2, 15, overwrite=True)
+    assert _path(calls[0]) == "publish/external_resource/9/2"
+    assert calls[0]["json"] == {"resource_id": 15, "overwrite": "yes"}
+
+
+def test_indicator_queue_recompute_and_wait(me, calls, monkeypatch):
+    monkeypatch.setattr("pymetadataeditor.indicators.time.sleep", lambda _: None)
+    calls.queue.extend([
+        FakeResponse(body={"status": "success", "job_id": "j1"}),
+        FakeResponse(body={"status": "success", "job": {"status": "running"}}),
+        FakeResponse(body={"status": "success", "job": {"status": "done", "result": {"rows": 3}}}),
+    ])
+    out = me.indicators.queue_recompute(9, wait=True)
+    assert _path(calls[0]) == "indicator_dsd/data_recompute/9"
+    assert calls[1]["params"] == {"job_id": "j1"}
+    assert out["status"] == "done" and out["timed_out"] is False and out["job"]["result"] == {"rows": 3}
+
+
+def test_jobs_queue_indicator_import_and_publish_dsd_force(me, calls):
+    me.jobs.queue_indicator_data_import(9, "u1", "TRN_LIT_RATE")
+    me.jobs.queue_publish_to_nada(9, 2, publish_dsd=True, dsd_force=True)
     assert _path(calls[0]) == "jobs/import_indicator_data"
     assert calls[0]["json"]["indicator_value"] == "TRN_LIT_RATE"
     assert calls[1]["json"]["dsd_force"] is True
@@ -266,3 +302,96 @@ def test_wide_to_long_labels_and_key_check(tmp_path):
     table = tidy.write_notes_csv({"N01": "A note"}, str(tmp_path / "n.csv"), indicator_id="X")
     assert table.to_dict("records") == [{"note_id": "N01", "indicator_id": "X", "scope": "cell", "column": "NOTE_ID",
                                          "note": "A note"}]
+
+
+# ── paging ───────────────────────────────────────────────────────────────────
+
+
+def test_codelists_list_uses_page_params(me, calls):
+    me.codelists.list(search="sex", page=2, per_page=10, flat=True, exclude_archived=True)
+    params = calls[0]["params"]
+    assert params["page"] == 2 and params["per_page"] == 10
+    assert params["flat"] == "1" and params["exclude_archived"] == "1"
+    assert "limit" not in params and "offset" not in params
+
+
+def test_codelists_iter_all_stops_at_total(me, calls):
+    calls.queue.extend([
+        FakeResponse(body={"codelists": [{"id": 1}, {"id": 2}], "total": 3}),
+        FakeResponse(body={"codelists": [{"id": 3}], "total": 3}),
+    ])
+    assert [c["id"] for c in me.codelists.iter_all(per_page=2)] == [1, 2, 3]
+    assert [c["params"]["page"] for c in calls] == [1, 2]
+
+
+def test_data_structures_iter_projects(me, calls):
+    calls.queue.extend([
+        FakeResponse(body={"projects": [{"id": 1}, {"id": 2}], "total": 3, "page": 1, "per_page": 2}),
+        FakeResponse(body={"projects": [{"id": 3}], "total": 3, "page": 2, "per_page": 2}),
+    ])
+    assert [p["id"] for p in me.data_structures.iter_projects("SDG_DSD", per_page=2)] == [1, 2, 3]
+    assert _path(calls[0]) == "data_structures/projects/SDG_DSD"
+    assert [c["params"]["page"] for c in calls] == [1, 2]
+
+
+def test_codelists_iter_codes(me, calls):
+    calls.queue.extend([
+        FakeResponse(body={"codes": [{"id": 1}, {"id": 2}], "total": 3}),
+        FakeResponse(body={"codes": [{"id": 3}], "total": 3}),
+    ])
+    assert [c["id"] for c in me.codelists.iter_codes(5, page_size=2, compact=True)] == [1, 2, 3]
+    assert calls[1]["params"]["offset"] == 2 and calls[1]["params"]["compact"] == "1"
+
+
+def test_jobs_list_limit_and_iter_all(me, calls):
+    with pytest.raises(ValueError):
+        me.jobs.list(limit=500)
+    calls.queue.extend([
+        FakeResponse(body={"jobs": [{"uuid": str(i)} for i in range(100)], "total": 101}),
+        FakeResponse(body={"jobs": [{"uuid": "100"}], "total": 101}),
+    ])
+    jobs = list(me.jobs.iter_all(status="completed", created_from="2026-01-01"))
+    assert len(jobs) == 101
+    assert calls[0]["params"]["limit"] == 100 and calls[1]["params"]["offset"] == 100
+    assert calls[0]["params"]["created_from"] == "2026-01-01"
+
+
+def test_jobs_list_resolves_idno(me, calls):
+    calls.queue.extend([
+        FakeResponse(body={"status": "success", "project": {"id": "42", "idno": "MY-IDNO"}}),
+        FakeResponse(body={"jobs": [], "total": 0}),
+    ])
+    me.jobs.list(project_id="MY-IDNO")
+    assert _path(calls[0]) == "editor/basic_info/MY-IDNO"
+    assert calls[1]["params"]["project_id"] == 42
+
+
+def test_projects_resolve_id_and_idno(me, calls):
+    assert me.projects.resolve_id(" 17 ") == 17 and not calls
+    calls.queue.extend([
+        FakeResponse(body={"status": "success", "project": {"id": "42", "idno": "MY-IDNO"}}),
+        FakeResponse(body={"status": "success", "project": {"id": "42", "idno": "MY-IDNO"}}),
+        FakeResponse(body={"status": "success", "project": {}}),
+    ])
+    assert me.projects.resolve_id("MY-IDNO") == 42
+    assert me.projects.resolve_idno(42) == "MY-IDNO"
+    assert _path(calls[1]) == "editor/basic_info/42"
+    with pytest.raises(ValueError):
+        me.projects.resolve_idno("MISSING")
+
+
+def test_indicator_iter_data_rows(me, calls):
+    with pytest.raises(ValueError):
+        me.indicators.data_rows(9, limit=1000)
+    calls.queue.extend([
+        FakeResponse(body={"status": "success", "data": {"rows": [{"v": i} for i in range(200)], "total_row_count": 201}}),
+        FakeResponse(body={"status": "success", "data": {"rows": [{"v": 200}], "total_row_count": 201}}),
+    ])
+    rows = list(me.indicators.iter_data_rows(9, filters={"SEX": ["F"]}))
+    assert len(rows) == 201
+    assert calls[1]["params"]["offset"] == 200
+
+
+def test_indicator_get_dsd_options(me, calls):
+    me.indicators.get_dsd(9, detailed=True, resolve_codelists=True)
+    assert calls[0]["params"] == {"detailed": 1, "resolve_codelists": 1}

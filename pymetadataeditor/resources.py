@@ -2,6 +2,7 @@
 
 from typing import Dict, Optional, Union
 
+from .api_types import ProjectIdOrIdno
 from .requester import RequestsWithSpecificErrors
 
 
@@ -11,13 +12,13 @@ class ResourcesClient:
     def __init__(self, api: RequestsWithSpecificErrors):
         self._api = api
 
-    def list(self, project_id: Union[int, str]) -> Dict:
+    def list(self, project_id: ProjectIdOrIdno) -> Dict:
         """List resources attached to a project."""
         return self._api.get_request(pth="/resources/{}", id=project_id)
 
     def create(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         dctype: str,
         title: str,
         author: Optional[str] = None,
@@ -64,7 +65,7 @@ class ResourcesClient:
 
     def update(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         resource_id: Union[int, str],
         dctype: str,
         title: str,
@@ -105,12 +106,12 @@ class ResourcesClient:
                 return self._api.post_request(pth=pth, data=data, files={"file": handle})
         return self._api.post_request(pth=pth, data=data)
 
-    def delete(self, project_id: Union[int, str], resource_id: Union[int, str]) -> Dict:
+    def delete(self, project_id: ProjectIdOrIdno, resource_id: Union[int, str]) -> Dict:
         """Delete a resource from a project."""
         pth = f"/resources/delete/{project_id}/{resource_id}"
         return self._api.post_request(pth=pth)
 
-    def import_file(self, project_id: Union[int, str], file_path: str) -> Dict:
+    def import_file(self, project_id: ProjectIdOrIdno, file_path: str) -> Dict:
         """Import resources from a file."""
         with open(file_path, "rb") as handle:
             return self._api.post_request(

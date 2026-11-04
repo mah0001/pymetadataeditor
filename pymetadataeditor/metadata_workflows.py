@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
-from pydantic import BaseModel, ValidationError
 from metadataschemas.utils.utils import merge_dicts, standardize_keys_in_dict
+from pydantic import BaseModel, ValidationError
 
+from .api_types import ProjectIdOrIdno, normalize_project_type
 from .constants import DICT_MODES, EXCEL_MODES, PYDANTIC_MODES
-from .api_types import normalize_project_type
 from .exceptions import TemplateError
-from .utils import remove_empty_from_dict, validate_json_patches
+from .utils import remove_empty_from_dict
 
 if TYPE_CHECKING:
     from .interface import MetadataEditor
+
+#: Microdata parts stored by the editor outside the project metadata.
+MICRODATA_TABLES = ("data_files", "variables", "variable_groups")
 
 
 class MetadataWorkflowsClient:
@@ -22,17 +25,44 @@ class MetadataWorkflowsClient:
     def __init__(self, editor: "MetadataEditor"):
         self._editor = editor
 
-    def get_for_project(
+    def _add_microdata_tables(
+        self, project_id: ProjectIdOrIdno, project: Dict, include_variables: bool = False
+    ) -> None:
+        """Add a microdata project's data files, variables and variable groups to ``project["metadata"]``.
+
+        The editor stores these outside the project metadata; the JSON export returns them.
+        """
+        try:
+            project_type = self._editor._mm.standardize_metadata_name(project.get("type", ""))
+        except ValueError:
+            return
+        if project_type != "microdata":
+            return
+        export = self._editor.projects.get_json(project_id, exclude_variables=None if include_variables else 1)
+        metadata = project.get("metadata") or {}
+        for key in MICRODATA_TABLES:
+            if key == "variables" and not include_variables:
+                continue
+            if export.get(key) and not metadata.get(key):
+                metadata[key] = export[key]
+        project["metadata"] = metadata
+
+    def get(
         self,
-        id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         output_mode: str,
         template_uid: Optional[str] = None,
         simplify: bool = True,
         filename: Optional[str] = None,
         title: Optional[str] = None,
         debug: bool = False,
+        include_variables: bool = False,
     ) -> Union[BaseModel, Dict, str]:
-        """Return project metadata as dict, pydantic model, or Excel file."""
+        """Return project metadata as dict, pydantic model, or Excel file.
+
+        For microdata, the data files and variable groups (stored apart from the study metadata) are included.
+        ``include_variables=True`` also adds the variables, which can be large.
+        """
         output_mode = output_mode.lower().strip()
         if output_mode not in DICT_MODES + EXCEL_MODES + PYDANTIC_MODES:
             raise ValueError(f"output_mode must be 'pydantic', 'dict' or 'excel' but found '{output_mode}'")
@@ -41,7 +71,8 @@ class MetadataWorkflowsClient:
         if template_uid == "none" and output_mode not in DICT_MODES:
             raise ValueError("When template_uid='none' then output_mode must be 'dict'")
 
-        project = self._editor.projects.get(id)["project"]
+        project = self._editor.projects.get(project_id)["project"]
+        self._add_microdata_tables(project_id, project, include_variables=include_variables)
 
         if template_uid == "none":
             return project["metadata"]
@@ -93,7 +124,7 @@ class MetadataWorkflowsClient:
             metadata_object = klass.model_validate(standardize_keys_in_dict(combined_dict), strict=False)
         except ValidationError as e:
             raise TemplateError(
-                f"{validation_error_msg}, consider rerunning metadata.get_for_project with "
+                f"{validation_error_msg}, consider rerunning metadata.get with "
                 f"output_mode='dict' and template_uid='none' or changing the assigned template",
                 response=e,
             ) from e
@@ -121,11 +152,11 @@ class MetadataWorkflowsClient:
 
     def update(
         self,
-        id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         new_metadata: Union[BaseModel, Dict, str],
     ) -> None:
         """Validate and update project metadata (subset updates supported for dict input)."""
-        project_data = self._editor.projects.get(id)["project"]
+        project_data = self._editor.projects.get(project_id)["project"]
         try:
             project_type = self._editor._mm.standardize_metadata_name(project_data["type"])
         except ValueError as e:
@@ -195,4 +226,4 @@ class MetadataWorkflowsClient:
         payload = remove_empty_from_dict(
             metadata_obj.model_dump(mode="json", exclude_none=True, exclude_unset=True)
         )
-        self._editor.projects.update(id, normalize_project_type(metadata_type), payload)
+        self._editor.projects.update(project_id, normalize_project_type(metadata_type), payload)

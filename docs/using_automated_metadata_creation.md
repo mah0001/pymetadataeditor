@@ -97,8 +97,8 @@ me.list_projects(limit=2)
 <td>None</td>
 <td>None</td>
 <td>8603d94e27bccc2bdad1e00dbbf0fe32en</td>
-<td>Gordon Blackadder</td>
-<td>Gordon Blackadder</td>
+<td>example_user</td>
+<td>example_user</td>
 <td>[]</td>
 </tr>
 <tr>
@@ -120,8 +120,8 @@ me.list_projects(limit=2)
 <td>None</td>
 <td>thumbnail-2202.png</td>
 <td>2f62a6b2716ab55b4426005abdbe1600</td>
-<td>vmascarinas</td>
-<td>vmascarinas</td>
+<td>example_user2</td>
+<td>example_user2</td>
 <td>[{'id': '85', 'title': 'Demo Collection', 'sid...</td>
 </tr>
 </tbody>

@@ -75,7 +75,7 @@ class UploadsClient:
                 self._api.post_request(
                     pth="uploads/chunk/{}",
                     id=upload_id,
-                    data={"chunk_number": str(number)},
+                    data={"chunk_number": str(number), "chunk_size": str(len(data))},
                     files={"chunk": (filename, data, "application/octet-stream")},
                     timeout=timeout,
                 )

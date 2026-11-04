@@ -1,14 +1,19 @@
 """Background job queue wrappers for the Metadata Editor API."""
 
 import time
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Union
 
 from requests.exceptions import HTTPError
 
+from .api_types import ProjectIdOrIdno
+from .paging import iter_offset_pages
 from .requester import RequestsWithSpecificErrors
 
+if TYPE_CHECKING:  # pragma: no cover
+    from .projects import ProjectsClient
 
-def _normalize_project_id(project_id: Union[int, str], *, arg_name: str = "project_id") -> Union[int, str]:
+
+def _normalize_project_id(project_id: ProjectIdOrIdno, *, arg_name: str = "project_id") -> Union[int, str]:
     """Accept numeric id or idno string for job payloads."""
     if project_id is None:
         raise ValueError(f"{arg_name} is required")
@@ -35,12 +40,19 @@ def _is_http_not_found(exc: HTTPError) -> bool:
 
 
 class JobsClient:
-    """Job queue wrappers (publish to NADA, poll status, list jobs)."""
+    """The editor's background job queue: queue jobs, poll their status, list jobs.
+
+    Methods that start with ``queue_`` return as soon as the job is queued (``{status, uuid, job}``). Pass
+    ``wait=True`` to block until the job finishes; the result is then that of :meth:`wait`.
+    """
 
     _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+    #: Server maximum for ``limit`` on ``GET /jobs``.
+    MAX_PAGE_SIZE = 100
 
-    def __init__(self, api: RequestsWithSpecificErrors):
+    def __init__(self, api: RequestsWithSpecificErrors, projects: Optional["ProjectsClient"] = None):
         self._api = api
+        self._projects = projects
 
     def available(self) -> bool:
         """Return True when ``GET /jobs/types`` is reachable on this server."""
@@ -52,7 +64,7 @@ class JobsClient:
                 return False
             raise
 
-    def create(
+    def queue(
         self,
         job_type: str,
         payload: Dict[str, Any],
@@ -60,7 +72,7 @@ class JobsClient:
         priority: int = 0,
         max_attempts: int = 3,
     ) -> Dict:
-        """Queue ``POST /jobs`` with an explicit job type and payload."""
+        """Queue a job of any type (``POST /jobs``); see :meth:`types` for the job types."""
         return self._api.post_request(
             pth="jobs",
             json={
@@ -75,11 +87,15 @@ class JobsClient:
         """List job types registered on the Metadata Editor instance."""
         return self._api.get_request(pth="jobs/types")
 
-    def publish_to_nada(
+    def queue_publish_to_nada(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         catalog_connection_id: int,
         *,
+        wait: bool = False,
+        timeout_seconds: int = 1800,
+        interval_seconds: float = 5.0,
+        show_progress: bool = False,
         publish_metadata: bool = True,
         publish_thumbnail: bool = True,
         publish_resources: bool = True,
@@ -92,9 +108,10 @@ class JobsClient:
         priority: int = 0,
         max_attempts: int = 3,
     ) -> Dict:
-        """Queue a publish-to-NADA job for a single project.
+        """Queue a publish-to-NADA job for a project (``POST /jobs/publish_to_nada``).
 
-        Calls ``POST /jobs/publish_to_nada``.
+        Runs the same steps as :meth:`PublishClient.project`, on the server's worker. ``wait=True`` blocks
+        until the job finishes (see :meth:`wait`).
         """
         body: Dict[str, Any] = {
             "project_id": _normalize_project_id(project_id),
@@ -112,14 +129,21 @@ class JobsClient:
         }
         if options:
             body["options"] = options
-        return self._api.post_request(pth="jobs/publish_to_nada", json=body)
+        submit = self._api.post_request(pth="jobs/publish_to_nada", json=body)
+        if not wait:
+            return submit
+        return self._wait_for_submitted(submit, timeout_seconds, interval_seconds, show_progress)
 
-    def import_indicator_data(
+    def queue_indicator_data_import(
         self,
-        project_id: Union[int, str],
+        project_id: ProjectIdOrIdno,
         upload_id: str,
         indicator_value: str,
         *,
+        wait: bool = False,
+        timeout_seconds: int = 1800,
+        interval_seconds: float = 5.0,
+        show_progress: bool = False,
         delimiter: str = ",",
         priority: int = 0,
         max_attempts: int = 1,
@@ -127,7 +151,7 @@ class JobsClient:
         """Queue an indicator data import from a completed upload (``POST /jobs/import_indicator_data``).
 
         Imports the rows whose indicator_id column equals ``indicator_value``. Get ``upload_id`` from
-        ``me.uploads.upload(path)``. Returns ``{status, uuid, job}``.
+        ``me.uploads.upload(path)``. ``wait=True`` blocks until the job finishes (see :meth:`wait`).
         """
         body: Dict[str, Any] = {
             "project_id": _normalize_project_id(project_id),
@@ -137,24 +161,18 @@ class JobsClient:
             "priority": int(priority),
             "max_attempts": int(max_attempts),
         }
-        return self._api.post_request(pth="jobs/import_indicator_data", json=body)
+        submit = self._api.post_request(pth="jobs/import_indicator_data", json=body)
+        if not wait:
+            return submit
+        return self._wait_for_submitted(submit, timeout_seconds, interval_seconds, show_progress)
 
-    def import_indicator_data_and_wait(
-        self,
-        project_id: Union[int, str],
-        upload_id: str,
-        indicator_value: str,
-        *,
-        timeout_seconds: int = 1800,
-        interval_seconds: float = 5.0,
-        show_progress: bool = False,
-        **kwargs: Any,
+    def _wait_for_submitted(
+        self, submit: Dict, timeout_seconds: int, interval_seconds: float, show_progress: bool
     ) -> Dict:
-        """Queue :meth:`import_indicator_data` and wait until the job finishes or times out."""
-        submit = self.import_indicator_data(project_id, upload_id, indicator_value, **kwargs)
+        """Wait for a job just queued; the result includes the queue response as ``submit_response``."""
         job_uuid = submit.get("uuid") if isinstance(submit, dict) else None
         if not job_uuid:
-            raise ValueError(f"import_indicator_data did not return a job uuid: {submit!r}")
+            raise ValueError(f"The server did not return a job uuid: {submit!r}")
         result = self.wait(
             job_uuid, timeout_seconds=timeout_seconds, interval_seconds=interval_seconds, show_progress=show_progress
         )
@@ -172,15 +190,24 @@ class JobsClient:
         *,
         status: Optional[str] = None,
         job_type: Optional[str] = None,
-        project_id: Optional[Union[int, str]] = None,
+        project_id: Optional[ProjectIdOrIdno] = None,
         user_id: Optional[int] = None,
         active: Optional[bool] = None,
         history: Optional[bool] = None,
         stale: Optional[bool] = None,
+        created_from: Optional[str] = None,
+        created_to: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> Dict:
-        """List background jobs with optional filters."""
+        """List one page of background jobs: ``{total, found, limit, offset, jobs, ...}``.
+
+        ``limit`` is at most 100 (server maximum); use :meth:`iter_all` for more. ``created_from`` and
+        ``created_to`` take ``YYYY-MM-DD`` or ``YYYY-MM-DD HH:MM:SS``. A ``project_id`` idno is resolved to the
+        numeric id first. Non-admin users only see their own jobs.
+        """
+        if not 1 <= int(limit) <= self.MAX_PAGE_SIZE:
+            raise ValueError(f"limit must be between 1 and {self.MAX_PAGE_SIZE}; use jobs.iter_all() for more")
         params: Dict[str, Union[int, str]] = {
             "limit": int(limit),
             "offset": int(offset),
@@ -190,7 +217,12 @@ class JobsClient:
         if job_type is not None:
             params["job_type"] = job_type
         if project_id is not None:
-            params["project_id"] = _normalize_project_id(project_id)
+            pid = _normalize_project_id(project_id)
+            if not isinstance(pid, int):
+                if self._projects is None:
+                    raise ValueError("jobs.list needs a numeric project id; use projects.resolve_id for an idno")
+                pid = self._projects.resolve_id(pid)
+            params["project_id"] = pid
         if user_id is not None:
             params["user_id"] = int(user_id)
         if active is True:
@@ -199,7 +231,21 @@ class JobsClient:
             params["history"] = "1"
         if stale is True:
             params["stale"] = "1"
+        if created_from:
+            params["created_from"] = created_from
+        if created_to:
+            params["created_to"] = created_to
         return self._api.get_request(pth="jobs", params=params)
+
+    def iter_all(self, max_items: Optional[int] = None, **filters: Any) -> Iterator[Dict]:
+        """Yield jobs one at a time, 100 per request (accepts the filters of :meth:`list`)."""
+        return iter_offset_pages(
+            lambda limit, offset: self.list(limit=limit, offset=offset, **filters),
+            items_key="jobs",
+            page_size=self.MAX_PAGE_SIZE,
+            max_items=max_items,
+            id_key="uuid",
+        )
 
     def wait(
         self,
@@ -243,36 +289,3 @@ class JobsClient:
                 }
 
             time.sleep(interval_seconds)
-
-    def publish_to_nada_and_wait(
-        self,
-        project_id: Union[int, str],
-        catalog_connection_id: int,
-        *,
-        timeout_seconds: int = 1800,
-        interval_seconds: float = 5.0,
-        show_progress: bool = False,
-        **publish_kwargs: Any,
-    ) -> Dict:
-        """Submit ``publish_to_nada`` and block until the job completes or times out."""
-        submit_response = self.publish_to_nada(
-            project_id,
-            catalog_connection_id,
-            **publish_kwargs,
-        )
-
-        job_uuid = submit_response.get("uuid") if isinstance(submit_response, dict) else None
-        if not job_uuid:
-            raise ValueError(
-                "publish_to_nada did not return a job uuid: "
-                f"{submit_response!r}"
-            )
-
-        wait_result = self.wait(
-            job_uuid,
-            timeout_seconds=timeout_seconds,
-            interval_seconds=interval_seconds,
-            show_progress=show_progress,
-        )
-        wait_result["submit_response"] = submit_response
-        return wait_result

@@ -1,15 +1,23 @@
 """Thin collection endpoint wrappers for the Metadata Editor API."""
 
-from typing import Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 from .requester import RequestsWithSpecificErrors
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .projects import ProjectsClient
 
 
 class CollectionsClient:
     """Collection-focused thin wrappers around API endpoints."""
 
-    def __init__(self, api: RequestsWithSpecificErrors):
+    def __init__(self, api: RequestsWithSpecificErrors, projects: Optional["ProjectsClient"] = None):
         self._api = api
+        if projects is None:
+            from .projects import ProjectsClient
+
+            projects = ProjectsClient(api)
+        self._projects = projects
 
     def list(self) -> Dict:
         """List collections visible to the API key."""
@@ -61,66 +69,34 @@ class CollectionsClient:
         """Get the API user's collection permission levels."""
         return self._api.get_request(pth="/collections/permissions")
 
-    def list_projects(self, collection_id: int) -> Dict:
-        """List projects in a collection (OpenAPI POST /collections/projects)."""
-        return self._api.post_request(
-            pth="/collections/projects",
-            params={"collection_id": collection_id},
-        )
-
     def count_projects(self, collection_id: int) -> int:
-        """Count projects in a collection via the editor listing endpoint."""
-        response = self._api.get_request(
-            pth="/editor",
-            params={"offset": 0, "limit": 1, "collection": str(collection_id)},
-        )
-        return int(response["total"])
+        """Count projects in a collection."""
+        return self._projects.count(collection=collection_id)
 
-    def list_projects_via_editor(
+    def list_projects(
         self,
         collection_id: int,
         limit: int = 100,
         offset: int = 0,
         keywords: Optional[Union[str, List[str]]] = None,
         sort_by: Optional[str] = None,
+        **filters: Any,
     ) -> Dict:
-        """List projects in a collection using GET /editor?collection=."""
-        params: Dict[str, Union[int, str]] = {"limit": limit, "offset": offset, "collection": str(collection_id)}
-        if keywords is not None:
-            if not isinstance(keywords, str) and isinstance(keywords, Iterable):
-                keywords = "%".join(keywords)
-            params["keywords"] = str(keywords).replace(" ", "%")
-        if sort_by is not None:
-            sort_by = sort_by.lower()
-            valid_sort_by = ["title_asc", "title_desc", "updated_asc", "updated_desc"]
-            assert sort_by in valid_sort_by, f"{sort_by} not valid, must be one of {valid_sort_by}"
-            params["sort_by"] = sort_by
-        return self._api.get_request(pth="/editor", params=params)
+        """List one page of projects in a collection (``GET /editor?collection=``).
 
-    def list_projects_all(
-        self,
-        collection_id: int,
-        page_size: int = 500,
-        keywords: Optional[Union[str, List[str]]] = None,
-        sort_by: Optional[str] = None,
-    ) -> Dict:
-        """Fetch all projects in a collection by paging through GET /editor."""
-        offset = 0
-        projects: List[Dict] = []
-        while True:
-            response = self.list_projects_via_editor(
-                collection_id=collection_id,
-                limit=page_size,
-                offset=offset,
-                keywords=keywords,
-                sort_by=sort_by,
-            )
-            batch = response.get("projects", [])
-            projects.extend(batch)
-            if len(batch) < page_size:
-                break
-            offset += page_size
-        return {"projects": projects, "total": len(projects)}
+        Accepts the filters of :meth:`ProjectsClient.list`.
+        """
+        return self._projects.list(
+            limit=limit, offset=offset, keywords=keywords, sort_by=sort_by, collection=collection_id, **filters
+        )
+
+    def iter_projects(
+        self, collection_id: int, page_size: int = 500, max_items: Optional[int] = None, **filters: Any
+    ) -> Iterator[Dict]:
+        """Yield the projects of a collection one at a time (accepts the filters of :meth:`list_projects`)."""
+        return self._projects.iter_all(
+            page_size=page_size, max_items=max_items, collection=collection_id, **filters
+        )
 
     def add_projects(
         self,

@@ -89,7 +89,7 @@ project_id = me.metadata.create(
 Load a project, then enrich it from additional sources:
 
 ```python
-existing = me.metadata.get_for_project(project_id, output_mode="pydantic")
+existing = me.metadata.get(project_id, output_mode="pydantic")
 
 augmented = me.augment_metadata_from_files(
     input_metadata=existing,

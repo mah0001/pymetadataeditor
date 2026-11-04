@@ -42,7 +42,7 @@ def test_indicator_workflow_with_notes(me, tmp_path):
     )
     structure_id = created["structure_id"]
     assert created["validation"]["validation"]["valid"] is True
-    components = {c["name"]: c for c in me.data_structures.components(structure_id)}
+    components = {c["name"]: c for c in me.data_structures.list_components(structure_id)}
     assert components["NOTE_ID"].get("display_role") == "footnote"
 
     # 2. Project
@@ -78,7 +78,7 @@ def test_indicator_workflow_with_notes(me, tmp_path):
         assert header[0] == "INDICATOR_ID" and not any(h.startswith("_ts_") for h in header)
 
         # 6. Notes editing through the project metadata
-        me.indicators.notes.add(project_id, "N77", "Added from Python", column="NOTE_ID")
+        me.indicators.notes.upsert(project_id, "N77", "Added from Python", column="NOTE_ID")
         assert "N77" in [n["id"] for n in me.indicators.notes.list(project_id)["notes"]]
         me.indicators.notes.remove(project_id, "N77")
         assert "N77" not in [n["id"] for n in me.indicators.notes.list(project_id)["notes"]]
@@ -89,11 +89,15 @@ def test_indicator_workflow_with_notes(me, tmp_path):
 
         # 8. Optional publish
         if NADA_CONNECTION_ID:
-            published = me.indicators.publish(
-                idno, int(NADA_CONNECTION_ID), metadata_options={"published": 1, "access_policy": "open"}
+            published = me.publish.project(
+                idno, int(NADA_CONNECTION_ID), publish_thumbnail=False, publish_resources=False,
+                publish_dsd=True, dsd_overwrite=True, publish_indicator_data=True,
+                options={"overwrite": "yes", "published": 1, "access_policy": "open"},
             )
-            assert published["metadata"]["status"] == "success"
-            assert published["dsd"]["status"] in ("success", "skipped")
-            assert published["data"]["status"] == "success"
+            assert not published["errors"], published["errors"]
+            assert published["results"]["metadata"]["status"] == "success"
+            assert published["results"]["dsd"]["status"] in ("success", "skipped")
+            assert published["results"]["indicator_data"]["status"] == "success"
     finally:
         me.projects.delete(project_id)
+        me.data_structures.delete(structure_id)

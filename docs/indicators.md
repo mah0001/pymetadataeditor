@@ -56,7 +56,8 @@ report["notes_check"]            # {valid, errors, warnings, unknown, unused, ..
 
 - One file, many indicators: `me.indicators.load_many("data.csv", {"EDU_NER": 101, "EDU_GER": 102})`.
 - From pandas: `me.indicators.load_dataframe(project_id, df, indicator_id_value="EDU_NER")`.
-- Background job (large files): `upload_id = me.uploads.upload("data.csv")`, then `me.jobs.import_indicator_data_and_wait(project_id, upload_id, "EDU_NER")`.
+- Background job (large files): `upload_id = me.uploads.upload("data.csv")`, then `me.jobs.queue_indicator_data_import(project_id, upload_id, "EDU_NER", wait=True)`.
+- `import_data` and `queue_recompute` run as data jobs (keyed by `job_id`, separate from `me.jobs`): `import_data(wait=False)` and `queue_recompute()` return a `job_id` for `me.indicators.get_data_job` / `wait_data_job`.
 
 ## 3. Notes
 
@@ -68,14 +69,16 @@ Ways to provide the text:
 |---|---|
 | Notes CSV (`note_id, note`; optional `indicator_id, scope, column`) | `me.indicators.notes.import_csv(project, csv_path="notes.csv", dry_run=True)` |
 | Text columns in the data CSV | `NOTE_ID_LABEL` (and `NOTE_ID_LABEL2`… by position), or one `NOTE_ID_LABEL` with texts separated by `\|\|`. If the CSV has text but no `NOTE_ID`, the IDs (`N01`, `N02`…) are generated on import. |
-| Python | `me.indicators.notes.add(project, "N01", "Text", column="NOTE_ID")`, `notes.remove`, `notes.set` |
+| Python | `me.indicators.notes.upsert(project_id, "N01", "Text", column="NOTE_ID")`, `notes.remove`, `notes.set` |
 
 Check references: `me.indicators.notes.check(project)`. An unknown ID is an error; a note used in another column, an unused note, or a table note used in cells is a warning.
 
 ## 4. Look at the data
 
 ```python
-me.indicators.data_rows(project_id, limit=20, filters={"REF_AREA": ["XAL"]})
+me.indicators.data_rows(project_id, limit=20, filters={"REF_AREA": ["XAL"]})   # one page, up to 200 rows
+for row in me.indicators.iter_data_rows(project_id, filters={"REF_AREA": ["XAL"]}):
+    ...
 me.indicators.chart_data(project_id, geography=["XAL", "XBO"], dimensions={"SEX": ["_T"]})  # with notes
 me.indicators.export_data(project_id, "export.csv")   # DSD columns, DSD order
 ```
@@ -83,13 +86,15 @@ me.indicators.export_data(project_id, "export.csv")   # DSD columns, DSD order
 ## 5. Publish to NADA
 
 ```python
-me.indicators.publish(
+out = me.publish.project(
     "EDU_NER", catalog_connection_id=1,
-    metadata_options={"published": 1, "access_policy": "open"},
+    publish_dsd=True, dsd_overwrite=True, publish_indicator_data=True,
+    options={"overwrite": "yes", "published": 1, "access_policy": "open"},
 )
+out["errors"]   # {} when every step succeeded
 ```
 
-This publishes the metadata, then the data structure, then the data. The data structure is re-imported only when it differs from NADA's copy (`dsd_force=True` re-imports anyway; re-importing flags every NADA study on that structure for re-sync). For the background job, use `me.jobs.publish_to_nada(..., publish_dsd=True, dsd_overwrite=True, publish_indicator_data=True)`.
+This publishes the metadata, then the data structure, then the data, then the thumbnail and resources (turn them off with `publish_thumbnail=False`, `publish_resources=False`). With `dsd_overwrite`, the data structure is re-imported only when it differs from NADA's copy (`dsd_force=True` re-imports anyway; re-importing flags every NADA study on that structure for re-sync). For the background job, use `me.jobs.queue_publish_to_nada(...)` with the same arguments.
 
 ## 6. Preparing data with pandas (`pymetadataeditor.tidy`)
 

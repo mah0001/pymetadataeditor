@@ -84,7 +84,7 @@ def test_normalize_project_id():
 
 
 def test_publish_to_nada_payload(jobs_editor):
-    response = jobs_editor.jobs.publish_to_nada(
+    response = jobs_editor.jobs.queue_publish_to_nada(
         project_id="MY-IDNO",
         catalog_connection_id=2,
         publish_resources=False,
@@ -119,11 +119,12 @@ def test_wait_until_complete(jobs_editor, monkeypatch):
     assert result["job"]["result"]["project_id"] == 123
 
 
-def test_publish_to_nada_and_wait(jobs_editor, monkeypatch):
+def test_queue_publish_to_nada_wait(jobs_editor, monkeypatch):
     monkeypatch.setattr("pymetadataeditor.jobs.time.sleep", lambda _: None)
-    result = jobs_editor.jobs.publish_to_nada_and_wait(
+    result = jobs_editor.jobs.queue_publish_to_nada(
         123,
         1,
+        wait=True,
         publish_resources=False,
         options={"access_policy": "open"},
     )

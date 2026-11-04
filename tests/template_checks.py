@@ -184,7 +184,7 @@ if __name__ == "__main__":
     assert your_api_key is not None, "API_KEY is not set"
     assert api_url is not None, "API_URL is not set"
     me = MetadataEditor(api_url=api_url, api_key=your_api_key, verify_ssl=False)
-    templates = me.list_templates().drop_duplicates("uid")
+    templates = me._refresh_default_templates_cache().drop_duplicates("uid")
 
     unknown_warnings = set()
     for _, template in templates.iterrows():

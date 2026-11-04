@@ -1,305 +1,166 @@
 # pyMetadataEditor
 
-A tool connected to Metadata Editor for creating, editing and managing metadata for microdata, indicators, geospatial data, documents, scripts, images and videos.
+A Python client for [Metadata Editor](https://github.com/worldbank/metadata-editor): create, edit, and manage metadata for microdata, indicators, geospatial data, documents, scripts, images, and videos.
 
-# How to use pyMetadataEditor
+## Installation
 
+This project uses [Poetry](https://python-poetry.org/docs/basic-usage/):
+
+```bash
+pip install poetry
+cd pymetadataeditor
+poetry install
+```
+
+The LLM-assisted metadata features (OpenAI, `tiktoken`, `markitdown`) are optional: `poetry install --extras llm`, or `pip install "pymetadataeditor[llm]"`.
+
+For development (pytest, pre-commit):
+
+```bash
+poetry install --with dev
+poetry run pre-commit install
+```
+
+## Quick start
 
 ```python
 from pymetadataeditor import MetadataEditor
 import os
+
+me = MetadataEditor(
+    api_url=os.getenv("METADATA_API_URL"),   # e.g. https://host/index.php/api
+    api_key=os.getenv("METADATA_API_KEY"),
+    verify_ssl=False,  # set True when SSL is verified on your server
+)
 ```
 
-
+### List projects
 
 ```python
-your_api_key = os.getenv("API_KEY")
-api_url = os.getenv("API_URL")
-me = MetadataEditor(api_url=api_url, api_key=your_api_key, verify_ssl=False)
+response = me.projects.list(limit=10)
+for project in response["projects"]:
+    print(project["id"], project["type"], project["title"])
 ```
 
-## Listing your projects
-
+### Create a project (template-aware)
 
 ```python
-me.list_projects(limit=8)
+demo_name = "my_indicator_demo"
+metadata = {
+    "idno": demo_name,
+    "series_description": {
+        "idno": demo_name,
+        "name": "Version 1",
+    },
+}
+
+project_id = me.metadata.create(
+    metadata,
+    metadata_type_or_template_uid="indicator",
+)
 ```
 
-<div>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>type</th>
-      <th>idno</th>
-      <th>study_idno</th>
-      <th>title</th>
-      <th>abbreviation</th>
-      <th>nation</th>
-      <th>year_start</th>
-      <th>year_end</th>
-    </tr>
-    <tr>
-      <th>id</th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>1003</th>
-      <td>document</td>
-      <td>12345</td>
-      <td>DOC_001</td>
-      <td>Sample Document 1</td>
-      <td>SD1</td>
-      <td>Example Nation</td>
-      <td>2020</td>
-      <td>2025</td>
-    </tr>
-    <tr>
-      <th>1002</th>
-      <td>survey</td>
-      <td>67890</td>
-      <td>SURVEY_002</td>
-      <td>Sample Survey 2</td>
-      <td>SS2</td>
-      <td>Example Nation</td>
-      <td>2019</td>
-      <td>2024</td>
-    </tr>
-    <tr>
-      <th>1001</th>
-      <td>timeseries</td>
-      <td>54321</td>
-      <td>TS_003</td>
-      <td>Time Series 3</td>
-      <td>TS3</td>
-      <td>Another Nation</td>
-      <td>2021</td>
-      <td>2026</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-
-
-
-
-## Creating a new indicator project
-
+### Read metadata back
 
 ```python
-demo_name = "GB20241030_demo"
+model = me.metadata.get_for_project(project_id, output_mode="pydantic")
+model.pretty_print()
 ```
 
+## API overview (v2)
+
+Thin clients return **raw API JSON** (`dict`). Workflow helpers on `me.metadata` handle validation and Pydantic/Excel conversion.
+
+| Client | Role |
+|--------|------|
+| `me.projects` | List, get, create, update, patch, delete projects |
+| `me.metadata` | Template-aware create, update, get (dict / pydantic / excel) |
+| `me.collections` | Collections and membership |
+| `me.templates` | Template CRUD |
+| `me.resources` | External resources (reports, questionnaires, files) |
+| `me.jobs` | Background jobs (publish to NADA, indicator data import, poll, list) |
+| `me.publish` | Publish metadata and indicator DSD/data to NADA (synchronous) |
+| `me.uploads` | Resumable (chunked) file uploads |
+| `me.data_structures` | Data structure (DSD) registry: structures, components, CSV/JSON/SDMX import, export |
+| `me.codelists` | Codelist registry: codelists, codes, translations, import/export |
+| `me.indicators` | Indicator projects: bind a DSD, load/export data, chart data, `notes`, publish |
+| `me.api` | Generic `get` / `post` / `put` / `delete` for any path |
+
+API errors raise `ApiError` (`status_code`, `message`, `errors`), a subclass of `requests` `HTTPError`.
+
+Methods still on `me` directly include `make_metadata_outline`, `read_metadata_from_excel`, `draft_metadata_from_files`, and related helpers.
+
+**Breaking change:** v1 flat methods (`list_projects`, `create_project_log`, …) were removed. See [legacy-migration.MD](legacy-migration.MD).
+
+### Direct HTTP (`me.api`)
+
+For endpoints without a typed wrapper yet:
 
 ```python
-series_description = {
-                        "idno": demo_name,
-                        "doi": "V1",
-                        "name": "Version 1",
-                        "display_name": "Version 1"
-                     }
-
-indicator_id = me.create_project_log({"idno": demo_name, "series_description": series_description}, "indicator")
+me.api.get("/editor", params={"limit": 5})
+me.api.post("/collections/add_projects", json={"collections": [1], "id_format": "id", "projects": [101]})
 ```
 
+POST body styles:
 
-# Starting with outlines
+- `json={...}` — JSON API payloads
+- `data={...}` — form fields
+- `data={...}` + `files={...}` — multipart uploads
 
-The metadata can be both large and hierarchical. Starting with a skeleton outline makes things easier.
+Many deletes use **POST** in restricted networks (e.g. `me.projects.delete`, `me.collections.delete`), not HTTP DELETE.
 
-Outlines are available in three modes - dictionary, pydantic model and as an Excel file.
-
-## Dictionaries
-Dictionaries are created like so:
-
+### Publish to NADA (background job)
 
 ```python
-indicator_dict = me.make_metadata_outline('indicator', output_mode='dict')
-indicator_dict
+job = me.jobs.publish_to_nada(
+    project_id=123,
+    catalog_connection_id=1,
+    publish_thumbnail=False,
+    publish_resources=False,
+    options={
+        "overwrite": "yes",
+        "published": 1,
+        "access_policy": "licensed",
+        "repositoryid": "MY_COLLECTION",
+    },
+)
+result = me.jobs.wait(job["uuid"], timeout_seconds=3600)
 ```
 
+For a single blocking call, use `me.jobs.publish_to_nada_and_wait(...)`.
 
+Step-by-step notebook: [`demo/publish_to_nada_jobs.ipynb`](demo/publish_to_nada_jobs.ipynb).
 
+## Guides
 
-    {'metadata_information': {'title': None,
-      'idno': None,
-      'producers': [{'name': '', 'abbr': None, 'affiliation': None, 'role': None}],
-      'prod_date': None,
-      ...
-        'email': None,
-        'telephone': None,
-        'uri': None}]},
-     'tags': [{'tag': None, 'tag_group': None}]}
+- [Indicators](docs/indicators.md) — data structures, loading data, notes, publishing to NADA, pandas helpers
+- [Metadata workflows](docs/metadata-workflows.md) — outlines, [Pydantic](docs/metadata-workflows.md#pydantic), [Excel](docs/metadata-workflows.md#excel), [retrieving metadata](docs/metadata-workflows.md#retrieving-existing-metadata)
+- [LLM-assisted metadata](docs/llm-assisted-metadata.md) — draft and augment from documents and URLs
+- [API examples](docs/examples.md) — collections, copying projects, and common tasks
+- [Migrating from v1](legacy-migration.MD) — old → new method mapping
+- [API reference](docs/API_Reference.md) — regenerate with `python make_docs.py`
 
+## Contributing
 
-## Pydantic
+### Poetry troubleshooting (Windows)
 
-Pydantic is a nice python library for defining and validating data schemas. An outline for the indicator schema can be created like so:
+If NumPy or path-length errors occur:
 
+1. Enable [long paths in Windows](https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=powershell#enable-long-paths-in-windows-10-version-1607-and-later), or
+2. Run `poetry config virtualenvs.in-project true` then `poetry install`
 
-```python
-indicator_pydantic = me.make_metadata_outline('indicator', 'pydantic')
-indicator_pydantic
+### Tests
+
+```bash
+poetry run pytest tests/test_interface.py -q
 ```
 
+### API documentation
 
-giving
-
-    IHSN_INDICATOR_1-0_Template_v01_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='', abbr=None, affiliation=None, role=None)], prod_date=None, ...
-
-
-
-It can be updated using dot notation, for example:
-
-
-```python
-indicator_pydantic.metadata_information.producers[0].name = "example_producer"
-indicator_pydantic
-```
-
-
-giving
-
-    IHSN_INDICATOR_1-0_Template_v01_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='example_producer', abbr=None, affiliation=None, role=None)], prod_date=None, ...
-
-## Excel
-
-Finally, a nicely formatted Excel file can be created into which the metadata can be written, with the name of the metadata type or of the default template used as the filename if no filename is explicitly given.
-
-
-```python
-outline_filename = me.make_metadata_outline('indicator', 'excel')
-```
-
-And then read back in from Excel like so:
-
-```python
-indicator_excel = me.read_metadata_from_excel(outline_filename)
-```
-
-## Retreiving existing metadata
-
-Likewise, existing projects can be downloaded as either dictionaries, pydantic models or as excel spreadsheets.
-
-Asking for the metadata as a pydantic object
-
-```python
-demo_pydantic = me.get_project_metadata_by_id(indicator_id, 'pydantic')
-demo_pydantic
-```
-
-which gives:
-
-    IHSN_INDICATOR_1-0_Template_v01_EN(metadata_information=metadata_information(title=None, idno=None, producers=[Producer(name='', abbr=None, affiliation=None, role=None)], prod_date=None, ...
-
-# Automatic Metadata Creation and Augmentation from Sources
-
-We can use a Large Language Model to make a first draft of metadata from a source document or documents.
-
-We can create metadata from source files such as:
-- pdfs
-- word
-- excel
-- powerpoint
-- text files
-- csv
-- XML
-- ZIP files
-- Images
-
-
-
-
-```python
-docs = ["survey_records/cambodia/cambodia_lsms_basic_information_document.pdf", "survey_records/cambodia/cambodia_living_standards_measurement_study_plus_manual_english.pdf"]
-
-example = me.draft_metadata_from_files(openai_api_key=openai_key, 
-                                       files=docs, 
-                                       metadata_type_or_template_uid='microdata',
-                                       output_mode='pydantic',
-                                       metadata_producer_organization="The World Bank Group, DEC - Development Data Group"
-                                       )
-```
-
-The files are read in and sent to the LLM for processing. 
-
-    Read in survey_records/cambodia/cambodia_lsms_basic_information_document.pdf, running token count is 6373
-    Read in survey_records/cambodia/cambodia_living_standards_measurement_study_plus_manual_english.pdf, running token count is 24901
-    Sending to OpenAI, this may take a few minutes...
-
-We can then view the new metadata
-```python
-example.pretty_print()
-```
-which gives
-
-<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">IHSN_DDI_2-<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">5_Template_v01_EN</span><span style="font-weight: bold">(</span>
-    <span style="color: #808000; text-decoration-color: #808000">doc_desc</span>=<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">doc_desc</span><span style="font-weight: bold">(</span>
-        <span style="color: #808000; text-decoration-color: #808000">producers</span>=<span style="font-weight: bold">[</span>
-            <span style="color: #800080; text-decoration-color: #800080; font-weight: bold">Producer</span><span style="font-weight: bold">(</span>
-                <span style="color: #808000; text-decoration-color: #808000">name</span>=<span style="color: #008000; text-decoration-color: #008000">'The World Bank Group, DEC - Development Data Group'</span>,
-                <span style="color: #808000; text-decoration-color: #808000">abbr</span>=<span style="color: #008000; text-decoration-color: #008000">'WBG'</span>,
-                <span style="color: #808000; text-decoration-color: #808000">affiliation</span>=<span style="color: #008000; text-decoration-color: #008000">'World Bank'</span>,
-                <span style="color: #808000; text-decoration-color: #808000">role</span>=<span style="color: #008000; text-decoration-color: #008000">'Metadata producer'</span>
-            <span style="font-weight: bold">)</span>
-        <span style="font-weight: bold">]</span>,
-        <span style="color: #808000; text-decoration-color: #808000">prod_date</span>=<span style="color: #008000; text-decoration-color: #008000">'2025-01-28'</span>,
-        <span style="color: #808000; text-decoration-color: #808000">idno</span>=<span style="color: #008000; text-decoration-color: #008000">'CAMBODIA_LSMS_PLUS_2019_2020_v01_EN'</span>,
-        <span style="color: #808000; text-decoration-color: #808000">version_statement</span>=<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">version_statement</span><span style="font-weight: bold">(</span>
-            <span style="color: #808000; text-decoration-color: #808000">version</span>=<span style="color: #008000; text-decoration-color: #008000">'1.0'</span>,
-            <span style="color: #808000; text-decoration-color: #808000">version_date</span>=<span style="color: #008000; text-decoration-color: #008000">'2025-01-28'</span>,
-            <span style="color: #808000; text-decoration-color: #808000">version_resp</span>=<span style="color: #008000; text-decoration-color: #008000">''</span>,
-            <span style="color: #808000; text-decoration-color: #808000">version_notes</span>=<span style="color: #008000; text-decoration-color: #008000">'First draft of the metadata for the Cambodia Living Standards Measurement Study - Plus </span>
-<span style="color: #008000; text-decoration-color: #008000">(LSMS+) 2019-20.'</span>
-        <span style="font-weight: bold">)</span>
-    <span style="font-weight: bold">)</span>,
-    ...
-
-<span style="font-weight: bold">)</span>
-</pre>
-
-
-
-
-# Contributing
-## Setting up the python environment
-
-This library uses Poetry for dependency management (https://python-poetry.org/docs/basic-usage/).
-
-In your python environment run `pip install poetry` then navigate to the pymetadataeditor folder and run `poetry install` or, if that doesn't work, try `python -m poetry install`.
-
-### Development python environment
-
-If you want to make changes to this repo then you also need to install the tools used for development but which aren't used otherwise, for example pytest.
-
-Run:
-
-`poetry install --with dev`
-`poetry run pre-commit install`
-
-### Poetry troubleshooting
-
-If you are running on Windows and see errors about numpy installation errors then it could be an issue with Windows file paths. With default settings, file paths that exceed a few hundred characters can cause installation problems. To overcome this you can either
-
-1) enable long path support in Windows (https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=powershell#enable-long-paths-in-windows-10-version-1607-and-later)
-2) install python libraries in a folder in the current directory by running `poetry config virtualenvs.in-project true` and then running `poetry install`
-
-### Markdown API Documentation
-
-Create documentation for the pyMetadataEditor class by running the following command:
-```
+```bash
 python make_docs.py
 ```
 
 ## Notes
 
-In keeping with World Bank Group practice, it should be noted that parts of this code base were written with the assistance of ChatGPT.
+Parts of this codebase were written with the assistance of ChatGPT, in keeping with World Bank Group practice.

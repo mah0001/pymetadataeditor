@@ -11,11 +11,8 @@ from metadataschemas.utils.utils import (
     is_optional_list,
     subset_pydantic_model_type,
 )
-from openai import APITimeoutError
 from pydantic import BaseModel, ValidationError
 
-# from tqdm import tqdm
-from tqdm import tqdm
 
 
 def _prepend_draft_drop_non_str(d: Any, prefix: str) -> dict | list | str | None:
@@ -220,6 +217,9 @@ def call_per_field(
     4. If the LLM response is invalid, it attempts to handle nested fields or lists.
     5. The function returns the updated and validated model.
     """
+    from openai import APITimeoutError
+    from tqdm import tqdm
+
     final_dict = {}
     for field in tqdm(klass.model_fields.keys(), disable=not show_progress_bar):
         try:

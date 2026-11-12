@@ -857,7 +857,9 @@ def test_ensure_template_cached(monkeypatch, metadata_editor):
         )
 
     monkeypatch.setattr(requests, "request", mock_response)
-    actual = metadata_editor._ensure_template_cached("example")
+    # an empty template can't be turned into a class; the template is still returned, with a warning
+    with pytest.warns(UserWarning, match="Could not build a class"):
+        actual = metadata_editor._ensure_template_cached("example")
     assert actual.name == "example name"
 
 

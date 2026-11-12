@@ -874,8 +874,9 @@ class MetadataEditor:
                 temp.template, parent_schema=parent_schema, uid=uid, name=temp.name, metadata_type=standard_type_name
             )
             self._templates[uid]["class"] = klass
-        finally:
-            return temp
+        except Exception as e:
+            warnings.warn(f"Could not build a class for template UID '{uid}': {e}")
+        return temp
 
     def change_mode_or_template(
         self,
